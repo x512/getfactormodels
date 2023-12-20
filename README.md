@@ -2,7 +2,7 @@
 
 # getfactormodels
 
-![Python 3.11](https://img.shields.io/badge/Python-3.7+-306998.svg?logo=python&logoColor=ffde57&style=flat-square)
+![Python 3.11](https://img.shields.io/badge/Python-3.7+-306998.svg?logo=python&logoColor=ffde57&style=flat-square) ![PyPI - Version](https://img.shields.io/pypi/v/getfactormodels?style=flat-square&label=PyPI)
 
 
 Reliably retrieve data for various multi-factor asset pricing models.
