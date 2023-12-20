@@ -21,8 +21,7 @@ Reliably retrieve data for various multi-factor asset pricing models.
 - The 6-factor model of Barillas and Shanken<sup>[[12]](#12)</sup>
 
 
-_Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they publically provide._
-
+_Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they provide._
 
 ## Installation
 
@@ -30,7 +29,7 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 * Install with pip:
   ```shell
-  $ pip install getfactormodels   
+    pip install getfactormodels   
   ```
 
 ## Usage
@@ -41,9 +40,9 @@ After installing, import ``getfactormodels`` and call ``get_factors()`` with the
 * For example, to retrieve the daily q-factor model data:
 
     ```py
-    import getfactormodels as getfactormodels
+      import getfactormodels
     
-    df = getfactormodels.get_factors(model='q', frequency='d')
+      getfactormodels.get_factors(model='q', frequency='d')
     ```
     > _Trimmed output:_
     ```txt
@@ -83,10 +82,9 @@ After installing, import ``getfactormodels`` and call ``get_factors()`` with the
     ```
      >The output parameter accepts a filename, path or directory, and can be one of csv, md, txt, xlsx, pkl.
 
+* You can also import just the models that you need.:
 
-You can also import just the models that you need. 
-
-* For example, to import only the *ICR* and *q*-factor models: 
+  * For example, to import only the *ICR* and *q*-factor models: 
 
     ```py
       from getfactormodels import icr_factors, q_factors
@@ -98,7 +96,7 @@ You can also import just the models that you need.
       df = q_factors(frequency="W", start_date="1992-01-01)
     ```
 
-* If using ``ff_factors()``, then an additional ``model`` parameter should be specified:
+  * If using ``ff_factors()``, then an additional ``model`` parameter should be specified:
 
     ```py
     from getfactormodels import ff_factors
@@ -116,6 +114,7 @@ You can also import just the models that you need.
 
   ```py
     from getfactormodels import models
+  
   ```
 
 * There's also the `FactorExtractor` class that the CLI uses (it doesn't really do a whole lot yet):
