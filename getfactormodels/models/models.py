@@ -321,6 +321,7 @@ def _create_cache():
     cache_dir = os.path.expanduser('~/.cache/getfactormodels')
     if not os.path.exists(cache_dir):
         os.makedirs(cache_dir)
+    return cache_dir
 
 
 def hml_devil_factors(frequency='M',
