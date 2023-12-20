@@ -1,7 +1,7 @@
 [project]
 name = "getfactormodels"
 dynamic = ["version"]
-description = "Retreive data for various multifactor asset pricing models."
+description = "Retrieve data for various multifactor asset pricing models."
 authors = [{name = "S. Martin", email = "x512@pm.me"}]
 license = {file = "LICENSE"}
 readme = "README.md"
