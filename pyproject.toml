@@ -1,0 +1,79 @@
+[project]
+name = "getfactormodels"
+dynamic = ["version"]
+description = "Retreive data for various multifactor asset pricing models."
+authors = [{name = "S. Martin", email = "x512@pm.me"}]
+license = {file = "LICENSE"}
+readme = "README.md"
+keywords = ['finance', 'pricing models', 'financial analysis', 'econometrics',
+            'asset pricing', 'multifactor models']
+classifiers = [
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Development Status :: 2 - Pre-Alpha"
+]
+requires-python = ">=3.7"   # Will lower soon
+dependencies = [ "numpy >=1.18.5",
+                 "pandas >=1.4",
+                 "requests >=2.20.0",
+                 "pyarrow >=14.0.1",
+                 "openpyxl >=3.0.3",
+                 "tabulate >=0.8.7", ]
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest-cov", "pytest", "pytest-randomly", "isort", "nox"]
+
+[project.urls]
+"Homepage" = "https://github.com/x512/getfactormodels"
+
+[project.scripts]
+getfactormodels = "getfactormodels.__main__:main"
+
+[build-system]
+requires = ["flit_core >=3.2,<=3.9"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.sdist]
+exclude = ["**/*.ipynb"]
+
+[tool.isort]
+lines_between_sections = false
+
+[tool.ruff]
+line-length = 79
+target-version = "py38"
+indent-width = 4
+respect-gitignore = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint]
+# run `ruff linter` to see all available rules
+select = [  "E4", "E7", "E9", "F", "B", "DTZ",
+            "NPY", "SIM", "N", "TID", "S", ]
+            # "C901", "UP"
+
+# "ALL" = "Allow fix for all enabled rules (when `--fix`) is provided."
+# - docs.astral.sh/ruff/configuration/
+#fixable = ["ALL"]
+unfixable = ["B"]
+ignore = []
+
+# Ruff: exclude from linting (uses .gitignore)
+exclude = [".git", ".git-rewrite",]
+
+[tool.ruff.per-file-ignores]
+"main.py" = ["UP007"]
+"**/__init__.py" = ["F401"]
