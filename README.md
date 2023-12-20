@@ -113,8 +113,9 @@ After installing, import ``getfactormodels`` and call ``get_factors()`` with the
 * or import all the models:
 
   ```py
-    from getfactormodels import models
+    from getfactormodels.models import models
   
+    df = models.barillas_shanken_factors('m')
   ```
 
 * There's also the `FactorExtractor` class that the CLI uses (it doesn't really do a whole lot yet):
