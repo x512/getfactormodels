@@ -21,7 +21,7 @@ develop-eggs/
 dist/
 eggs/
 env.bak/
-env/
+*env/
 ENV/
 lib/
 lib64/
