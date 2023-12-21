@@ -26,8 +26,6 @@ Functions
 - `liquidity_factors`: Retrieves the Pastor-Stambaugh liquidity factors.
 - `mispricing_factors`: Retrieves the Stambaugh-Yuan (201x) mispricing factors.
 """
-import os
-import pickle
 from io import BytesIO
 from typing import Optional, Union
 import numpy as np
@@ -35,6 +33,8 @@ import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
+import datetime
+import cachetools
 
 
 def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
@@ -55,8 +55,8 @@ def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
       ``dateutil.parser.parse()`` can interpret will work.
 
     Parameters:
-        model (str, int): the Fama-French or Carhart factor data to return. 3, 4, 5
-            or 6 (default: 3).
+        model (str, int): the Fama-French or Carhart factor data to return. 3,
+            4, 5 or 6 (default: 3).
         frequency (str): the frequency of the data. Accepts D, W, M or Y
             (default: M).
         start_date (str, optional): the start date of the data, as YYYY-MM-DD.
@@ -317,11 +317,66 @@ def carhart_factors(frequency: str = "M",
     return _process(data, start_date, end_date, filepath=output)
 
 
-def _create_cache():
-    cache_dir = os.path.expanduser('~/.cache/getfactormodels')
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
-    return cache_dir
+# =========================== EXPERIMENTAL ================================== #
+
+# Create a cache with a TTL (time-to-live) of one day
+cache = cachetools.TTLCache(maxsize=100, ttl=86400)
+
+
+def _download_hml_devil(frequency):
+    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
+    file = 'daily' if frequency.lower() == 'd' else 'monthly'
+    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
+
+    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa
+
+    response = requests.get(url, verify=True, timeout=180)
+    xls = pd.ExcelFile(BytesIO(response.content))
+
+    sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
+    dfs = []
+
+    df_dict = pd.read_excel(xls,
+                            sheet_name=list(sheets.values()),
+                            skiprows=18,
+                            header=0,
+                            index_col=0,
+                            parse_dates=True)
+
+    for sheet_index, sheet_name in sheets.items():
+        df = df_dict[sheet_name]
+
+        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]
+
+        df.columns = [sheet_name]
+        dfs.append(df)
+
+    data = pd.concat(dfs, axis=1)
+    data.rename(columns={'MKT': 'Mkt-RF',
+                         'HML Devil': 'HML_DEVIL'}, inplace=True)
+    data = data.astype(float)
+
+    return data
+
+
+def _get_hml_devil(frequency='M',
+                   start_date: Optional[str] = None,
+                   end_date: Optional[str] = None,
+                   output: Optional[str] = None,
+                   series=False) -> Union[pd.Series, pd.DataFrame]:
+
+    data = _download_hml_devil(frequency)
+
+    data.index.name = 'date'
+    data.index = pd.to_datetime(data.index)
+
+    if frequency.lower() == 'd':
+        data = data.dropna()
+
+    if series:
+        return _process(data, start_date, end_date, filepath=output).HML_DEVIL
+
+    return _process(data, start_date, end_date, filepath=output)
 
 
 def hml_devil_factors(frequency='M',
@@ -349,82 +404,23 @@ def hml_devil_factors(frequency='M',
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
     """
-    _create_cache()  # TODO: allow config and cache_file [not pickle]
-    pickle_file = os.path.expanduser(f'~/.cache/getfactormodels/hml_devil_{frequency}.pkl')  # noqa
+    # Use the current date as a cache key
+    current_date = datetime.date.today()
+    cache_key = (frequency, None, None, None, None, current_date)
 
-    # Get the current date and the date of the file creation
-    current_date = pd.to_datetime('today')
-    if os.path.exists(pickle_file):
-        file_date = pd.to_datetime(os.path.getmtime(pickle_file), unit='s')
+    # If the result is in the cache, return it if not saving
+    if cache_key in cache:
+        result = cache[cache_key]
+        if end_date:
+            end_date = pd.to_datetime(end_date)
+            result = result.loc[result.index <= end_date]
 
-        # If the pickle file exists and is not expired, load the df from it
-        if (frequency.lower() == 'd' and file_date.day == current_date.day) or \
-                (frequency.lower() != 'd' and file_date.month == current_date.month):  # noqa
-            with open(pickle_file, 'rb') as f:
-                if series:
-                    return _process(pickle.load(f),  # read pickle instead, csv ?  # noqa
-                                    start_date, end_date).HML_DEVIL
-                else:
-                    data = _process(pickle.load(f), start_date, end_date)
-                    data = data.dropna()
-                    return data
-        # If the pickle file is expired, delete it
-        else:
-            os.remove(pickle_file)
+        return _process(result, start_date, end_date, filepath=output)
 
-    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
-    file = 'daily' if frequency.lower() == 'd' else 'monthly'
-    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
-
-    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa
-
-    # TODO: A progress bar until something's figured out? download_with_progress  # noqa
-    # TODO: Handle interupts SIGINT, etc.
-    response = requests.get(url, verify=True, timeout=180)
-    xls = pd.ExcelFile(BytesIO(response.content))
-
-    sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
-    dfs = []
-
-    df_dict = pd.read_excel(xls,
-                            sheet_name=list(sheets.values()),
-                            skiprows=18,
-                            header=0,
-                            index_col=0,
-                            parse_dates=True)
-
-    for sheet_index, sheet_name in sheets.items():
-        df = df_dict[sheet_name]
-
-        # Use 'USA' col, except for the RF sheet, use cols first two cols
-        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]
-        # TODO: allow for other countries
-
-        df.columns = [sheet_name]
-        dfs.append(df)
-
-    data = pd.concat(dfs, axis=1)
-    data.rename(columns={'MKT': 'Mkt-RF',
-                         'HML Devil': 'HML_DEVIL'}, inplace=True)
-    data = data.astype(float)
-
-    with open(pickle_file, 'wb') as f:
-        pickle.dump(data, f)
-
-    if os.path.exists('hml_devil.csv'):
-        os.remove('hml_devil.csv')
-
-    data.index.name = 'date'
-
-    data.index = pd.to_datetime(data.index)
-
-    if frequency.lower() == 'd':
-        data = data.dropna()
-
-    if series:
-        return _process(data, start_date, end_date, filepath=output).HML_DEVIL
-
-    return _process(data, start_date, end_date, filepath=output)
+    # Otherwise, compute the result and store it in the cache
+    data = _get_hml_devil(frequency, start_date, end_date, output, series)
+    cache[cache_key] = data
+    return _process(result, start_date, end_date, filepath=output)
 
 
 def barillas_shanken_factors(frequency: str = 'M',

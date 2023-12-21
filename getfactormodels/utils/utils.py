@@ -80,7 +80,7 @@ def _save_to_file(data, filename=None, output_dir=None):
             '.md': data.to_markdown, }
 
         if filename is None:
-            filename = datetime.now().strftime('%Y-%m-%d') + '.csv'
+            filename = datetime.now().strftime('%Y_%m_%d-%H%M') + '.csv'  
         elif '.' not in filename:
             filename += '.csv'
 
@@ -158,7 +158,7 @@ def _slice_dates(data, start_date=None, end_date=None):
 
 def _process(data, start_date=None, end_date=None, filepath=None):
     """Process the data and optionally save it to a file.
-        * filepath: takes a filename, path or directory.
+    Note: the `filepath` takes a filename, path or directory.
     """
     data = _rearrange_cols(data)
     data = _slice_dates(data, start_date, end_date)
@@ -166,6 +166,11 @@ def _process(data, start_date=None, end_date=None, filepath=None):
     if filepath:
         # Convert the filepath to a Path object and expand the '~' character
         filepath = Path(filepath).expanduser()
+
+        # If filepath is a directory, append a default file name to it
+        if filepath.is_dir():
+            filename = datetime.datetime.now().strftime('%Y%m%d%H%M')
+            filepath = filepath / filename
 
         dir_path, filename = filepath.parent, filepath.name
 

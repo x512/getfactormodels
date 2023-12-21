@@ -7,3 +7,4 @@ tabulate>=0.8.7   # if using pandas.DataFrame.to_markdown
 #tables >= 3.6.1,  # if we're using pandas.HDFStore
 #numba 0.50.1      # if we're providing metrics/rolling stats
 #scipy>=1.14.1     # pandas 1.4 min dependency
+cachetools==5.3.2
