@@ -34,6 +34,9 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 ## Usage
 
+>[!WARNING]
+>Please be aware that `getfactormodels` was recently released (Dec 20, 2023) and is not stable while this message is displayed.
+>
 #### Python
 
 After installing, import ``getfactormodels`` and call ``get_factors()`` with the ``model`` and ``frequency`` parameters. Optionally, specify a ``start_date`` and ``end_date``
