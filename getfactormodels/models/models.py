@@ -423,7 +423,7 @@ def hml_devil_factors(frequency='M',
     # Otherwise, compute the result and store it in the cache
     data = _get_hml_devil(frequency, start_date, end_date, output, series)
     cache[cache_key] = data
-    return _process(result, start_date, end_date, filepath=output)
+    return _process(data, start_date, end_date, filepath=output)
 
 
 def barillas_shanken_factors(frequency: str = 'M',
