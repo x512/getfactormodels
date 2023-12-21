@@ -1,4 +1,5 @@
 import nox
+# TODO: mypy
 
 
 @nox.session(python=["3.6", "3.7", "3.8", "3.9", "3.10", "3.11", "3.12"])
@@ -16,4 +17,9 @@ def isort(session):
     session.run("isort", "--check", "--diff", "--python-version 311",
                 "getfactormodels", "tests")
 
-# TODO: mypy, ruff
+# Haven't tested:
+#@nox.session(python="3.11", reuse_venv=True)
+#def ruff(session):
+#    session.install("ruff")
+#    session.run("ruff", "check", ".", "--fix", "--preview", "-v")
+#    session.run("ruff", "clean", "-v")

@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-# ruff: noqa: F401
-# TODO: rename __main__.py
 import os
 import pandas as pd
 from dateutil import parser
-from getfactormodels.models.models import barillas_shanken_factors  # noqa
-from getfactormodels.models.models import (carhart_factors, dhs_factors,
+# ruff: noqa: RUF100
+from getfactormodels.models.models import (barillas_shanken_factors,  # noqa: F401, E501
+                                           carhart_factors, dhs_factors,
                                            ff_factors, hml_devil_factors,
                                            icr_factors, liquidity_factors,
                                            mispricing_factors,
@@ -14,7 +13,7 @@ from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
 
 
-def get_factors(model: str = "3",  # noqa: C901
+def get_factors(model: str = "3",
                 frequency: str = "M",
                 start_date=None,
                 end_date=None,
@@ -25,16 +24,16 @@ def get_factors(model: str = "3",  # noqa: C901
     frequency. If an output is specified, factor data is saved to a file.
 
     Notes:
-    - Any string matching a model's regex (e.g., `liq` for `liquidity`) can be 
+    - Any string matching a model's regex (e.g., `liq` for `liquidity`) can be
       used as a model name.
-    - Dates should be in ``YYYY-MM-DD`` format, but anything that 
+    - Dates should be in ``YYYY-MM-DD`` format, but anything that
       ``dateutil.parser.parse()`` can interpret will work.
     - Weekly data is only available for the q-factor and Fama-French 3-factor
       models.
 
     Parameters:
         model (str): the factor model to return. One of: `liquidity`,
-            `icr`, `dhs`, `q`, `q_classic`, `ff3`, `ff5`, `ff6`, `carhart4`, 
+            `icr`, `dhs`, `q`, `q_classic`, `ff3`, `ff5`, `ff6`, `carhart4`,
             `hml_devil`, `barrilas_shanken`, or `mispricing`.
         frequency (str): the frequency of the data. D, W, M or A (default: M).
         start_date (str, optional): the start date of the data, YYYY-MM-DD.

@@ -34,13 +34,14 @@ import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
+# TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
 
 def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
                frequency: str = "M",
-               start_date: str = None,
-               end_date: str = None,
-               output: str = None) -> pd.DataFrame:
+               start_date: Optional[str] = None,
+               end_date: Optional[str] = None,
+               output: Optional[str] = None) -> pd.DataFrame:
     """Get data for a specified Fama-French or Carhart factor model.
 
     This function returns a DataFrame containing the 3-factor (1993), 5-factor
@@ -68,15 +69,15 @@ def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
         pandas.DataFrame: factor data, indexed by date.
     """
     model = str(model)
-    
+
     data = _get_ff_factors(model, frequency, start_date, end_date)
     return _process(data, start_date, end_date, filepath=output)
 
 
 def liquidity_factors(frequency: str = "M",
-                      start_date: str = None,
-                      end_date: str = None,
-                      output: str = None) -> pd.DataFrame:
+                      start_date: Optional[str] = None,
+                      end_date: Optional[str] = None,
+                      output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the Pastor-Stambaugh liquidity factors. Monthly data only."""
     url = 'https://research.chicagobooth.edu/'
     url += '-/media/research/famamiller/data/liq_data_1962_2022.txt'
@@ -117,9 +118,9 @@ def liquidity_factors(frequency: str = "M",
 
 
 def mispricing_factors(frequency: str = "M",
-                       start_date: str = None,
-                       end_date: str = None,
-                       output: str = None) -> pd.DataFrame:
+                       start_date: Optional[str] = None,
+                       end_date: Optional[str] = None,
+                       output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
     if frequency.lower() not in ["d", "m"]:
         print("Mispricing factors are only available for daily and monthly \
@@ -149,10 +150,10 @@ def mispricing_factors(frequency: str = "M",
 
 
 def q_factors(frequency: str = "M",
-              start_date: str = None,
-              end_date: str = None,
-              output: str = None,
-              classic: bool = False) -> pd.DataFrame:
+              start_date: Optional[str] = None,
+              end_date: Optional[str] = None,
+              output: Optional[str] = None,
+              classic: Optional[bool] = False) -> pd.DataFrame:
     """Retrieve the q-factor model data."""
     frequency = frequency.upper()
     file = {"M": "monthly",
@@ -205,9 +206,9 @@ def q_factors(frequency: str = "M",
 
 # Daniel-Hirshleifer-Sun Behavioural Factors
 def dhs_factors(frequency: str = "M",
-                start_date: str = None,
-                end_date: str = None,
-                output: str = None) -> pd.DataFrame:
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None,
+                output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve DHS factors from sheets on Lin Sun's website."""
     frequency = frequency.lower()
     base_url = "https://docs.google.com/spreadsheets/d/"
@@ -239,6 +240,7 @@ def dhs_factors(frequency: str = "M",
 
     data = np.multiply(data, 0.01)  # Decimalize before FF factors!
 
+    # Get the RF and Mkt-FF from FF3. TODO: store Mkt-RF and RF; make function.
     ff = _get_ff_factors(model="3", frequency=frequency,
                          start_date=data.index[0], end_date=data.index[-1])
     ff = ff.round(4)
@@ -251,9 +253,9 @@ def dhs_factors(frequency: str = "M",
 
 
 def icr_factors(frequency: str = "M",
-                start_date: str = None,
-                end_date: str = None,
-                output: str = None) -> pd.DataFrame:
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None,
+                output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the He, Kelly, Manela (2017) ICR factors.
     * Daily since 1999-05-03; quarterly and monthly since 1970.
     """
@@ -300,18 +302,18 @@ def icr_factors(frequency: str = "M",
 
 
 def q_classic_factors(frequency: str = "M",
-                      start_date: str = None,
-                      end_date: str = None,
-                      output: str = None) -> pd.DataFrame:
+                      start_date: Optional[str] = None,
+                      end_date: Optional[str] = None,
+                      output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the classic q-factor model of Hou, Xue, and Zhang (2015)."""
     return q_factors(frequency, start_date, end_date, output=output,
                      classic=True)
 
 
 def carhart_factors(frequency: str = "M",
-                    start_date: str = None,
-                    end_date: str = None,
-                    output: str = None) -> pd.DataFrame:
+                    start_date: Optional[str] = None,
+                    end_date: Optional[str] = None,
+                    output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the Carhart 4-factor model data."""
     data = _get_ff_factors(model='4', frequency=frequency,
                            start_date=start_date,
@@ -330,8 +332,7 @@ def _download_hml_devil(frequency):
     file = 'daily' if frequency.lower() == 'd' else 'monthly'
     url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa
-
+    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa: E501
     response = requests.get(url, verify=True, timeout=180)
     xls = pd.ExcelFile(BytesIO(response.content))
 
@@ -426,9 +427,9 @@ def hml_devil_factors(frequency='M',
 
 
 def barillas_shanken_factors(frequency: str = 'M',
-                             start_date: str = None,
-                             end_date: str = None,
-                             output: str = None) -> pd.DataFrame:
+                             start_date: Optional[str] = None,
+                             end_date: Optional[str] = None,
+                             output: Optional[str] = None) -> pd.DataFrame:
     """***Experimental.***
 
     Constructs the 6-factor model of Barillas and Shanken.  It's a

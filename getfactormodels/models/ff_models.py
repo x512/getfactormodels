@@ -145,7 +145,7 @@ def _get_ff_factors(model: str = "3",
                      not {model}. If you see this error message please \
                      submit an issue at:\
                          https://github.com/x512/getfactormodels/issues/")
-    
+
     url = _ff_construct_url(model, frequency)
     zip = get_zip_from_url(url)
     csv = _ff_read_csv_from_zip(zip, model)

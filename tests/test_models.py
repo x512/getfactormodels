@@ -4,9 +4,9 @@ import os
 import unittest
 from unittest.mock import patch
 import pandas as pd
-from pandas.testing import assert_frame_equal  # noqa
+from pandas.testing import assert_frame_equal
 from getfactormodels import FactorExtractor
-from getfactormodels.models.models import carhart_factors  # noqa; noqa: E501
+from getfactormodels.models.models import carhart_factors
 from getfactormodels.models.models import (dhs_factors, ff_factors,
                                            icr_factors, liquidity_factors,
                                            mispricing_factors,
