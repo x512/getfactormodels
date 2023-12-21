@@ -80,12 +80,11 @@ def _save_to_file(data, filename=None, output_dir=None):
             '.md': data.to_markdown, }
 
         if filename is None:
-            filename = datetime.now().strftime('%Y_%m_%d-%H%M') + '.csv'  
+            filename = datetime.now().strftime('%Y_%m_%d-%H%M') + '.csv'
         elif '.' not in filename:
             filename += '.csv'
 
-            # If no output directory is provided, use the current working
-            # directory
+        # If no output directory is provided, use cwd
         if output_dir is None:
             output_dir = Path.cwd()
         else:

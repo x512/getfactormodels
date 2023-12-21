@@ -3,11 +3,37 @@ import unittest
 import pandas as pd
 import requests
 from getfactormodels.models.ff_models import (_ff_construct_url, _ff_get_mom,
-                                              _get_ff_factors, ff_process_data,
-                                              ff_read_csv_from_zip)
+                                              _ff_process_data,
+                                              _ff_read_csv_from_zip,
+                                              _get_ff_factors)
+from getfactormodels.models.models import ff_factors
 
 
-class TestFFModels(unittest.TestCase):
+class TestFFPublicFunction(unittest.TestCase):
+    # Invalid freq, invalid model, valid model (if int)
+
+    def test_ff_factors_invalid_freq(self):
+        with self.assertRaises(ValueError):
+            ff_factors(model="3", frequency="T")
+
+    def test_ff_factors_invalid_model(self):
+        with self.assertRaises(ValueError):
+            ff_factors(model="7", frequency="M")
+
+    def test_ff_model_param_with_int(self):
+        factors = ff_factors(model=3, frequency="M")
+        self.assertIsInstance(factors, pd.DataFrame)
+        self.assertIsInstance(factors.index, pd.DatetimeIndex)
+        self.assertTrue(factors.index.is_monotonic_increasing)
+
+    def test_ff_model_param_with_invalid_int(self):
+        with self.assertRaises(ValueError):
+            ff_factors(model=7, frequency="Y")
+        with self.assertRaises(ValueError):
+            ff_factors(model=2, frequency="Y")
+
+
+class TestFFPrivates(unittest.TestCase):
 
     def test_ff_get_mom(self):
         mom = _ff_get_mom(frequency="M")
@@ -33,6 +59,11 @@ class TestFFModels(unittest.TestCase):
         url = _ff_construct_url(model="3", frequency="M")
         response = requests.get(url, timeout=8)
         self.assertEqual(response.status_code, 200)
+
+    # should get a ValueError with invalid freq, e.g. "T"
+    def test_get_freq_with_invalid_value(self):
+        with self.assertRaises(ValueError):
+            _get_ff_factors(model="3", frequency="T")
 
 
 if __name__ == '__main__':

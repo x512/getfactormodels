@@ -1,40 +1,39 @@
 # -*- coding: utf-8 -*-
-"""
-models
-=======
-Functions for retrieving and processing multi-factor model data.
+"""models
 
-Functions for fetching data for a variety of factor models. The data can be
-returned for different frequencies and for a specified date range. The function
-supports a variety of model names that match specific regex patterns, including
-'liquidity', 'icr', 'dhs', 'q', 'q_classic', 'ff3', 'ff5', 'ff6', 'carhart4',
-'hml_devil', 'barrilas_shanken', and 'mispricing'.
+This module contains functions for retrieving and processing multi-factor model
+data. All data is returned as a pandas DataFrame indexed by date. If an output
+is specified, saves the data to a file.
 
-Functions
----------
-- `ff_factors`: Retrieves data for a specified Fama-French or Carhart factor
-    model.
-- `q_factors`: Retrieves the q-factor model data from global-q.org.
-- `q_classic_factors`: Retrieves the original 4-factor "q" model of Hou, Xue,
-    and Zhang (2015).
-- `dhs_factor`: Retrieves the Daniel-Hirshleifer-Sun Behavioural factors.
-- `icr_factors`: Retrieves the He, Kelly, Manela (2017) ICR factors.
-- `hml_devil_factors`: Retrieves the HML Devil factors from AQR.
-- `barillas_shanken_factors`: Constructs the 6-factor model of Barillas and
-    Shanken.
-- `carhart_factors`: Retrieves the Carhart 4-factor model data.
-- `liquidity_factors`: Retrieves the Pastor-Stambaugh liquidity factors.
-- `mispricing_factors`: Retrieves the Stambaugh-Yuan (201x) mispricing factors.
+Functions:
+- ``ff_factors`` - retrieves the Fama-French (or Carhart) factor model data.
+- ``carhart_factors`` - retrieves the Carhart 4-factor model data.
+- ``q_factors`` - retrieves the q-factor model data from global-q.org.
+- ``q_classic_factors`` - retrieves the original 4-factor "q" model of Hou,
+        Xue, and Zhang (2015).
+- ``dhs_factor`` - retrieves the Daniel-Hirshleifer-Sun Behavioural factors.
+- ``icr_factors`` - retrieves the He, Kelly, Manela (2017) ICR factors.
+- ``liquidity_factors`` - retrieves the Pastor-Stambaugh liquidity factors.
+- ``mispricing_factors`` - retrieves the Mispricing factors of Stambaugh and
+        Yuan (2016).
+- ``hml_devil_factors`` - retrieves the HML Devil factors from AQR.
+- ``barillas_shanken_factors`` - constructs the 6-factor model of Barillas and
+        Shanken.
+
+Notes:
+- ``hml_devil_factors`` is slow.
+- ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also
+    slow.
 """
+import datetime
 from io import BytesIO
 from typing import Optional, Union
+import cachetools
 import numpy as np
 import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
-import datetime
-import cachetools
 
 
 def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
@@ -69,6 +68,7 @@ def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
         pandas.DataFrame: factor data, indexed by date.
     """
     model = str(model)
+    
     data = _get_ff_factors(model, frequency, start_date, end_date)
     return _process(data, start_date, end_date, filepath=output)
 
@@ -293,6 +293,8 @@ def icr_factors(frequency: str = "M",
         df["date"] = pd.to_datetime(df["date"], format="%Y%m%d")
 
     df = df.set_index("date")
+
+    # TODO: Add mkt-rf, rf like other models.
 
     return _process(df, start_date, end_date, filepath=output)
 
