@@ -37,7 +37,7 @@ from .ff_models import _get_ff_factors
 # TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
 
-def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
+def ff_factors(model: str = "3",
                frequency: str = "M",
                start_date: Optional[str] = None,
                end_date: Optional[str] = None,
@@ -356,7 +356,8 @@ def _download_hml_devil(frequency):
 
     data = pd.concat(dfs, axis=1)
     data.rename(columns={'MKT': 'Mkt-RF',
-                         'HML Devil': 'HML_DEVIL'}, inplace=True)
+                         'HML Devil': 'HML_DEVIL'})
+
     data = data.astype(float)
 
     return data
@@ -422,7 +423,11 @@ def hml_devil_factors(frequency='M',
 
     # Otherwise, compute the result and store it in the cache
     data = _get_hml_devil(frequency, start_date, end_date, output, series)
+
+    # UMD returns NaNs for 1926
+    data = data.dropna()
     cache[cache_key] = data
+
     return _process(data, start_date, end_date, filepath=output)
 
 
@@ -448,7 +453,7 @@ def barillas_shanken_factors(frequency: str = 'M',
     ff = ff_factors(model='6', frequency=frequency)[['Mkt-RF', 'SMB', 'UMD',
                                                      'RF']]
 
-    df = pd.merge(q, ff, left_index=True, right_index=True, how='inner')
+    df = q.merge(ff, left_index=True, right_index=True, how='inner')
 
     hml_devil = hml_devil_factors(frequency=frequency, start_date=start_date,
                                   series=True)
@@ -456,7 +461,7 @@ def barillas_shanken_factors(frequency: str = 'M',
     hml_devil = hml_devil.rename('HML_m')
     hml_devil.index.name = 'date'
 
-    df = pd.merge(df, hml_devil, left_index=True,
+    df = df.merge(hml_devil, left_index=True,
                   right_index=True, how='inner')
 
     return _process(df, start_date, end_date, filepath=output)

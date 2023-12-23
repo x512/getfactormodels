@@ -15,7 +15,7 @@ Reliably retrieve data for various multi-factor asset pricing models.
 - Pastor and Stambaugh's liquidity factors <sup>[[5]](#5)</sup>
 - Mispricing factors of Stambaugh and Yuan<sup>[[6]](#6)</sup>
 - The $q$*-factor* model of Hou, Mo, Xue and Zhang<sup>[[7]](#7)</sup>
-- The augmented $q^5$*-factor* model of  Hou, Xue and Zhang<sup>[[8]](#8)</sup>
+- The augmented $q^5$*-factor* model of  Hou, Mo, Xue and Zhang<sup>[[8]](#8)</sup>
 - *Intermediary Capital Ratio* (ICR) of He, Kelly & Manela<sup>[[9]](#9)</sup>
 - The *DHS behavioural factors* of Daniel, Hirshleifer & Sun<sup>[[10]](#10)</sup>
 - The *HML* $^{DEVIL}$ factor of Asness & Frazzini<sup>[[11]](#11)</sup>
@@ -38,6 +38,7 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
+
 >``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.
 
 After installation, import and call the ``get_factors()`` function with the ``model`` and ``frequency`` params:
@@ -53,7 +54,7 @@ After installation, import and call the ``get_factors()`` function with the ``mo
   > _Trimmed output:_
 
   ```txt
-  print(data)
+  > print(data)
                 Mkt-RF      R_ME      R_IA     R_ROE      R_EG        RF
   date                                                                  
   1967-01-03  0.000778  0.004944  0.001437 -0.007118 -0.008563  0.000187
@@ -161,6 +162,10 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --no_rf -o ~/some_dir/filename.xlsx
   ```
 
+## Data Availability
+
+>[TODO]
+
 ## References
 1. <a id="1"></a> E. F. Fama and K. R. French, ‘Common risk factors in the returns on stocks and bonds’, *Journal of Financial Economics*, vol. 33, no. 1, pp. 3–56, 1993. [PDF](https://people.duke.edu/~charvey/Teaching/BA453_2006/FF_Common_risk.pdf)
 2. <a id="2"></a> M. Carhart, ‘On Persistence in Mutual Fund Performance’, *Journal of Finance*, vol. 52, no. 1, pp. 57–82, 1997. [PDF](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1997.tb03808.x)
@@ -202,7 +207,7 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 
 #### Known issues
 
-* The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model, so far, implementing a cache—daily data expires at the end of the day and is only re-downloaded when the requested`end_date` exceeds the file's last index date; similar for monthly, expiring at EOM and re-downloaded when needed.
+* The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model, so far, implementing a cache—daily data expires at the end of the day and is only re-downloaded when the requested`end_date` exceeds the file's last index date. Similar for monthly, expiring at EOM and re-downloaded when needed.
 
 
 #### Todo
@@ -210,4 +215,4 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 - [ ] Docs
   - [ ] Examples
 - [ ] Tests
-- Error handling
+- [ ] Error handling
