@@ -37,7 +37,8 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 ## Usage
 
 >[!IMPORTANT]
->![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
+>![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
+>``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.
 
 After installation, import and call the ``get_factors()`` function with the ``model`` and ``frequency`` params:
 
@@ -115,8 +116,8 @@ You can import only the models that you need:
   data = ff_factors(model="3", frequency="D", start_date="1970-01-01")
   ```
 
-
 There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI; lots to do):
+
   ```python
   from getfactormodels import FactorExtractor
 
@@ -137,7 +138,9 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 
 
 ### CLI
+
 ``bash >=4.2``
+
 * You can also use getfactormodels from the command line. It's very barebones, here's the `-h` (there is no `--help` yet)
 
   ```shell
@@ -147,6 +150,7 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
   ```
 
 * An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
+
   ```shell
   $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output ".csv"
   ```
