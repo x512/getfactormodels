@@ -58,6 +58,7 @@ def get_factors(model: str = "3",
         raise ValueError(f"Invalid model: {model}")
 
     df = function(frequency, start_date, end_date, output)
+
     return df
 
 
@@ -125,6 +126,10 @@ class FactorExtractor:
 
     def drop_rf(self, df):
         """Drop the ``RF`` column from the DataFrame."""
+        # get_factors if not already done
+        if df is None:
+            df = self.get_factors()
+
         if "RF" in df.columns:
             df = df.drop(columns=["RF"])
         else:
