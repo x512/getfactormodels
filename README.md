@@ -30,20 +30,20 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 * The easiest way to install getfactormodels is via pip:
   
-  ```
+  ```shell
   $ pip install getfactormodels
   ```
 
 ## Usage
 
 >[!IMPORTANT]
->``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.
+>![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 
 After installation, import and call the ``get_factors()`` function with the ``model`` and ``frequency`` params:
 
 * For example, retrieving the monthly ${q}^{5}$ factor model:
   
-  ```py
+  ```python
    import getfactormodels
   
    data = getfactormodels.get_factors(model='q', frequency='m')
@@ -72,7 +72,7 @@ After installation, import and call the ``get_factors()`` function with the ``mo
 
 * Retrieving the daily data for the Fama-French 3-factor model, since `start_date`:
 
-  ```py
+  ```python
   import getfactormodels as gfm
 
   df = gfm.get_factors(model='ff3', frequency='d', start_date=`2006-01-01`)
@@ -80,7 +80,7 @@ After installation, import and call the ``get_factors()`` function with the ``mo
 
 * Retrieving data for Stambaugh and Yuan's monthly *Mispricing* factors, between `start_date` and `end_date`, and saving the data to a file:
 
-  ```py
+  ```python
   import getfactormodels as gfm
   
   df = gfm.get_factors(model='mispricing', start_date='1970-01-01', end_date=1999-12-31, output='mispricing_factors.csv')
@@ -92,7 +92,7 @@ You can import only the models that you need:
 
 * For example, to import only the *ICR* and *q-factor* models:
 
-  ```py
+  ```python
   from getfactormodels import icr_factors, q_factors
 
   # Passing a model function without params defaults to monthly data.
@@ -106,7 +106,7 @@ You can import only the models that you need:
 
 * When using `ff_factors()`, specify an additional `model` parameter (**this might be changed**):
   
-  ```py
+  ```python
   # To get annual data for the 5-factor model:
   data = ff_factors(model="5", frequency="Y", output=".xlsx")
 
@@ -117,7 +117,7 @@ You can import only the models that you need:
 
 
 There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI; lots to do):
-  ```
+  ```python
   from getfactormodels import FactorExtractor
 
   fe = FactorExtractor(model='carhart', start_date='1980-01-01', end_date='1980-05-01)
@@ -140,20 +140,20 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 ``bash >=4.2``
 * You can also use getfactormodels from the command line. It's very barebones, here's the `-h` (there is no `--help` yet)
 
-  ```bash
+  ```shell
   $ getfactormodels -h
 
   usage: getfactormodels [-h] -m MODEL [-f FREQ] [-s START] [-e END] [-o OUTPUT] [--no_rf]
   ```
 
 * An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
-  ```bash
+  ```shell
   $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output ".csv"
   ```
 
 * Here's another example that retrieves the annual Fama-French 5-factor data without the RF column (using ``--no_rf``)
 
-  ```sh
+  ```shell
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --no_rf -o ~/some_dir/filename.xlsx
   ```
 
