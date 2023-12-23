@@ -362,7 +362,7 @@ def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
 
     data = data.dropna(subset=['RF', 'UMD'])
 
-    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'})
+    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_Devil'})
 
     data = data.astype(float)
 
@@ -449,7 +449,7 @@ def barillas_shanken_factors(frequency: str = 'M',
     hml_devil = hml_devil_factors(frequency=frequency, start_date=start_date,
                                   series=True)
 
-    hml_devil = hml_devil.rename('HML_m')
+    hml_devil = hml_devil.rename(columns={'HML_Devil': 'HML_m'})
     hml_devil.index.name = 'date'
 
     df = df.merge(hml_devil, left_index=True,
