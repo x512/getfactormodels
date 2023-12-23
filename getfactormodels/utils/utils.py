@@ -20,7 +20,7 @@ __model_input_map = MappingProxyType({
     "liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
     "icr": r"\bicr|hkm\b",
     "dhs": r"^(\bdhs\b|behav.*)$",
-    "hml_devil": r"\bhml(_)?d(evil)?\b",
+    "hml_devil": r"\bhml(_)?d(evil)?|hmld\b",
     "barillas_shanken": r"\b(bs|bs6|barillas|shanken)\b", })
 
 

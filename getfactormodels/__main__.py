@@ -129,9 +129,9 @@ class FactorExtractor:
             output=self.output)
 
         if self._no_rf:
-            self.df = self.drop_rf(self.df)
+            self.df = self.drop_rf(self.df.copy())  # create a copy before drop -- use cache.
         if self._no_mkt:
-            self.df = self.drop_mkt(self.df)
+            self.df = self.drop_mkt(self.df.copy())
 
         return self.df
 

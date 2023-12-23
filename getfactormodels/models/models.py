@@ -29,7 +29,8 @@ from __future__ import annotations
 import datetime
 from io import BytesIO
 from typing import Optional, Union
-import cachetools
+import diskcache as dc
+import os
 import numpy as np
 import pandas as pd
 import requests
@@ -326,19 +327,20 @@ def carhart_factors(frequency: str = "M",
 
 # =========================== EXPERIMENTAL ================================== #
 
-# Create a cache with a TTL (time-to-live) of one day
-cache = cachetools.TTLCache(maxsize=100, ttl=86400)
 
+cache_dir = os.path.expanduser('~/.cache/getfactormodels/aqr/hml_devil')
+os.makedirs(cache_dir, exist_ok=True)
+cache = dc.Cache(cache_dir)
 
-def _download_hml_devil(frequency: str = 'M') -> pd.DataFrame:
-    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
-    file = 'daily' if frequency.lower() == 'd' else 'monthly'
-    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
-
-    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa: E501
+def _aqr_download_data(url: str) -> pd.DataFrame:
+    """Download the data from the given URL."""
+    print('Downloading data... This can take a while. Please be patient.')
     response = requests.get(url, verify=True, timeout=180)
     xls = pd.ExcelFile(BytesIO(response.content))
+    return xls
 
+def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
+    """Process the downloaded data."""
     sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
     dfs = []
 
@@ -351,53 +353,21 @@ def _download_hml_devil(frequency: str = 'M') -> pd.DataFrame:
 
     for sheet_index, sheet_name in sheets.items():
         df = df_dict[sheet_name]
-
         df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]
-
         df.columns = [sheet_name]
         dfs.append(df)
-
+    # Drop NaNs but only RF UMD
     data = pd.concat(dfs, axis=1)
-    data.rename(columns={'MKT': 'Mkt-RF',
-                         'HML Devil': 'HML_DEVIL'})
-
+    data = data.dropna(subset=['RF', 'UMD'])
+    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'}, inplace=True)
     data = data.astype(float)
+
+    data = data.dropna()
 
     return data
 
 
-# TODO: FIXME: HML Devil isn't using cache in cli. see /utils/cli.py probably. MKT -> Mkt-RF also!! Needs to be fixed before a swap-out hml for hm_devil func!  # noqa: E501
-
-def _get_hml_devil(frequency: str = 'M',
-                   start_date: Optional[str] = None,
-                   end_date: Optional[str] = None,
-                   output: Optional[str] = None,
-                   series: bool = False) -> Union[pd.Series, pd.DataFrame]:
-
-    # Use the current date as a cache key
-    current_date = datetime.date.today()
-    cache_key = ('hmld', frequency, None, None, None, None, current_date)
-
-    # Check if the data is in the cache
-    data = cache.get(cache_key)
-    if data is not None:
-        return data
-
-    # If the data is not in the cache, download it
-    data = _download_hml_devil()
-
-    # Apply transformations to the data
-    data = data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'})
-    data = data.astype(float)
-
-    # Store the transformed data in the cache
-    cache[cache_key] = data
-
-    return data
-
-
-def hml_devil_factors(frequency: str = 'M',
-                      start_date: Optional[str] = None,
+def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
                       end_date: Optional[str] = None,
                       output: Optional[str] = None,
                       series: bool = False) -> Union[pd.Series, pd.DataFrame]:
@@ -421,14 +391,32 @@ def hml_devil_factors(frequency: str = 'M',
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
     """
-    data = _get_hml_devil(frequency, start_date, end_date, series=series)
 
-    data = data.dropna()
+    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
+    file = 'daily' if frequency.lower() == 'd' else 'monthly'
+    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-    data = data.rename(columns={'MKT': 'Mkt-RF'})
-    data = data.dropna()
+    # Use the current date as a cache key
+    current_date = datetime.date.today().strftime('%Y-%m-%d')
+    cache_key = ('hmld', frequency, None, None, None, None, current_date)
 
-    return _process(data, start_date, end_date, filepath=output)
+    # Check if the data is in the cache
+    data = cache.get(cache_key, default=None)
+    if data is not None:
+        print("Using cached data")
+        return data
+
+    # If the data is not in the cache, download it
+    print("Not using cache, downloading data")
+    xls = _aqr_download_data(url)
+
+    # Process the downloaded data
+    data = _aqr_process_data(xls)
+
+    # Store the processed data in the cache
+    cache.set(cache_key, data, expire=86400)  # TTL is set here
+
+    return data
 
 
 def barillas_shanken_factors(frequency: str = 'M',
