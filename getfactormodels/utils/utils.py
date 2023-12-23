@@ -20,7 +20,7 @@ __model_input_map = MappingProxyType({
     "liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
     "icr": r"\bicr|hkm\b",
     "dhs": r"^(\bdhs\b|behav.*)$",
-    "hml_devil": r"\bhml(_)?d(evil)?\b",
+    "hml_devil": r"\bhml(_)?d(evil)?|hmld\b",
     "barillas_shanken": r"\b(bs|bs6|barillas|shanken)\b", })
 
 
@@ -80,7 +80,8 @@ def _save_to_file(data, filename=None, output_dir=None):
             '.md': data.to_markdown, }
 
         if filename is None:
-            filename = datetime.now().strftime('%Y_%m_%d-%H%M') + '.csv'
+            filename = datetime.now().strftime('%Y_%m_%d-%H%M') \
+                + '.csv'
         elif '.' not in filename:
             filename += '.csv'
 
@@ -155,7 +156,10 @@ def _slice_dates(data, start_date=None, end_date=None):
     return data.loc[slice(start_date, end_date)]
 
 
-def _process(data, start_date=None, end_date=None, filepath=None):
+def _process(data: pd.DataFrame,
+             start_date: str = None,
+             end_date: str = None,
+             filepath: str = None) -> pd.DataFrame:
     """Process the data and optionally save it to a file.
     Note: the `filepath` takes a filename, path or directory.
     """

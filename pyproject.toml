@@ -2,7 +2,7 @@
 name = "getfactormodels"
 dynamic = ["version"]
 description = "Retrieve data for various multifactor asset pricing models."
-authors = [{name = "S. Martin", email = "x512@pm.me"}]
+authors = [{name = "S. Martin", email = "x512@pm.me"}, ]
 license = {file = "LICENSE"}
 readme = "README.md"
 keywords = ['finance', 'pricing models', 'financial analysis', 'econometrics',
@@ -12,7 +12,12 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Scientific/Engineering :: Mathematics",
     "Topic :: Scientific/Engineering :: Information Analysis",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3 :: Only",
     "Operating System :: OS Independent",
     "Environment :: Console",
@@ -21,8 +26,8 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha"
 ]
 requires-python = ">=3.7"   # Will lower soon
-dependencies = [ "numpy >=1.18.5",
-                 "pandas >=1.4",
+dependencies = [ "pandas >=1.4",
+                 "numpy >=1.18.5",
                  "requests >=2.20.0",
                  "pyarrow >=14.0.1",
                  "openpyxl >=3.0.3",
@@ -30,8 +35,8 @@ dependencies = [ "numpy >=1.18.5",
                  "cachetools==5.3.2" ]
 
 [project.optional-dependencies]
-dev = ["flit>=3.2,<=3.9", "ruff==0.1.6", "pytest-cov", "pytest>=7.0", "isort",
-       "pytest-randomly", "nox==2023.4.22"]
+dev = ["flit>=3.2,<=3.9", "ruff>=0.1.6", "pytest-cov", "pytest>=7.0",
+       "isort>=5.12", "pytest-randomly", "nox==2023.4.22"]
 
 [project.urls]
 "Homepage" = "https://github.com/x512/getfactormodels"
@@ -51,7 +56,7 @@ lines_between_sections = false
 
 [tool.ruff]
 line-length = 79
-target-version = "py38"
+target-version = "py312"
 indent-width = 4
 respect-gitignore = true
 
@@ -62,32 +67,35 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 # Some rules in preview, enable them:
-# https://docs.astral.sh/ruff/settings/#format-preview
-preview = true  # enabled because of: E241
+## docs.astral.sh/ruff/settings/#format-preview
+preview = true
 
 [tool.ruff.lint]
 exclude = [".git", ".git-rewrite",]
 # run `ruff linter` to see all available rules
 ## see: docs.astral.sh/ruff/rules/
 select = ["E4", "E7", "E9", "F", "B",
-          "DTZ", "W2", "W5", "N",
+          "DTZ", "W2", "W5", "N", "PL",
           "NPY", "SIM", "TID", "PD",
           "E241", "S", "PTH", "RUF", 
-          "FIX001", "FIX002", "TD004",
-          "TD005", "TD007", "E501", "E261"]
+          "FIX001", "TD004", "EM",
+          "TD005", "TD007", "E501",
+          "FA", "FIX002", "ANN",   # fix
+          "E261"]                        # requires '--preview'
         # "TCH" (flake 8 typechecking)
         # "C901" (McCabe complexity)
+        # "CPY" Copyright notices
 
 # Undo soon:
-ignore = ["PD901",]  # generic variable name `df` for DataFrames
+ignore = ["PD901",]  # TODO: fix all generic variable name `df` for DataFrames
 
 # see: docs.astral.sh/ruff/configuration/
 fixable = ["W29", "W5", "E241", "E261"]
 unfixable = ["B", "FIX001", "FIX002", "UP"]
 
 [tool.ruff.per-file-ignores]
-"main.py" = ["UP007"]
 "**/__init__.py" = ["F401"]
+"__main__.py" = ["F401"]  # the function names are constructed with a key
 
 [tool.coverage.run]
 omit = ['tests/*']

@@ -25,19 +25,20 @@ Notes:
 - ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also
     slow.
 """
+from __future__ import annotations
 import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Optional, Union
-import cachetools
+import diskcache as dc
 import numpy as np
 import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
-# TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
 
-def ff_factors(model: str = "3",  # TODO: fix: _get_ff_factors filepath param
+def ff_factors(model: str = "3",
                frequency: str = "M",
                start_date: Optional[str] = None,
                end_date: Optional[str] = None,
@@ -83,8 +84,9 @@ def liquidity_factors(frequency: str = "M",
     url += '-/media/research/famamiller/data/liq_data_1962_2022.txt'
 
     if frequency.lower() != 'm':
+        err_msg = "Frequency must be 'm'."
         print('Liquidity factors are only available for monthly frequency.')
-        raise ValueError("Frequency must be 'm'.")
+        raise ValueError(err_msg)
 
     # Get .csv here...
     data = get_file_from_url(url)
@@ -123,9 +125,9 @@ def mispricing_factors(frequency: str = "M",
                        output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
     if frequency.lower() not in ["d", "m"]:
-        print("Mispricing factors are only available for daily and monthly \
-            frequency.")
-        raise ValueError("Frequency must be 'd' or 'm'.")
+        error_msg = "Mispricing factors are only available for daily and\
+                     monthly frequency."
+        raise ValueError(error_msg)
         return None
 
     file = "M4d" if frequency == "d" else "M4"
@@ -213,21 +215,21 @@ def dhs_factors(frequency: str = "M",
     frequency = frequency.lower()
     base_url = "https://docs.google.com/spreadsheets/d/"
 
-    if frequency.lower() == "m":
-        file = "1RxYLbCfk19m8fnniiJYfaj3yI55ZPaoi/export?format=xlsx"
-    elif frequency.lower() == "d":
-        file = "1KnCP-NVhf2Sni8bVFIVyMxW-vIljBOWE/export?format=xlsx"
+    if frequency == "m":
+        sheet = "1RxYLbCfk19m8fnniiJYfaj3yI55ZPaoi/export?format=xlsx"
+    elif frequency == "d":
+        sheet = "1KnCP-NVhf2Sni8bVFIVyMxW-vIljBOWE/export?format=xlsx"
     else:
-        print("Frequency must be either 'M' (monthly) or 'D' (daily).")
-        raise ValueError("Frequency must be 'M' or 'D'.")
-    # TODO: use the link to the Google Sheet instead of the actual sheet.
+        error_message = "Frequency must be 'm' or 'd' for the DHS factors'."
+        print(error_message)
+        raise ValueError(error_message)
 
-    url = base_url + file
+    url = base_url + sheet
 
     response = requests.get(url, verify=True, timeout=20)
-    file = BytesIO(response.content)
+    content = BytesIO(response.content)
 
-    data = pd.read_excel(file, index_col="Date",
+    data = pd.read_excel(content, index_col="Date",
                          usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
                          header=0, parse_dates=False)
     data.index.name = "date"
@@ -259,11 +261,12 @@ def icr_factors(frequency: str = "M",
     """Retrieve the He, Kelly, Manela (2017) ICR factors.
     * Daily since 1999-05-03; quarterly and monthly since 1970.
     """
-    # TODO: Do we need Mkt-RF and RF [seen reffered to as 2-factor model]?
+    # TODO: Do we need Mkt-RF and RF [seen referred to as 2-factor model. Also liq doesnt have mkt-rf or rf]? # noqa
     frequency = frequency.lower()
 
     if frequency not in ["d", "m", "q"]:
-        raise ValueError("Frequency must be 'd', 'm' or 'q'.")
+        err_msg = "Frequency must be 'd', 'm' or 'q'."
+        raise ValueError(err_msg)
 
     base_url = "https://voices.uchicago.edu/zhiguohe"
     file = {"d": "daily", "m": "monthly", "q": "quarterly"}.get(frequency)
@@ -323,19 +326,22 @@ def carhart_factors(frequency: str = "M",
 
 # =========================== EXPERIMENTAL ================================== #
 
-# Create a cache with a TTL (time-to-live) of one day
-cache = cachetools.TTLCache(maxsize=100, ttl=86400)
+
+cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
+cache_dir.mkdir(parents=True, exist_ok=True)
+cache = dc.Cache(cache_dir)
 
 
-def _download_hml_devil(frequency):
-    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
-    file = 'daily' if frequency.lower() == 'd' else 'monthly'
-    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
-
-    print('Downloading HML Devil factors from AQR... This can take a while. Please be patient or something.')  # noqa: E501
+def _aqr_download_data(url: str) -> pd.DataFrame:
+    """Download the data from the given URL."""
+    print('Downloading data... This can take a while. Please be patient.')
     response = requests.get(url, verify=True, timeout=180)
     xls = pd.ExcelFile(BytesIO(response.content))
+    return xls
 
+
+def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
+    """Process the downloaded data."""
     sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
     dfs = []
 
@@ -348,45 +354,23 @@ def _download_hml_devil(frequency):
 
     for sheet_index, sheet_name in sheets.items():
         df = df_dict[sheet_name]
-
-        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]
-
+        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]  # noqa
         df.columns = [sheet_name]
         dfs.append(df)
 
     data = pd.concat(dfs, axis=1)
-    data.rename(columns={'MKT': 'Mkt-RF',
-                         'HML Devil': 'HML_DEVIL'}, inplace=True)
+
+    data = data.dropna(subset=['RF', 'UMD'])
+
     data = data.astype(float)
 
     return data
 
 
-def _get_hml_devil(frequency='M',
-                   start_date: Optional[str] = None,
-                   end_date: Optional[str] = None,
-                   output: Optional[str] = None,
-                   series=False) -> Union[pd.Series, pd.DataFrame]:
-
-    data = _download_hml_devil(frequency)
-
-    data.index.name = 'date'
-    data.index = pd.to_datetime(data.index)
-
-    if frequency.lower() == 'd':
-        data = data.dropna()
-
-    if series:
-        return _process(data, start_date, end_date, filepath=output).HML_DEVIL
-
-    return _process(data, start_date, end_date, filepath=output)
-
-
-def hml_devil_factors(frequency='M',
-                      start_date: Optional[str] = None,
+def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
                       end_date: Optional[str] = None,
                       output: Optional[str] = None,
-                      series=False) -> Union[pd.Series, pd.DataFrame]:
+                      series: bool = False) -> Union[pd.Series, pd.DataFrame]:
     """***EXPERIMENTAL***
 
     Retrieve the HML Devil factors from AQR.com. [FIXME: Slow.]
@@ -407,23 +391,31 @@ def hml_devil_factors(frequency='M',
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
     """
-    # Use the current date as a cache key
-    current_date = datetime.date.today()
-    cache_key = (frequency, None, None, None, None, current_date)
+    base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
+    file = 'daily' if frequency.lower() == 'd' else 'monthly'
+    url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-    # If the result is in the cache, return it if not saving
-    if cache_key in cache:
-        result = cache[cache_key]
-        if end_date:
-            end_date = pd.to_datetime(end_date)
-            result = result.loc[result.index <= end_date]
+    current_date = datetime.date.today().strftime('%Y-%m-%d')
+    cache_key = ('hmld', frequency, None, None, None, None, current_date,
+                 end_date)
 
-        return _process(result, start_date, end_date, filepath=output)
+    # Check if the data is in the cache
+    data, cached_end_date = cache.get(cache_key, default=(None, None))
+    if data is not None and (end_date is None or end_date <= cached_end_date):
+        # Use it if it is and the end date is the same or earlier
+        return data
 
-    # Otherwise, compute the result and store it in the cache
-    data = _get_hml_devil(frequency, start_date, end_date, output, series)
-    cache[cache_key] = data
-    return _process(data, start_date, end_date, filepath=output)
+    xls = _aqr_download_data(url)
+
+    # Process the downloaded data
+    data = _aqr_process_data(xls)
+    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_Devil'},
+                inplace=True)
+
+    # Store the processed data in the cache
+    cache[cache_key] = (data, end_date)  # TTL is set here
+
+    return data
 
 
 def barillas_shanken_factors(frequency: str = 'M',
@@ -448,15 +440,14 @@ def barillas_shanken_factors(frequency: str = 'M',
     ff = ff_factors(model='6', frequency=frequency)[['Mkt-RF', 'SMB', 'UMD',
                                                      'RF']]
 
-    df = pd.merge(q, ff, left_index=True, right_index=True, how='inner')
+    df = q.merge(ff, left_index=True, right_index=True, how='inner')
 
     hml_devil = hml_devil_factors(frequency=frequency, start_date=start_date,
-                                  series=True)
-
-    hml_devil = hml_devil.rename('HML_m')
+                                  series=True)[['HML Devil']]
+    
     hml_devil.index.name = 'date'
 
-    df = pd.merge(df, hml_devil, left_index=True,
-                  right_index=True, how='inner')
+    hml_devil = hml_devil.rename(columns={'HML Devil': 'HML_m'})
+    df = df.merge(hml_devil, left_index=True, right_index=True, how='inner')
 
     return _process(df, start_date, end_date, filepath=output)
