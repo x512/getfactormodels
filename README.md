@@ -137,13 +137,13 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
   | 1980-03-31 00:00:00 |  -0.129  | -0.0664 | -0.0101 | -0.0955 |
   | 1980-04-30 00:00:00 |   0.0397 |  0.0105 |  0.0106 | -0.0043 |
 
->``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the "Mkt-RF" column with ``.drop_mkt()``
+>``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
 
 ### CLI
 
 ``bash >=4.2``
 
-* You can also use getfactormodels from the command line. It's very barebones, here's the `-h`:
+* You can also use getfactormodels from the command line. It's very barebones, here's the `--help`:
 
   ```shell
   $ getfactormodels -h
@@ -154,16 +154,19 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 * An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
 
   ```shell
-  $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output ".csv"
+  $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output .csv
   ```
 
-* Here's another example that retrieves the annual Fama-French 5-factor data without the RF column (using ``--no_rf``)
+* Here's another example that retrieves the annual 5-factor data of Fama-French, without the RF column (using ``--no[_]rf``)
 
   ```shell
-  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --no_rf -o ~/some_dir/filename.xlsx
+  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf -o ~/some_dir/filename.xlsx
   ```
 * To return the factors without the risk-free rate `RF`, or the excess market return `Mkt-RF`, columns:
-  
+
+  ```shell
+  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf --nomkt -o ~/some_dir/filename.xlsx
+  ```
 ## Data Availability
 
 >[TODO]
