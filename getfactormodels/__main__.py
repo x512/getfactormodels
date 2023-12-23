@@ -179,7 +179,7 @@ def main():
                                 start_date=args.start, end_date=args.end)
     if args.no_rf:
         extractor.no_rf()
-    elif args.no_mkt:
+    if args.no_mkt:
         extractor.no_mkt()
 
     df = extractor.get_factors()
