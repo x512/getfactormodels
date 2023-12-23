@@ -7,8 +7,8 @@ from dateutil import parser
 # ruff: noqa: RUF100
 from getfactormodels.models.models import \
     barillas_shanken_factors  # noqa: F401
-from getfactormodels.models.models import (carhart_factors,  # noqa: F401, E501
-                                           dhs_factors, ff_factors,
+from getfactormodels.models.models import carhart_factors  # noqa: F401, E501
+from getfactormodels.models.models import (dhs_factors, ff_factors,
                                            hml_devil_factors, icr_factors,
                                            liquidity_factors,
                                            mispricing_factors,
@@ -99,11 +99,11 @@ class FactorExtractor:
         self._no_mkt = False
         self.df = None
 
-    def no_rf(self):
+    def no_rf(self) -> None:
         """Sets the _no_rf flag to True."""
         self._no_rf = True
 
-    def no_mkt(self):
+    def no_mkt(self) -> None:
         """Sets the _no_mkt flag to True."""
         self._no_mkt = True
 
@@ -118,7 +118,8 @@ class FactorExtractor:
         try:
             return parser.parse(date_string).strftime("%Y-%m-%d")
         except ValueError as err:
-            raise ValueError("Incorrect date format, use YYYY-MM-DD.") from err
+            error_message = "Incorrect date format, use YYYY-MM-DD."
+            raise ValueError(error_message) from err
 
     def get_factors(self) -> pd.DataFrame:
         """Fetch the factor data and store it in the class."""
@@ -130,7 +131,7 @@ class FactorExtractor:
             output=self.output)
 
         if self._no_rf:
-            self.df = self.drop_rf(self.df.copy())  # create a copy before drop -- use cache.
+            self.df = self.drop_rf(self.df.copy())  # create a copy before drop
         if self._no_mkt:
             self.df = self.drop_mkt(self.df.copy())
 

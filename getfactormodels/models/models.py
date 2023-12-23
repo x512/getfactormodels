@@ -27,8 +27,8 @@ Notes:
 """
 from __future__ import annotations
 import datetime
-import os
 from io import BytesIO
+from pathlib import Path
 from typing import Optional, Union
 import diskcache as dc
 import numpy as np
@@ -36,8 +36,6 @@ import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
-
-# TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
 
 def ff_factors(model: str = "3",
@@ -86,8 +84,9 @@ def liquidity_factors(frequency: str = "M",
     url += '-/media/research/famamiller/data/liq_data_1962_2022.txt'
 
     if frequency.lower() != 'm':
+        err_msg = "Frequency must be 'm'."
         print('Liquidity factors are only available for monthly frequency.')
-        raise ValueError("Frequency must be 'm'.")
+        raise ValueError(err_msg)
 
     # Get .csv here...
     data = get_file_from_url(url)
@@ -126,9 +125,9 @@ def mispricing_factors(frequency: str = "M",
                        output: Optional[str] = None) -> pd.DataFrame:
     """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
     if frequency.lower() not in ["d", "m"]:
-        print("Mispricing factors are only available for daily and monthly \
-            frequency.")
-        raise ValueError("Frequency must be 'd' or 'm'.")
+        error_msg = "Mispricing factors are only available for daily and\
+                     monthly frequency."
+        raise ValueError(error_msg)
         return None
 
     file = "M4d" if frequency == "d" else "M4"
@@ -216,16 +215,16 @@ def dhs_factors(frequency: str = "M",
     frequency = frequency.lower()
     base_url = "https://docs.google.com/spreadsheets/d/"
 
-    if frequency.lower() == "m":
-        file = "1RxYLbCfk19m8fnniiJYfaj3yI55ZPaoi/export?format=xlsx"
-    elif frequency.lower() == "d":
-        file = "1KnCP-NVhf2Sni8bVFIVyMxW-vIljBOWE/export?format=xlsx"
+    if frequency == "m":
+        sheet = "1RxYLbCfk19m8fnniiJYfaj3yI55ZPaoi/export?format=xlsx"
+    elif frequency == "d":
+        sheet = "1KnCP-NVhf2Sni8bVFIVyMxW-vIljBOWE/export?format=xlsx"
     else:
-        print("Frequency must be either 'M' (monthly) or 'D' (daily).")
-        raise ValueError("Frequency must be 'M' or 'D'.")
-    # TODO: use the link to the Google Sheet instead of the actual sheet.
+        error_message = "Frequency must be 'm' or 'd' for the DHHS factors'."
+        print(error_message)
+        raise ValueError(error_message)
 
-    url = base_url + file
+    url = base_url + sheet
 
     response = requests.get(url, verify=True, timeout=20)
     content = BytesIO(response.content)
@@ -262,11 +261,12 @@ def icr_factors(frequency: str = "M",
     """Retrieve the He, Kelly, Manela (2017) ICR factors.
     * Daily since 1999-05-03; quarterly and monthly since 1970.
     """
-    # TODO: Do we need Mkt-RF and RF [seen reffered to as 2-factor model]?
+    # TODO: Do we need Mkt-RF and RF [seen referred to as 2-factor model. Also liq doesnt have mkt-rf or rf]? # noqa
     frequency = frequency.lower()
 
     if frequency not in ["d", "m", "q"]:
-        raise ValueError("Frequency must be 'd', 'm' or 'q'.")
+        err_msg = "Frequency must be 'd', 'm' or 'q'."
+        raise ValueError(err_msg)
 
     base_url = "https://voices.uchicago.edu/zhiguohe"
     file = {"d": "daily", "m": "monthly", "q": "quarterly"}.get(frequency)
@@ -327,9 +327,10 @@ def carhart_factors(frequency: str = "M",
 # =========================== EXPERIMENTAL ================================== #
 
 
-cache_dir = os.path.expanduser('~/.cache/getfactormodels/aqr/hml_devil')
-os.makedirs(cache_dir, exist_ok=True)
+cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
+cache_dir.mkdir(parents=True, exist_ok=True)
 cache = dc.Cache(cache_dir)
+
 
 def _aqr_download_data(url: str) -> pd.DataFrame:
     """Download the data from the given URL."""
@@ -337,6 +338,7 @@ def _aqr_download_data(url: str) -> pd.DataFrame:
     response = requests.get(url, verify=True, timeout=180)
     xls = pd.ExcelFile(BytesIO(response.content))
     return xls
+
 
 def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
     """Process the downloaded data."""
@@ -352,16 +354,17 @@ def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
 
     for sheet_index, sheet_name in sheets.items():
         df = df_dict[sheet_name]
-        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]
+        df = df[['USA']] if sheet_index != 8 else df.iloc[:, 0:1]  # noqa
         df.columns = [sheet_name]
         dfs.append(df)
-    # Drop NaNs but only RF UMD
-    data = pd.concat(dfs, axis=1)
-    data = data.dropna(subset=['RF', 'UMD'])
-    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'}, inplace=True)
-    data = data.astype(float)
 
-    data = data.dropna()
+    data = pd.concat(dfs, axis=1)
+
+    data = data.dropna(subset=['RF', 'UMD'])
+
+    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'})
+
+    data = data.astype(float)
 
     return data
 
@@ -395,13 +398,14 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
     file = 'daily' if frequency.lower() == 'd' else 'monthly'
     url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-    # Use the current date as a cache key
+    # Use the current date and end date as a cache key
     current_date = datetime.date.today().strftime('%Y-%m-%d')
-    cache_key = ('hmld', frequency, None, None, None, None, current_date)
+    cache_key = ('hmld', frequency, None, None, None, None, current_date,
+                 end_date)
 
     # Check if the data is in the cache
-    data = cache.get(cache_key, default=None)
-    if data is not None:
+    data, cached_end_date = cache.get(cache_key, default=(None, None))
+    if data is not None and (end_date is None or end_date <= cached_end_date):
         print("Using cached data")
         return data
 
@@ -413,7 +417,7 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
     data = _aqr_process_data(xls)
 
     # Store the processed data in the cache
-    cache.set(cache_key, data, expire=86400)  # TTL is set here
+    cache[cache_key] = (data, end_date)  # TTL is set here
 
     return data
 
