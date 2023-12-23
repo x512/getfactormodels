@@ -220,7 +220,7 @@ def dhs_factors(frequency: str = "M",
     elif frequency == "d":
         sheet = "1KnCP-NVhf2Sni8bVFIVyMxW-vIljBOWE/export?format=xlsx"
     else:
-        error_message = "Frequency must be 'm' or 'd' for the DHHS factors'."
+        error_message = "Frequency must be 'm' or 'd' for the DHS factors'."
         print(error_message)
         raise ValueError(error_message)
 
@@ -362,9 +362,6 @@ def _aqr_process_data(xls: pd.ExcelFile) -> pd.DataFrame:
 
     data = data.dropna(subset=['RF', 'UMD'])
 
-    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_Devil'},
-                inplace=True)
-
     data = data.astype(float)
 
     return data
@@ -394,12 +391,10 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
     """
-
     base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
     file = 'daily' if frequency.lower() == 'd' else 'monthly'
     url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-    # Use the current date and end date as a cache key
     current_date = datetime.date.today().strftime('%Y-%m-%d')
     cache_key = ('hmld', frequency, None, None, None, None, current_date,
                  end_date)
@@ -407,15 +402,15 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
     # Check if the data is in the cache
     data, cached_end_date = cache.get(cache_key, default=(None, None))
     if data is not None and (end_date is None or end_date <= cached_end_date):
-        print("Using cached data")
+        # Use it if it is and the end date is the same or earlier
         return data
 
-    # If the data is not in the cache, download it
-    print("Not using cache, downloading data")
     xls = _aqr_download_data(url)
 
     # Process the downloaded data
     data = _aqr_process_data(xls)
+    data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_Devil'},
+                inplace=True)
 
     # Store the processed data in the cache
     cache[cache_key] = (data, end_date)  # TTL is set here
@@ -448,11 +443,11 @@ def barillas_shanken_factors(frequency: str = 'M',
     df = q.merge(ff, left_index=True, right_index=True, how='inner')
 
     hml_devil = hml_devil_factors(frequency=frequency, start_date=start_date,
-                                  series=True)[['HML _evil']]
+                                  series=True)[['HML Devil']]
     
     hml_devil.index.name = 'date'
 
-    hml_devil = hml_devil.rename(columns={'HML_Devil': 'HML_m'})
+    hml_devil = hml_devil.rename(columns={'HML Devil': 'HML_m'})
     df = df.merge(hml_devil, left_index=True, right_index=True, how='inner')
 
     return _process(df, start_date, end_date, filepath=output)
