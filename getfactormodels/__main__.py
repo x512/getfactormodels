@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
-import os
+from pathlib import Path
 import pandas as pd
 from dateutil import parser
-from pathlib import Path
-
 # ruff: noqa: RUF100
-from getfactormodels.models.models import (barillas_shanken_factors,  # noqa: F401, E501
-                                           carhart_factors, dhs_factors,
+from getfactormodels.models.models import \
+    barillas_shanken_factors  # noqa: F401, E501
+from getfactormodels.models.models import (carhart_factors, dhs_factors,
                                            ff_factors, hml_devil_factors,
                                            icr_factors, liquidity_factors,
                                            mispricing_factors,
