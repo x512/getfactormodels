@@ -156,7 +156,10 @@ def _slice_dates(data, start_date=None, end_date=None):
     return data.loc[slice(start_date, end_date)]
 
 
-def _process(data, start_date=None, end_date=None, filepath=None):
+def _process(data: pd.DataFrame,
+             start_date: str = None,
+             end_date: str = None,
+             filepath: str = None) -> pd.DataFrame:
     """Process the data and optionally save it to a file.
     Note: the `filepath` takes a filename, path or directory.
     """

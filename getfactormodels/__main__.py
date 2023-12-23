@@ -1,24 +1,26 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 from pathlib import Path
 import pandas as pd
 from dateutil import parser
 # ruff: noqa: RUF100
 from getfactormodels.models.models import \
-    barillas_shanken_factors  # noqa: F401, E501
-from getfactormodels.models.models import (carhart_factors, dhs_factors,
+    barillas_shanken_factors  # noqa: F401
+from getfactormodels.models.models import (carhart_factors, dhs_factors,  # noqa: F401, E501
                                            ff_factors, hml_devil_factors,
                                            icr_factors, liquidity_factors,
                                            mispricing_factors,
                                            q_classic_factors, q_factors)
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
+from typing import Optional
 
 
 def get_factors(model: str = "3",
-                frequency: str = "M",
-                start_date=None,
-                end_date=None,
-                output=None) -> pd.DataFrame:
+                frequency: Optional[str] = "M",
+                start_date: Optional[str] = None,
+                end_date: Optional[str] = None,
+                output: Optional[str] = None) -> pd.DataFrame:
     """Get data for a specified factor model.
 
     Return a DataFrame containing the data for the specified model and
@@ -80,11 +82,11 @@ class FactorExtractor:
     """
 
     def __init__(self,
-                 model='3',
-                 frequency='M',
-                 start_date=None,
-                 end_date=None,
-                 output=None):
+                 model: str = '3',
+                 frequency: Optional[str] = 'M',
+                 start_date: Optional[str] = None,
+                 end_date: Optional[str] = None,
+                 output: Optional[str] = None):
         self.model: str = model
         self.frequency: str = frequency
         self.start_date = self.validate_date_format(start_date) if start_date \
@@ -105,7 +107,7 @@ class FactorExtractor:
         self._no_mkt = True
 
     @staticmethod
-    def validate_date_format(date_string):
+    def validate_date_format(date_string: str) -> str:
         """
         Validate the date format.
 
@@ -123,7 +125,8 @@ class FactorExtractor:
             model=self.model,
             frequency=self.frequency,
             start_date=self.start_date,
-            end_date=self.end_date)
+            end_date=self.end_date,
+            output=self.output)
 
         if self._no_rf:
             self.df = self.drop_rf(self.df)
@@ -132,7 +135,7 @@ class FactorExtractor:
 
         return self.df
 
-    def drop_rf(self, df):
+    def drop_rf(self, df: pd.DataFrame = None) -> pd.DataFrame:
         """Drop the ``RF`` column from the DataFrame."""
         # get_factors if not already done
         if df is None:
@@ -145,7 +148,7 @@ class FactorExtractor:
 
         return df
 
-    def drop_mkt(self, df):
+    def drop_mkt(self, df: pd.DataFrame = None) -> pd.DataFrame:
         """Drop the ``MKT`` column from the DataFrame."""
         if df is None:
             df = self.get_factors()
@@ -157,7 +160,7 @@ class FactorExtractor:
 
         return df
 
-    def to_file(self, filename):
+    def to_file(self, filename: str):
         """
         Save the factor data to a file.
 

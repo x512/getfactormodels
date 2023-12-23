@@ -2,7 +2,7 @@
 import argparse
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """Argument parser, allowing for command line arguments.
     This is the function used in pyproject.toml to run the CLI."""
     parser = argparse.ArgumentParser(
@@ -26,5 +26,5 @@ def parse_args():
     parser.add_argument('--no_rf', '--no-rf', '--norf', action='store_true',
                         help='Drop the RF column from the DataFrame.')
     parser.add_argument('--no_mkt', '--no-mkt', '--nomkt', action='store_true',
-                        help='Drop the MKT column from the DataFrame.')
+                        help='Drop the Mkt-RF column from the DataFrame.')
     return parser.parse_args()

@@ -20,19 +20,23 @@ Notes:
     models construction.
 
 """
+# ruff: noqa: PLR2004
+from __future__ import annotations
+from typing import Optional
 import numpy as np
 import pandas as pd
 from ..utils.utils import (  # noqa - todo: fix relative import from parent modules banned
     _process, get_zip_from_url)
 
 
-def _ff_construct_url(model="3", frequency="M"):
+def _ff_construct_url(model: str = "3", frequency: str = "M") -> str:
     """Construct and return the URL for the specified model and frequency."""
     frequency = frequency.upper()
 
-    if frequency == "W" and model not in ["3", "4"]:  # why 4?
-        raise ValueError("Weekly data is only available for the Fama \
-                         French 3 factor model at the moment.")
+    if frequency == "W" and model not in ["3", "4"]:
+        error_message = "Weekly data is only available for the Fama French \
+            3 factor model at the moment."
+        raise ValueError(error_message)
 
     base_url = "https://mba.tuck.dartmouth.edu"
     ftp = "pages/faculty/ken.french/ftp"
@@ -48,7 +52,8 @@ def _ff_construct_url(model="3", frequency="M"):
     return f"{base_url}/{ftp}/{file}"
 
 
-def _ff_read_csv_from_zip(zip_file, model=None):
+def _ff_read_csv_from_zip(zip_file,
+                          model: Optional[str] = None) -> pd.DataFrame:
     """Read the FF Factors CSV into a dataframe."""
     try:
         filename = zip_file.namelist()[0]
@@ -72,7 +77,8 @@ def _ff_read_csv_from_zip(zip_file, model=None):
     return data
 
 
-def _ff_process_data(data, model, frequency) -> pd.DataFrame:
+def _ff_process_data(data: pd.DataFrame,
+                     model, frequency) -> pd.DataFrame:
     """Process and return the data based on the provided model and frequency.
     """
     frequency = frequency.lower()
@@ -105,7 +111,7 @@ def _ff_process_data(data, model, frequency) -> pd.DataFrame:
     return data
 
 
-def _ff_get_mom(frequency) -> pd.Series:
+def _ff_get_mom(frequency: str = "M") -> pd.Series:
     """Fetch and return the momentum factor data as a pd.Series.
         * Note: only for returning the raw data for the 4 and 6 factor models.
     """
@@ -128,8 +134,8 @@ def _ff_get_mom(frequency) -> pd.Series:
 
 def _get_ff_factors(model: str = "3",
                     frequency: str = "M",
-                    start_date=None,
-                    end_date=None) -> pd.DataFrame:
+                    start_date: Optional[str] = None,
+                    end_date: Optional[str] = None) -> pd.DataFrame:
     """Return the Fama French 3, 5, or 6, or Carhart 4 factor model data.
 
         * Note: This is the function that's called by get_ff_factors in main.
@@ -138,13 +144,16 @@ def _get_ff_factors(model: str = "3",
         frequency = "M"
 
     if frequency.upper() not in ["D", "M", "Y", "W"]:
-        raise ValueError("Frequency must be one of: D, M, Y, or W.")
+        err_msg = "Invalid frequency passed to get_ff_factors: "
+        err_msg += f"   Frequency '{frequency}' not in ff_model `{model}`."
+        raise ValueError(err_msg)
+
     elif model not in ["3", "5", "6", "4"]:
-        raise ValueError(f"Invalid model passed to private function \
-                     _get_ff_factors, must be one of: 3, 5, 6, or 4, \
-                     not {model}. If you see this error message please \
-                     submit an issue at:\
-                         https://github.com/x512/getfactormodels/issues/")
+        err_msg = "Invalid model passed to get_ff_factors, must be one of: "
+        err_msg += "3, 5, 6, or 4, not {model}."
+        err_msg += "If you see this error message please submit an issue at:"
+        err_msg += "    https://github.com/x512/getfactormodels/issues/"
+        raise ValueError(err_msg)
 
     url = _ff_construct_url(model, frequency)
     zip = get_zip_from_url(url)

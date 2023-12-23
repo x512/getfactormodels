@@ -25,6 +25,7 @@ Notes:
 - ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also
     slow.
 """
+from __future__ import annotations
 import datetime
 from io import BytesIO
 from typing import Optional, Union
@@ -34,6 +35,7 @@ import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
+
 
 # TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
@@ -226,9 +228,9 @@ def dhs_factors(frequency: str = "M",
     url = base_url + file
 
     response = requests.get(url, verify=True, timeout=20)
-    file = BytesIO(response.content)
+    content = BytesIO(response.content)
 
-    data = pd.read_excel(file, index_col="Date",
+    data = pd.read_excel(content, index_col="Date",
                          usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
                          header=0, parse_dates=False)
     data.index.name = "date"
@@ -328,7 +330,7 @@ def carhart_factors(frequency: str = "M",
 cache = cachetools.TTLCache(maxsize=100, ttl=86400)
 
 
-def _download_hml_devil(frequency):
+def _download_hml_devil(frequency: str = 'M') -> pd.DataFrame:
     base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
     file = 'daily' if frequency.lower() == 'd' else 'monthly'
     url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
@@ -364,31 +366,41 @@ def _download_hml_devil(frequency):
     return data
 
 
-def _get_hml_devil(frequency='M',
+# TODO: FIXME: HML Devil isn't using cache in cli. see /utils/cli.py probably. MKT -> Mkt-RF also!! Needs to be fixed before a swap-out hml for hm_devil func!  # noqa: E501
+
+def _get_hml_devil(frequency: str = 'M',
                    start_date: Optional[str] = None,
                    end_date: Optional[str] = None,
                    output: Optional[str] = None,
-                   series=False) -> Union[pd.Series, pd.DataFrame]:
+                   series: bool = False) -> Union[pd.Series, pd.DataFrame]:
 
-    data = _download_hml_devil(frequency)
+    # Use the current date as a cache key
+    current_date = datetime.date.today()
+    cache_key = ('hmld', frequency, None, None, None, None, current_date)
 
-    data.index.name = 'date'
-    data.index = pd.to_datetime(data.index)
+    # Check if the data is in the cache
+    data = cache.get(cache_key)
+    if data is not None:
+        return data
 
-    if frequency.lower() == 'd':
-        data = data.dropna()
+    # If the data is not in the cache, download it
+    data = _download_hml_devil()
 
-    if series:
-        return _process(data, start_date, end_date, filepath=output).HML_DEVIL
+    # Apply transformations to the data
+    data = data.rename(columns={'MKT': 'Mkt-RF', 'HML Devil': 'HML_DEVIL'})
+    data = data.astype(float)
 
-    return _process(data, start_date, end_date, filepath=output)
+    # Store the transformed data in the cache
+    cache[cache_key] = data
+
+    return data
 
 
-def hml_devil_factors(frequency='M',
+def hml_devil_factors(frequency: str = 'M',
                       start_date: Optional[str] = None,
                       end_date: Optional[str] = None,
                       output: Optional[str] = None,
-                      series=False) -> Union[pd.Series, pd.DataFrame]:
+                      series: bool = False) -> Union[pd.Series, pd.DataFrame]:
     """***EXPERIMENTAL***
 
     Retrieve the HML Devil factors from AQR.com. [FIXME: Slow.]
@@ -409,25 +421,12 @@ def hml_devil_factors(frequency='M',
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
     """
-    # Use the current date as a cache key
-    current_date = datetime.date.today()
-    cache_key = (frequency, None, None, None, None, current_date)
+    data = _get_hml_devil(frequency, start_date, end_date, series=series)
 
-    # If the result is in the cache, return it if not saving
-    if cache_key in cache:
-        result = cache[cache_key]
-        if end_date:
-            end_date = pd.to_datetime(end_date)
-            result = result.loc[result.index <= end_date]
-
-        return _process(result, start_date, end_date, filepath=output)
-
-    # Otherwise, compute the result and store it in the cache
-    data = _get_hml_devil(frequency, start_date, end_date, output, series)
-
-    # UMD returns NaNs for 1926
     data = data.dropna()
-    cache[cache_key] = data
+
+    data = data.rename(columns={'MKT': 'Mkt-RF'})
+    data = data.dropna()
 
     return _process(data, start_date, end_date, filepath=output)
 

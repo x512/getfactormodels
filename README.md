@@ -69,7 +69,7 @@ After installation, import and call the ``get_factors()`` function with the ``mo
   2022-12-29  0.018699  0.008568 -0.008801 -0.012686 -0.002162  0.000161
   2022-12-30 -0.002169  0.001840  0.001011 -0.004151 -0.003282  0.000161
 
-    [14096 rows x 6 columns]
+  [14096 rows x 6 columns]
   ```
 
 * Retrieving the daily data for the Fama-French 3-factor model, since `start_date`:
@@ -137,17 +137,18 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
   | 1980-03-31 00:00:00 |  -0.129  | -0.0664 | -0.0101 | -0.0955 |
   | 1980-04-30 00:00:00 |   0.0397 |  0.0105 |  0.0106 | -0.0043 |
 
+>``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the "Mkt-RF" column with ``.drop_mkt()``
 
 ### CLI
 
 ``bash >=4.2``
 
-* You can also use getfactormodels from the command line. It's very barebones, here's the `-h` (there is no `--help` yet)
+* You can also use getfactormodels from the command line. It's very barebones, here's the `-h`:
 
   ```shell
   $ getfactormodels -h
 
-  usage: getfactormodels [-h] -m MODEL [-f FREQ] [-s START] [-e END] [-o OUTPUT] [--no_rf]
+  usage: getfactormodels [-h] -m MODEL [-f FREQ] [-s START] [-e END] [-o OUTPUT] [--no_rf] [--no_mkt]
   ```
 
 * An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
@@ -161,7 +162,8 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
   ```shell
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --no_rf -o ~/some_dir/filename.xlsx
   ```
-
+* To return the factors without the risk-free rate `RF`, or the excess market return `Mkt-RF`, columns:
+  
 ## Data Availability
 
 >[TODO]
@@ -208,7 +210,6 @@ There's also a ``FactorExtractor`` class (which doesn't do much yet, it's mainly
 #### Known issues
 
 * The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model, so far, implementing a cache—daily data expires at the end of the day and is only re-downloaded when the requested`end_date` exceeds the file's last index date. Similar for monthly, expiring at EOM and re-downloaded when needed.
-
 
 #### Todo
 
