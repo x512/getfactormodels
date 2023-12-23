@@ -80,7 +80,8 @@ def _save_to_file(data, filename=None, output_dir=None):
             '.md': data.to_markdown, }
 
         if filename is None:
-            filename = datetime.now().strftime('%Y_%m_%d-%H%M') + '.csv'
+            filename = datetime.now().strftime('%Y_%m_%d-%H%M') \
+                + '.csv'
         elif '.' not in filename:
             filename += '.csv'
 

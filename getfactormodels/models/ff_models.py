@@ -21,7 +21,7 @@ Notes:
 
 """
 import numpy as np
-import pandas as pd  # noqa: D100
+import pandas as pd
 from ..utils.utils import (  # noqa - todo: fix relative import from parent modules banned
     _process, get_zip_from_url)
 

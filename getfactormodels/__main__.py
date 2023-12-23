@@ -2,6 +2,8 @@
 import os
 import pandas as pd
 from dateutil import parser
+from pathlib import Path
+
 # ruff: noqa: RUF100
 from getfactormodels.models.models import (barillas_shanken_factors,  # noqa: F401, E501
                                            carhart_factors, dhs_factors,
@@ -98,6 +100,10 @@ class FactorExtractor:
         """Sets the _no_rf flag to True."""
         self._no_rf = True
 
+    def no_mkt(self):
+        """Sets the _no_mkt flag to True."""
+        self._no_mkt = True
+
     @staticmethod
     def validate_date_format(date_string):
         """
@@ -121,6 +127,8 @@ class FactorExtractor:
 
         if self._no_rf:
             self.df = self.drop_rf(self.df)
+        if self._no_mkt:
+            self.df = self.drop_mkt(self.df)
 
         return self.df
 
@@ -134,6 +142,18 @@ class FactorExtractor:
             df = df.drop(columns=["RF"])
         else:
             print("`drop_rf` was called but no RF column was found.")
+
+        return df
+
+    def drop_mkt(self, df):
+        """Drop the ``MKT`` column from the DataFrame."""
+        if df is None:
+            df = self.get_factors()
+
+        if "Mkt-RF" in df.columns:
+            df = df.drop(columns=["Mkt-RF"])
+        else:
+            print("`drop_mkt` was called but no MKT column was found.")
 
         return df
 
@@ -158,12 +178,15 @@ def main():
                                 start_date=args.start, end_date=args.end)
     if args.no_rf:
         extractor.no_rf()
+    elif args.no_mkt:
+        extractor.no_mkt()
 
     df = extractor.get_factors()
 
     if args.output:
         extractor.to_file(args.output)
-        print(f'File saved to "{os.path.abspath(args.output)}"')
+        print(f'File saved to "{Path(args.output).resolve()}"')
+
     else:
         print(df)
 
