@@ -94,6 +94,7 @@ class FactorExtractor:
             else None
         self.output = output
         self._no_rf = False
+        self._no_mkt = False
         self.df = None
 
     def no_rf(self):
