@@ -2,7 +2,7 @@
 name = "getfactormodels"
 dynamic = ["version"]
 description = "Retrieve data for various multifactor asset pricing models."
-authors = [{name = "S. Martin", email = "x512@pm.me"}]
+authors = [{name = "S. Martin", email = "x512@pm.me"}, ]
 license = {file = "LICENSE"}
 readme = "README.md"
 keywords = ['finance', 'pricing models', 'financial analysis', 'econometrics',

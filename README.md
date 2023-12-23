@@ -38,7 +38,7 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
-
+>
 >``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.
 
 After installation, import and call the ``get_factors()`` function with the ``model`` and ``frequency`` params:
