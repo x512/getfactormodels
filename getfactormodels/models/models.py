@@ -27,16 +27,15 @@ Notes:
 """
 from __future__ import annotations
 import datetime
+import os
 from io import BytesIO
 from typing import Optional, Union
 import diskcache as dc
-import os
 import numpy as np
 import pandas as pd
 import requests
 from getfactormodels.utils.utils import _process, get_file_from_url
 from .ff_models import _get_ff_factors
-
 
 # TODO: "PEP 484 prohibits implicit `Optional`" see: RUFF013.
 
