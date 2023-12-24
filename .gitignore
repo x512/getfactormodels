@@ -37,3 +37,4 @@ wheels/
 .cache/
 **/*.csv
 **/*.xlsx
+docs/build/
