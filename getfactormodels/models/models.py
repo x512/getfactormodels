@@ -1,29 +1,29 @@
 # -*- coding: utf-8 -*-
-"""models
+"""
+models
+======
 
 This module contains functions for retrieving and processing multi-factor model
 data. All data is returned as a pandas DataFrame indexed by date. If an output
 is specified, saves the data to a file.
 
-Functions:
+.. note::
+   ``hml_devil_factors`` is slow.
+   ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also slow.
+
+Functions
+---------
+
 - ``ff_factors`` - retrieves the Fama-French (or Carhart) factor model data.
 - ``carhart_factors`` - retrieves the Carhart 4-factor model data.
 - ``q_factors`` - retrieves the q-factor model data from global-q.org.
-- ``q_classic_factors`` - retrieves the original 4-factor "q" model of Hou,
-        Xue, and Zhang (2015).
+- ``q_classic_factors`` - retrieves the original 4-factor "q" model of Hou, Xue, and Zhang (2015).
 - ``dhs_factor`` - retrieves the Daniel-Hirshleifer-Sun Behavioural factors.
 - ``icr_factors`` - retrieves the He, Kelly, Manela (2017) ICR factors.
 - ``liquidity_factors`` - retrieves the Pastor-Stambaugh liquidity factors.
-- ``mispricing_factors`` - retrieves the Mispricing factors of Stambaugh and
-        Yuan (2016).
+- ``mispricing_factors`` - retrieves the Mispricing factors of Stambaugh and Yuan (2016).
 - ``hml_devil_factors`` - retrieves the HML Devil factors from AQR.
-- ``barillas_shanken_factors`` - constructs the 6-factor model of Barillas and
-        Shanken.
-
-Notes:
-- ``hml_devil_factors`` is slow.
-- ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also
-    slow.
+- ``barillas_shanken_factors`` - constructs the 6-factor model of Barillas and Shanken.
 """
 from __future__ import annotations
 import datetime
