@@ -215,9 +215,7 @@ Requires ``bash >=4.2``
 
 ## License
 
-![License](https://img.shields.io/badge/MIT-blue?style=for-the-badge&logo=license&colorA=grey&colorB=blue)
-
-*The code in this project is released under the [MIT License]().*
+*The code in this project is released under the [AGPL-3.0]().*
 
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat-square&labelColor=ef8336)](https://pycqa.github.io/isort/)
 [![Ruff](https://img.shields.io/badge/-ruff-%23261230?style=flat-square&logo=ruff&logoColor=d7ff64)](https://simpleicons.org/?q=ruff)
@@ -227,7 +225,7 @@ Requires ``bash >=4.2``
 * The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model implementing a cache—daily data expires at the end of the day, and will only re-download when the requested `end_date` exceeds the cache's latest index date. Similar for monthly, expiring at at the end of the month, and re-downloaded when next needed.
 
 #### Todo
-
+- [ ] Complete refactor
 - [ ] Docs
   - [ ] Examples
 - [ ] Tests
