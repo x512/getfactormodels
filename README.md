@@ -185,6 +185,9 @@ Requires ``bash >=4.2``
 >[TODO]
 
 ## References
+
+**Publications:**
+
 1. <a id="1"></a> E. F. Fama and K. R. French, ‘Common risk factors in the returns on stocks and bonds’, *Journal of Financial Economics*, vol. 33, no. 1, pp. 3–56, 1993. [PDF](https://people.duke.edu/~charvey/Teaching/BA453_2006/FF_Common_risk.pdf)
 2. <a id="2"></a> M. Carhart, ‘On Persistence in Mutual Fund Performance’, *Journal of Finance*, vol. 52, no. 1, pp. 57–82, 1997. [PDF](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1540-6261.1997.tb03808.x)
 3. <a id="3"></a> E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, *Journal of Financial Economics*, vol. 116, no. 1, pp. 1–22, 2015. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2287202)
@@ -204,8 +207,7 @@ Requires ``bash >=4.2``
   [Link](https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html)
 * R. Stambaugh, "Liquidity" and "Mispricing" factor datasets, Wharton School, University of Pennsylvania.
 [Link](https://finance.wharton.upenn.edu/~stambaug/)
-* Z. He, "Intermediary Capital Ratio and Risk Factor" dataset, University of Chicago. 
-[Link](https://voices.uchicago.edu/zhiguohe/data-and-empirical-patterns/intermediary-capital-ratio-and-risk-factor/)
+* Z. He, "Intermediary Capital Ratio and Risk Factor" dataset, zhiguohe.net. [Link](https://zhiguohe.net/data-and-empirical-patterns/intermediary-capital-ratio-and-risk-factor/)
 * K. Hou, G. Xue, R. Zhang, "The Hou-Xue-Zhang q-factors data library," at global-q.org.
 [Link](http://global-q.org/factors.html)
 * AQR Capital Management's Data Sets.
@@ -214,18 +216,16 @@ Requires ``bash >=4.2``
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
+ [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-*The code in this project is released under the [AGPL-3.0]().*
-
-[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat-square&labelColor=ef8336)](https://pycqa.github.io/isort/)
-[![Ruff](https://img.shields.io/badge/-ruff-%23261230?style=flat-square&logo=ruff&logoColor=d7ff64)](https://simpleicons.org/?q=ruff)
 ---
 
-#### Known issues
+## Known issues
 * The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model implementing a cache—daily data expires at the end of the day, and will only re-download when the requested `end_date` exceeds the cache's latest index date. Similar for monthly, expiring at at the end of the month, and re-downloaded when next needed.
+* Some models aren't downloading.
 
 #### Todo
-- [ ] Complete refactor
+- [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
 - [ ] Docs
   - [ ] Examples
 - [ ] Tests

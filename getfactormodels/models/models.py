@@ -25,6 +25,9 @@ Notes:
 - ``barillas_shanken_factors`` relies on ``hml_devil_factors``, so it's also
     slow.
 """
+
+# TODO: break this all up into models/*.py !
+# TODO: httpx, a client class, model classes... 
 from __future__ import annotations
 import datetime
 from io import BytesIO
@@ -253,32 +256,31 @@ def dhs_factors(frequency: str = "M",
 
     return _process(data, start_date, end_date, filepath=output)
 
-
 def icr_factors(frequency: str = "M",
                 start_date: Optional[str] = None,
                 end_date: Optional[str] = None,
                 output: Optional[str] = None) -> pd.DataFrame:
-    """Retrieve the He, Kelly, Manela (2017) ICR factors.
-    * Daily since 1999-05-03; quarterly and monthly since 1970.
+    """Retrieve the ICR Factors of He, Kelly, Manela (2017).
+        * NOTE: daily data avail from 1999-05-03, monthly from 1970.
     """
-    # TODO: Do we need Mkt-RF and RF [seen referred to as 2-factor model. Also liq doesnt have mkt-rf or rf]? # noqa
     frequency = frequency.lower()
 
     if frequency not in ["d", "m", "q"]:
         err_msg = "Frequency must be 'd', 'm' or 'q'."
         raise ValueError(err_msg)
 
-    base_url = "https://voices.uchicago.edu/zhiguohe"
+    base_url = 'https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_'
     file = {"d": "daily", "m": "monthly", "q": "quarterly"}.get(frequency)
-    url = f"{base_url}/files/2023/10/He_Kelly_Manela_Factors_{file}.csv"
-
+    
+    url = f"{base_url}{file}_250627.csv" # <--- TODO: better... 
+    
     df = get_file_from_url(url)
     df = pd.read_csv(df)
-    df = df.rename(columns={df.columns[0]: "date"})
+    df = df.rename(columns={df.columns[0]: "date"})   #reportunhashable
 
-    # Just doing dates here for now...
-    if frequency == "q":
-        # The dates are YYYYQ. [19752 -> 1975Q2]
+    # Dates here for now.
+    if frequency == "q": # TODO: probably make Qtrly dates consistently yyyy-mm[-dd?] 
+        # Quarterly dates are in a `YYYYQ` format [19752 -> 1975Q2]
         df["date"] = df["date"].astype(str)
         df["date"] = df["date"].str[:-1] + "Q" + df["date"].str[-1]
         df["date"] = pd.PeriodIndex(df["date"], freq="Q").to_timestamp() \
@@ -299,8 +301,7 @@ def icr_factors(frequency: str = "M",
 
     df = df.set_index("date")
 
-    # TODO: Add mkt-rf, rf like other models.
-
+    # TODO: Add mkt-rf, rf?
     return _process(df, start_date, end_date, filepath=output)
 
 
@@ -322,9 +323,6 @@ def carhart_factors(frequency: str = "M",
                            start_date=start_date,
                            end_date=end_date)
     return _process(data, start_date, end_date, filepath=output)
-
-
-# =========================== EXPERIMENTAL ================================== #
 
 
 cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
@@ -371,13 +369,11 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
                       end_date: Optional[str] = None,
                       output: Optional[str] = None,
                       series: bool = False) -> Union[pd.Series, pd.DataFrame]:
-    """***EXPERIMENTAL***
-
-    Retrieve the HML Devil factors from AQR.com. [FIXME: Slow.]
+    """ Retrieve the HML Devil factors from AQR.com.
 
     Notes:
-    - Slow. Very slow. So we implement a cache and it doesn't need to run
-    again until tomorrow (daily) or next month.
+    - Very slow. This model implements a cache, and second run today/this month 
+      should be faster.
 
     Parameters:
         frequency (str): The frequency of the data. M, D (default: M)
@@ -417,7 +413,9 @@ def hml_devil_factors(frequency: str = 'M', start_date: Optional[str] = None,
 
     return data
 
-
+# forgot why QMJ and BAB were removed...? TODO: Add 'em back.
+# =========================== EXPERIMENTAL ================================== #
+# Still erroring... TODO: fix Barillas Shanken model!
 def barillas_shanken_factors(frequency: str = 'M',
                              start_date: Optional[str] = None,
                              end_date: Optional[str] = None,
