@@ -20,7 +20,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
     "Development Status :: 2 - Pre-Alpha",
-        "License :: OSI Approved :: GNU Affero General Public License v3.0",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
 ]
 
 [tool.poetry.dependencies]
