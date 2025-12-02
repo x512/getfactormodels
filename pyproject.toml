@@ -1,14 +1,13 @@
-[tool.poetry]
+[project]
 name = "getfactormodels"
 version = "0.0.5"
 description = "Download datasets for various multifactor asset pricing models."
-authors = ["S. Martin <x512@pm.me>"]
-license = "AGPL-3.0-or-later"  # NEW License 
+authors = [
+    { name = "S. Martin", email = "x512@pm.me" }
+]
+license = "AGPL-3.0-or-later"
 readme = "README.md"
-homepage = "https://github.com/x512/getfactormodels"
 keywords = ['finance', 'asset pricing', 'multifactor models', 'finance', 'price models', 'financial analysis']
-exclude = ["**/*.ipynb"]
-
 classifiers = [
     "Topic :: Office/Business :: Financial",
     "Topic :: Scientific/Engineering :: Mathematics",
@@ -20,29 +19,33 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Operating System :: OS Independent",
     "Development Status :: 2 - Pre-Alpha",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+]
+urls = { Homepage = "https://github.com/x512/getfactormodels" }
+requires-python = ">=3.9" #requests requires 3.9
+dependencies = [
+    "pandas>=2.1.4",
+    "numpy>=1.18.5",
+    "requests>=2.32.5",
+    "pyarrow>=19.1.0",
+    "openpyxl>=3.0.3",
+    "tabulate>=0.8.7",
+    "cachetools==5.3.2",
+    "diskcache",
+    "httpx (>=0.28.1,<0.29.0)",
 ]
 
-[tool.poetry.dependencies]
-python = "^3.8"
-pandas = ">=1.4"
-numpy = ">=1.18.5"
-requests = ">=2.20.0"
-pyarrow = ">=14.0.1"
-openpyxl = ">=3.0.3"
-tabulate = ">=0.8.7"
-cachetools = "5.3.2"
-diskcache = "*" # oops
+[tool.poetry]
+exclude = ["**/*.ipynb"]
 
 [tool.poetry.group.dev.dependencies]
-ruff = ">=0.1.6"
+ruff = "==0.14.7"
 pytest-cov = "*"
 pytest = ">=7.0"
 isort = ">=5.12"
 pytest-randomly = "*"
 nox = "==2023.4.22"
 
-[tool.poetry.scripts]
+[project.scripts]
 getfactormodels = "getfactormodels.__main__:main"
 
 [tool.isort]
