@@ -434,18 +434,17 @@ def barillas_shanken_factors(frequency: str = 'M',
     Returns:
         pd.DataFrame: A timeseries of the factor data.
     """
+    print("Getting q factors...")
     q = q_factors(frequency=frequency, classic=True)[['R_IA', 'R_ROE']]
-    ff = ff_factors(model='6', frequency=frequency)[['Mkt-RF', 'SMB', 'UMD',
-                                                     'RF']]
-
+    print("Getting Fama-French factors...")
+    ff = ff_factors(model='6', frequency=frequency)[['Mkt-RF', 'SMB', 'UMD', 'RF']]
+    print("Getting q factors...")
     df = q.merge(ff, left_index=True, right_index=True, how='inner')
-
+    print("Getting HML_Devil factor...")
     hml_devil = hml_devil_factors(frequency=frequency, start_date=start_date,
-                                  series=True)[['HML Devil']]
-    
+                                  series=True)[['HML_Devil']]
     hml_devil.index.name = 'date'
-
-    hml_devil = hml_devil.rename(columns={'HML Devil': 'HML_m'})
+    hml_devil = hml_devil.rename(columns={'HML_Devil': 'HML_m'})
     df = df.merge(hml_devil, left_index=True, right_index=True, how='inner')
 
     return _process(df, start_date, end_date, filepath=output)
