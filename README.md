@@ -1,9 +1,10 @@
 <a name="readme-top"></a>
 
 # getfactormodels
-
-![Python 3.11](https://img.shields.io/badge/Python-3.7+-306998.svg?logo=python&logoColor=ffde57&style=flat-square) ![PyPI - Version](https://img.shields.io/pypi/v/getfactormodels?style=flat-square&label=PyPI)
-![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
+[![Python](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fx512%2Fgetfactormodels%2Frefs%2Fheads%2Fmain%2Fpyproject.toml&query=project.requires-python&label=python&logo=python&logoColor=ffde57&style=flat-square)]([https://python.org](https://www.python.org/downloads/))
+![PyPI - Version](https://img.shields.io/pypi/v/getfactormodels?style=flat-square&label=PyPI)
+![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square&labelColor=%23313131)
+![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
 Reliably retrieve data for various multi-factor asset pricing models.
 
@@ -25,32 +26,31 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 ## Installation
 
-`getfactormodels` requires Python ``>=3.7``
+**Requirements:**
 
-* The easiest way to install getfactormodels is via pip:
-  
-  ```shell
-  $ pip install getfactormodels
+- Python ``>=3.9``.
+
+The easiest way to install getfactormodels is via ``pip``:
+
+  ```
+  $ pip install -U getfactormodels
   ```
 
 ## Usage
-
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >
->``getfactormodels`` is new. It was released on December 20, 2023. Don't rely on it for anything.
+>``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 
-After installation, import ``getfactormodels``, and call the ``get_factors()`` function with the ``model`` and ``frequency`` parameters.
+After installation, import ``getfactormodels``, then call the ``get_factors()`` function using the ``model`` and ``frequency`` parameters.
 
-* For example, to retrieve the monthly ${q}^{5}$ factor model:
-  
+- For example, to get the data for the ${q}^{5}$-factors:
+
   ```python
    import getfactormodels
   
    data = getfactormodels.get_factors(model='q', frequency='m')
   ```
-
-  > _Trimmed output:_
 
   ```txt
   > print(data)
@@ -67,8 +67,8 @@ After installation, import ``getfactormodels``, and call the ``get_factors()`` f
   2022-12-28 -0.012344 -0.004354  0.000133 -0.010457 -0.004953  0.000161
   2022-12-29  0.018699  0.008568 -0.008801 -0.012686 -0.002162  0.000161
   2022-12-30 -0.002169  0.001840  0.001011 -0.004151 -0.003282  0.000161
-
-  [14096 rows x 6 columns]
+ 
+   [14096 rows x 6 columns]
   ```
 
 * To retrieve the daily data for the Fama-French 3-factor model, since `start_date`:
@@ -166,23 +166,28 @@ Requires ``bash >=4.2``
   ```shell
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf --nomkt -o ~/some_dir/filename.xlsx
   ```
+
 ## Data Availability
 
-| Model         | Start      | D            | W            | M            | Q            | Y            |
-|---------------|------------|--------------|--------------|--------------|--------------|--------------|
-| Fama-French 3 | 1927-01-03 | $\checkmark$ | $\checkmark$ | $\checkmark$ |              | $\checkmark$ |
-| Fama-French 5 |            | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |
-| Fama-French 6 |            | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |
-| Carhart 4     |            | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |
-| DHS           |            | $\checkmark$ |              | $\checkmark$ |              |              |
-| ICR           |            | $\checkmark$ |              | $\checkmark$ | $\checkmark$ |              |
-| Mispricing    |            |              |              | $\checkmark$ |              |              |
-| Liquidity     | 1962-08-31 |              |              | $\checkmark$ |              |              |
-| HML $^{DEVIL}$ |            | $\checkmark$ |              | $\checkmark$ |              |              |
-| $q$-factors    |            | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ |
-| Barillas Shanken |         | $\checkmark$ |              | $\checkmark$ |              |              |
+_This table shows each model's start date, available frequencies, and the latest datapoint if not current. The ``id`` column 
+contains the shortest identifier for each model. These should all work in python and the CLI._
+
+| `id` | Model         | Start      | D            | W            | M            | Q            | Y            | End        |
+|:--:|:--------------|:----------:|--------------|--------------|--------------|--------------|--------------|:----------:|
+|`3`| Fama-French 3 | 1926-07-01 | $\checkmark$ | $\checkmark$ | $\checkmark$ |              | $\checkmark$ |     -       |
+|`4`| Carhart 4      | 1926-11-03 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
+|`5`| Fama-French 5  | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
+|`6`| Fama-French 6 | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |      -      |
+|`hmld`| HML $^{DEVIL}$ | 1927-01-03  | $\checkmark$ |         | $\checkmark$ |              |              |-|
+|`dhs`| DHS          | 1972-07-03 | $\checkmark$ |            | $\checkmark$ |              |              | 2022-12-30 |
+|`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | $\checkmark$ ||$\checkmark$| $\checkmark$ | | 2025-06-27 |
+|`mis`| Mispricing Factors    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-31 |
+|`liq`| Liquidity Factors     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2022-12-31 |
+|`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$| 2022-12-30|
+|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2022-12-30 |
 
 >[TODO]
+>Docs!
 
 ## References
 
@@ -216,17 +221,16 @@ Requires ``bash >=4.2``
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
- [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
----
-
-## Known issues
+### Known issues
 * The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model implementing a cache—daily data expires at the end of the day, and will only re-download when the requested `end_date` exceeds the cache's latest index date. Similar for monthly, expiring at at the end of the month, and re-downloaded when next needed.
-* Some models aren't downloading.
+* ~~Some models aren't downloading.~~ *__Update:__ all models should be downloading.*
 
 #### Todo
 - [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
 - [ ] Docs
+- [ ] This README
   - [ ] Examples
 - [ ] Tests
 - [ ] Error handling

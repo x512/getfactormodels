@@ -172,7 +172,7 @@ class FactorExtractor:
             raise ValueError("No data to save. Fetch factors first.")
 
         # TODO: could call _save_to_file directly
-        _process(self.df, filepath=filename)
+        _process(self.df, filepath=filename)  #lol FIXME
 
 
 def main():
@@ -188,12 +188,24 @@ def main():
     df = extractor.get_factors()
 
     if args.output:
-        extractor.to_file(args.output)
-        print(f'File saved to "{Path(args.output).resolve()}"')
+        output_path = Path(args.output)
+        extension = output_path.suffix
+
+        if not extension:
+            extension = '.csv'
+ 
+        _filename = f"{args.model}_{args.freq}_{args.start}_{args.end}{extension}"
+        _output_path = output_path.parent / _filename
+
+        extractor.to_file(_output_path)
+        #print(f'File saved to "{Path(args.output).resolve()}"')
+        # it's wrong, and it's printed correctly by _save_to_file anyway...
+        # fixes duplicate print
+        print("") # looks weird without a preview
+        print(df)
 
     else:
         print(df)
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

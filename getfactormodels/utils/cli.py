@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-e', '--end', type=str, required=False,
                         help='The end date for the data.')
     parser.add_argument('-o', '--output', type=str, required=False,
+                        default='~/getfactormodels.csv',
                         help='The file to save the data to.')
     parser.add_argument('--no_rf', '--no-rf', '--norf', action='store_true',
                         help='Drop the RF column from the DataFrame.')
