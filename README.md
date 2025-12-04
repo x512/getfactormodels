@@ -230,6 +230,7 @@ contains the shortest identifier for each model. These should all work in python
 #### Todo
 - [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
 - [ ] Docs
+- [ ] Every model should have an about and author/copyright info, and general disclaimer
 - [ ] This README
   - [ ] Examples
 - [ ] Tests

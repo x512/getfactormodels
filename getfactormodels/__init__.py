@@ -24,7 +24,10 @@ from .models.models import (barillas_shanken_factors, carhart_factors,
                             icr_factors, liquidity_factors, mispricing_factors,
                             q_classic_factors, q_factors)
 
-__all__ = ["FactorExtractor",
+from .models import MispricingFactors #testing
+
+__all__ = ["MispricingFactors",  #testing
+           "FactorExtractor",
            "ff_factors",
            "icr_factors",
            "q_factors",

@@ -25,13 +25,12 @@ class HttpClient:
     """Simple http client: wrapper around httpx.Client."""
     # retries and backoff factor might be good later... TODO.
     def __init__(self, timeout: 15.0):  #TODO: fix type hint on timeout
-        self.timeout = timeout,
+        self.timeout = timeout
         self._client = httpx.Client(
             verify=certifi.where(),
-            timeout=self.timeout,       # Same err
+            timeout=self.timeout,
             follow_redirects=True,
             max_redirects=3,
-            #headers
         )
         #
         # TODO: http2

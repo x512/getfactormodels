@@ -16,3 +16,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 from . import ff_models, models
+
+# test
+from .mispricing import MispricingFactors

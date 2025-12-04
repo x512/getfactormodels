@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # getfactormodels: A Python package to retrieve financial factor model data.
 # Copyright (C) 2025 S. Martin <x512@pm.me>
 #
