@@ -19,3 +19,5 @@ from . import ff_models, models
 
 # test
 from .mispricing import MispricingFactors
+from .dhs import DHSFactors
+from .icr import ICRFactors

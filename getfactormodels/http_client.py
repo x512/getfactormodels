@@ -45,19 +45,23 @@ class HttpClient:
     def __exit__(self):
         self.close()
 
-    def download(self, url: str) -> str:
-        """Downloads text content from a given URL."""
+    def download(self, url: str, as_bytes: bool = False):   #TODO type 
+        """Downloads content from a given URL.
+        args :
+            as_bytes: returns bytes if True, str if false
+        """
+        # TODO, seperate download_bytes?
         try:
             log.info(f"Connecting: {url}...")
             response = self._client.get(url)
             response.raise_for_status()
-            # TODO: cache resp TODO
-            return response.text
-
+            if as_bytes:
+                return response.content
+            else:
+                return response.text
         except httpx.HTTPStatusError as e:
             log.error(f"HTTP error {e.response.status_code} for {url}")
             raise ConnectionError(f"HTTP error: {e.response.status_code}")
-
         except httpx.RequestError as e:
             log.error(f"Network error for {url}: {e}")
             raise ConnectionError(f"Request error: {e}")

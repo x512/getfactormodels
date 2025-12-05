@@ -47,8 +47,10 @@ class MispricingFactors:
 
     def download(self):
         """
-        Public interface. Download the Stambaugh-Yuan mispricing factors.
+        Download Liquidity factors
         """
+        # public func here?
+        # wrapper around _download
         return self._download(self.start_date, self.end_date, self.output_file)
 
     def _download(self, start_date, end_date, output_file):
@@ -79,5 +81,4 @@ class MispricingFactors:
 #    get mkt-rf, rf, and add them if needed.
 #    check, correct freq/model names; input validation
 #    datetime utils
-#    debug util -- traceback,
-#
+#    debug util -- traceback
