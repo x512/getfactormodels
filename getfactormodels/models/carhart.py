@@ -21,7 +21,7 @@ import logging #todo
 #TODO: clean up getting ff, getting mom, this.
 #
 # still just using old func, just a wrapper
-class CarhartFactors():
+class CarhartFactors:
     """Download the Carhart 4-Factor model data.
 
     NOTES:
@@ -44,12 +44,10 @@ class CarhartFactors():
         self.end_date = end_date
         self.output_file = output_file
 
-    def download(self, start_date, end_date, output_file):
-        data = _get_ff_factors(model='4',
-                               frequency=self.frequency, 
-                               start_date=start_date,
-                               end_date=end_date)
+    def download(self):
+        data = _get_ff_factors(model='4', frequency=self.frequency, start_date=self.start_date,
+                               end_date=self.end_date)
         if data is None:
             raise ValueError("ERR: returned data is None?")
 
-        return _process(data, start_date, end_date, filepath=output_file)
+        return _process(data, self.start_date, self.end_date, self.output_file)
