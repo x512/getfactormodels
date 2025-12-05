@@ -32,7 +32,7 @@ class ICRFactors:
         _url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
 
         self.url = _url
-        self.client = HttpClient(timeout=8.0)
+        #self.client = HttpClient(timeout=8.0)
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
@@ -46,8 +46,12 @@ class ICRFactors:
 
     def _download (self, start_date, end_date, output_file):
         """Download and process the Intermediary Capital Ratio factors data."""
+        with HttpClient(timeout=5.0) as client:
+            _data = self.client.download(self.url)
+        
+        if _data is None:
+            print("Error downloading")
 
-        _data = self.client.download(self.url)
         data = io.StringIO(_data)
         # ----------------------------------
         # back to pd, old func stuff

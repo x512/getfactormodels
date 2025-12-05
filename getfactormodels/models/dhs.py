@@ -72,7 +72,8 @@ class DHSFactors:
         """Retrieve the DHS behavioural factors. Daily and monthly."""
         # - start, end, output: keeping here until _process, and the data transformations/date
         #   validations are untangled... TODO
-
+        
+        #context manager!
         _file = self.client.download(self.url, as_bytes=True) # TODO:
         # download_bytes as a wraper around download that will just decide whether
         # bytes (gsheets link, model id?) or not.

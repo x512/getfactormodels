@@ -40,7 +40,7 @@ class LiquidityFactors:
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
-        self.client = HttpClient(timeout=5.0)
+        #self.client = HttpClient(timeout=5.0)
         #self.url = 'https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt'
         self.url = 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
     def download(self):
@@ -48,8 +48,11 @@ class LiquidityFactors:
 
         
     def _download(self, start_date, end_date, output_file):
-        data = self.client.download(self.url)
-        
+        with HttpClient(timeout=5.0) as client:
+            #TODO make timeout Optional
+            data = client.download(self.url)
+
+        # simple validate data returned TODO
         data = io.StringIO(data)  # couldnt get it to work til this
         
         # Headers are last commented line

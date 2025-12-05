@@ -42,7 +42,7 @@ class HttpClient:
     def __enter__(self):
         return self
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_val, exc_tb): #fix
         self.close()
 
     def download(self, url: str, as_bytes: bool = False):   #TODO type 

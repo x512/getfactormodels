@@ -16,8 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import pandas as pd
 import io
-from typing import Optional
-import diskcache as dc
+#import diskcache as dc  # TODO: caching properly
 
 from getfactormodels.utils.utils import _process
 from getfactormodels.http_client import HttpClient
@@ -47,9 +46,13 @@ class QFactors:
     # dropped numpy, again the model only used it for multiply.
     # Note: weekly wednesday-to-wednesday needs to be added TODO
     # Need to do all typing everywhere
-    def __init__(self, frequency, start_date=None, end_date=None,
-                 output_file=None, classic=False, model='q5'): # classic=False default... add model param for ff, q factors?
+    def __init__(self, frequency='m', start_date=None, end_date=None,
+                 output_file=None, classic=False): # classic=False default
         self.frequency = frequency.lower()
+        
+        if self.frequency not in ["d", "m", "q"]: 
+            raise ValueError("Frequency must be 'd', 'm' or 'q'")
+
         self.file = {'m': "monthly",
                 "d": "daily",
                 "q": "quarterly",
@@ -60,7 +63,7 @@ class QFactors:
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
-        self.client = HttpClient(timeout=8.0)
+     #   self.client = HttpClient(timeout=8.0)
 
     def download(self) -> pd.DataFrame:
         """public wrapper."""
@@ -71,17 +74,16 @@ class QFactors:
         Downloads the factor data using HttpClient and processes it.
         This method will use the attributes set during class instantiation.
         """
-        _file = self.client.download(self.url)
+        with HttpClient(timeout=5.0) as client:
+            _file = client.download(self.url)
 
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
-        #need to wrap file in StringIO, assuming pd.read_csv did this
         data = pd.read_csv(io.StringIO(_file), parse_dates=False, index_col=index_cols, float_precision="high")
 
         if self.classic:
             data = data.drop(columns=["R_EG"])
 
         data = data.rename(columns={"R_F": "RF"})
-        #data = np.multiply(data, 0.01) # NUMPY
         data = data * 0.01
 
         if self.frequency in ["m", "q"]:
@@ -93,7 +95,7 @@ class QFactors:
             data["date"] = pd.PeriodIndex(
                 data["year"].astype(str)
                 + char
-                + data[col].astype(str), freq=self.frequency
+                + data[col].astype(str), freq=self.frequency.upper()  #fix:FutureWarning 'm' is deprecated, use 'M'
             ).to_timestamp(how="end")
 
             data["date"] = data["date"].dt.normalize()
@@ -103,7 +105,6 @@ class QFactors:
             data.index = pd.to_datetime(data.index.astype(str)) \
                 + pd.offsets.YearEnd(0)
         elif self.frequency not in ["m", "q"]:
-            # Daily, Weekly - assume date is in index[0]
             data.index = pd.to_datetime(data.index.astype(str))
 
         data.columns = data.columns.str.upper()
@@ -111,5 +112,5 @@ class QFactors:
         data = data.rename(columns={"R_MKT": "Mkt-RF"})
 
         return _process(data, self.start_date, self.end_date,
-                        filepath=self.output_file)
+                        filepath=self.output_file)  # type err: TODO
 
