@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
 """Private module: helper functions for the Fama-French models.
 
 Functions:
@@ -36,7 +35,6 @@ from __future__ import annotations
 from typing import Optional
 import numpy as np
 import pandas as pd
-#from ..utils.utils import _process, get_zip_from_url)
 import zipfile
 import io
 import urllib.request   # temporary quick-fix TODO: FIXME!
