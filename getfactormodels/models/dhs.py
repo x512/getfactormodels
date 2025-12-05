@@ -41,6 +41,7 @@ class DHSFactors:
     """
     def __init__(self, frequency='m', start_date=None, end_date=None,
                  output_file=''):
+        #validate freq
         self.frequency = frequency.lower()
 
         if self.frequency == 'm':

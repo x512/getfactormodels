@@ -21,3 +21,4 @@ from . import ff_models, models
 from .mispricing import MispricingFactors
 from .dhs import DHSFactors
 from .icr import ICRFactors
+from .q_factors import QFactors

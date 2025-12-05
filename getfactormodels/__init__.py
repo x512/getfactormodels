@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 __version__ = "0.0.6"
 
-from .models import MispricingFactors, DHSFactors, ICRFactors    # dev:new classes
+from .models import MispricingFactors, DHSFactors, ICRFactors, QFactors    # dev:new classes
 from .__main__ import FactorExtractor, get_factors
 #from .models import models
 
@@ -28,8 +28,9 @@ from .models.models import (barillas_shanken_factors,
 __all__ = [ "MispricingFactors",        # new classes using http_client
             "DHSFactors",
             "ICRFactors",
+            "QFactors",
             "ff_factors",               # old funcs
-            "q_factors",
+            #"q_factors",
             "q_classic_factors",
             "liquidity_factors",
             "hml_devil_factors",
