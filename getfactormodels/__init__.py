@@ -16,36 +16,31 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 __version__ = "0.0.6"
 
-from getfactormodels.models.carhart import CarhartFactors
+#from getfactormodels.models.carhart import CarhartFactors
 from .models import MispricingFactors, DHSFactors, ICRFactors, QFactors #dev:new classes
 from .models import LiquidityFactors, CarhartFactors    # dev:new classes
 from .models import HMLDevil, FamaFrenchFactors
 
 from .__main__ import FactorExtractor, get_factors
-#from .models import models
+from .models.models import (barillas_shanken_factors, ff_factors)
 
-from .models.models import (barillas_shanken_factors,
-    carhart_factors, ff_factors, hml_devil_factors, liquidity_factors, 
-    q_classic_factors, q_factors, icr_factors, mispricing_factors, 
-    dhs_factors)
-
-__all__ = [ "MispricingFactors",        # new classes using http_client
-            "DHSFactors",
+__all__ = [ "MispricingFactors",       # new classes using http_client (withhttpx)
+           "DHSFactors",               # Drops deps: requests, numpy, tabulate
             "ICRFactors",
             "QFactors",
             "LiquidityFactors",
             "CarhartFactors",
             "HMLDevil",
             "FamaFrenchFactors",
-            #"ff_factors",               # old funcs
+            "barillas_shanken_factors",
+            "ff_factors",               # old ff model (need to replace in other models)
+            "FactorExtractor",          # old class, funcs (TODO replace)
+            "get_factors",
             #"q_factors",
             #"q_classic_factors",
             #"liquidity_factors",
             #"hml_devil_factors",
-            "barillas_shanken_factors",
             #"carhart_factors",
-            "FactorExtractor",
-            "get_factors",
             #"mispricing_factors",      # replaced with class
             #"dhs_factors",
             #"icr_factors",

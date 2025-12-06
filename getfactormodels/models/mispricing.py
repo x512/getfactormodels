@@ -39,7 +39,7 @@ class MispricingFactors:
         _file_url = "M4d" if self.frequency == "d" else "M4"
         _url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}.csv"
         self.url = _url
-        self.client = HttpClient(timeout=8.0)
+        #self.client = HttpClient(timeout=8.0)
 
         self.start_date = start_date
         self.end_date = end_date
@@ -51,15 +51,17 @@ class MispricingFactors:
         """
         # public func here?
         # wrapper around _download
+        # do in base class
         return self._download(self.start_date, self.end_date, self.output_file)
 
     def _download(self, start_date, end_date, output_file):
         """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
         # - start, end, output: keeping here until _process, and the data transformations/date
         #   validations are untangled... TODO
-        _data = self.client.download(self.url)
+        with HttpClient(timeout=10.0) as client:
+            _data = self.client.download(self.url)
 
-        # this is done in util.get_file_from_url
+        # this is/was done in util.get_file_from_url
         data = io.StringIO(_data)
 
         data = pd.read_csv(data, index_col=0, parse_dates=False,
