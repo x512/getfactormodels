@@ -5,13 +5,8 @@ from typing import Optional
 import pandas as pd
 from dateutil import parser
 # ruff: noqa: RUF100
-from getfactormodels.models.models import barillas_shanken_factors  # noqa: F401
-from getfactormodels.models.models import carhart_factors  # noqa: F401, E501
-from getfactormodels.models.models import (dhs_factors, ff_factors,
-                                           hml_devil_factors, icr_factors,
-                                           liquidity_factors,
-                                           mispricing_factors,
-                                           q_classic_factors, q_factors)
+
+#from getfactormodels.models.models import ff_factors
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
 

@@ -18,7 +18,7 @@ import pandas as pd
 import io
 
 from getfactormodels.http_client import HttpClient
-from getfactormodels.models.ff_models import _get_ff_factors
+#from getfactormodels.models.ff_models import _get_ff_factors
 
 from getfactormodels.models.fama_french import FamaFrenchFactors
 
@@ -73,7 +73,7 @@ class DHSFactors:
         #   validations are untangled... TODO
         
         with HttpClient(timeout=5.0) as client:
-            _file = self.client.download(self.url, as_bytes=True)
+            _file = client.download(self.url, as_bytes=True)
         # download_bytes as a wraper around download that will just decide whether
         # bytes (gsheets link, model id?) or not.
 
@@ -96,8 +96,9 @@ class DHSFactors:
         # Get the RF and Mkt-FF from FF3. TODO: store Mkt-RF and RF; make function.
 
         try:
-            ff = _get_ff_factors(model="3", frequency=self.frequency,
+            ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
                                  start_date=data.index[0], end_date=data.index[-1])
+            ff = ffdata.download()
             ff = ff.round(4)
             data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
         except NameError:
