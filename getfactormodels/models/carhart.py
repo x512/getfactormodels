@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from getfactormodels.utils.utils import _process
-from .ff_models import _get_ff_factors   ### TODO: BROKEN ATM
+from .fama_french import FamaFrenchFactors
 
 import logging #todo
 #TODO: clean up getting ff, getting mom, this.
@@ -45,8 +45,9 @@ class CarhartFactors:
         self.output_file = output_file
 
     def download(self):
-        data = _get_ff_factors(model='4', frequency=self.frequency, start_date=self.start_date,
-                               end_date=self.end_date)
+        data = FamaFrenchFactors(model='4', frequency=self.frequency,
+                                 start_date=self.start_date, end_date=self.end_date)
+        data = data.download()
         if data is None:
             raise ValueError("ERR: returned data is None?")
 

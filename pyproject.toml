@@ -24,11 +24,9 @@ urls = { Homepage = "https://github.com/x512/getfactormodels" }
 requires-python = ">=3.9" #requests requires 3.9
 dependencies = [
     "pandas>=2.1.4",
-    "numpy>=1.18.5",
     "requests>=2.32.5",
     "pyarrow>=19.1.0",
     "openpyxl>=3.0.3",
-    "tabulate>=0.8.7",
     "cachetools==5.3.2",
     "diskcache",
     "httpx (>=0.28.1,<0.29.0)",

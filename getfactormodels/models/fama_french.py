@@ -217,9 +217,9 @@ class FamaFrenchFactors:
 
 
     def download(self):
-        return self._download(self.url, self.frequency)
+        return self._download(self.url)
 
-    def _download(self, url, freq) -> pd.DataFrame:
+    def _download(self, url) -> pd.DataFrame:
         try:
             df = self._download_and_read_zip(url)
 

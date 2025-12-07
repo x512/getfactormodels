@@ -27,7 +27,7 @@ Download the 'Pastor-Stambaugh liquidity series' data from Robert F. Stambaugh's
   Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
 - Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
 """
-
+### NOTE: ISSUE: TODO: FIXME: the first 65 NaN values are 0.00
 class LiquidityFactors:
     def __init__(self, frequency='m', start_date=None, end_date=None, output_file=None):
         self.frequency = frequency.lower()

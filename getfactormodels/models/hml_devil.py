@@ -128,6 +128,8 @@ class HMLDevil:
             'MKT': 'Mkt-RF', 
             'HML Devil': 'HML_Devil'
         }, inplace=True)
-        #TEST 
-        #print(data.to_string(float_format=lambda x: f'{x:.6f}'))
+
+        # Drops all data where hml_d is NaN   TODO: add to hmld
+        data = data.dropna(subset=['HML_Devil'])
+
         return data

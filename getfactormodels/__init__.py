@@ -16,13 +16,13 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 __version__ = "0.0.6"
 
-#from getfactormodels.models.carhart import CarhartFactors
-from .models import MispricingFactors, DHSFactors, ICRFactors, QFactors #dev:new classes
+from getfactormodels.models.carhart import CarhartFactors
+from getfactormodels.models import MispricingFactors, DHSFactors, ICRFactors, QFactors #dev:new classes
 from .models import LiquidityFactors, CarhartFactors    # dev:new classes
 from .models import HMLDevil, FamaFrenchFactors
+from getfactormodels.models.barillas_shanken import BarillasShankenFactors
 
 from .__main__ import FactorExtractor, get_factors
-from .models.models import (barillas_shanken_factors, ff_factors)
 
 __all__ = [ "MispricingFactors",       # new classes using http_client (withhttpx)
            "DHSFactors",               # Drops deps: requests, numpy, tabulate
@@ -32,8 +32,9 @@ __all__ = [ "MispricingFactors",       # new classes using http_client (withhttp
             "CarhartFactors",
             "HMLDevil",
             "FamaFrenchFactors",
-            "barillas_shanken_factors",
-            "ff_factors",               # old ff model (need to replace in other models)
+            "BarillasShankenFactors",
+#            "barillas_shanken_factors",
+            #"ff_factors",               # old ff model (need to replace in other models)
             "FactorExtractor",          # old class, funcs (TODO replace)
             "get_factors",
             #"q_factors",
@@ -46,3 +47,9 @@ __all__ = [ "MispricingFactors",       # new classes using http_client (withhttp
             #"icr_factors",
            ]
 
+
+#TODO: kill, repurpose FactorExtractor() to extract factors.
+#TODO: cli moved
+#TODO: caching
+#TODO: file writing
+#TODO: README.md usage needs to be updated to new classes

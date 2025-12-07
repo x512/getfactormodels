@@ -19,6 +19,9 @@ import io
 
 from getfactormodels.http_client import HttpClient
 from getfactormodels.models.ff_models import _get_ff_factors
+
+from getfactormodels.models.fama_french import FamaFrenchFactors
+
 from getfactormodels.utils.utils import _process
 
 class DHSFactors:
@@ -57,24 +60,20 @@ class DHSFactors:
         self.end_date = end_date
         # if start or end date, parse dates with pa ?
         self.output_file = output_file
-        self.client = HttpClient(timeout=8.0)
 
 
     # do base class if we're repeating? later. TODO
     def download(self):
-        """
-        Download Liquidity factors
-        """
+        """Download the DHS Behavioural factors."""
         return self._download(self.start_date, self.end_date, self.output_file)
-
 
     def _download(self, start_date, end_date, output_file):
         """Retrieve the DHS behavioural factors. Daily and monthly."""
         # - start, end, output: keeping here until _process, and the data transformations/date
         #   validations are untangled... TODO
         
-        #context manager!
-        _file = self.client.download(self.url, as_bytes=True) # TODO:
+        with HttpClient(timeout=5.0) as client:
+            _file = self.client.download(self.url, as_bytes=True)
         # download_bytes as a wraper around download that will just decide whether
         # bytes (gsheets link, model id?) or not.
 
@@ -91,7 +90,6 @@ class DHSFactors:
             data.index = data.index + pd.offsets.MonthEnd(0)
 
         # decimalize
-        #data = np.multiply(data, 0.01)  # Decimalize before FF factors!   #drop numpy?
         data = data * 0.01    # TODO: Decimal types possibly
 
         # Need Fama-French Factors -- only model without rf or mkt-rf?

@@ -172,19 +172,19 @@ Requires ``bash >=4.2``
 _This table shows each model's start date, available frequencies, and the latest datapoint if not current. The ``id`` column 
 contains the shortest identifier for each model. These should all work in python and the CLI._
 
-| `id` | Model         | Start      | D            | W            | M            | Q            | Y            | End        |
+| `id` | Factor Model         | Start      | D            | W            | M            | Q            | Y            | End        |
 |:--:|:--------------|:----------:|--------------|--------------|--------------|--------------|--------------|:----------:|
 |`3`| Fama-French 3 | 1926-07-01 | $\checkmark$ | $\checkmark$ | $\checkmark$ |              | $\checkmark$ |     -       |
 |`4`| Carhart 4      | 1926-11-03 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
 |`5`| Fama-French 5  | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
 |`6`| Fama-French 6 | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |      -      |
-|`hmld`| HML $^{DEVIL}$ | 1927-01-03  | $\checkmark$ |         | $\checkmark$ |              |              |-|
+|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | $\checkmark$ |         | $\checkmark$ |              |              |-|
 |`dhs`| DHS          | 1972-07-03 | $\checkmark$ |            | $\checkmark$ |              |              | 2023-12-29 |
 |`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | $\checkmark$ ||$\checkmark$| $\checkmark$ | | 2025-06-27 |
-|`mis`| Mispricing Factors    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-30 |
-|`liq`| Liquidity Factors     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2024-12-31 |
+|`mis`| Mispricing    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-30 |
+|`liq`| Liquidity     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2024-12-31 |
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$| 2022-12-30|
-|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2022-12-30 |
+|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2024-12-31 |
 
 >[TODO]
 >Docs!
