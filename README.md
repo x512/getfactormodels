@@ -28,110 +28,49 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 **Requirements:**
 
-- Python ``>=3.10``.
+- Python ``>=3.9``.
 
 The easiest way to install getfactormodels is via ``pip``:
 
   ```
-  $ pip install getfactormodels -U
+  $ pip install -U getfactormodels
   ```
 
-## Usage 
+## Usage
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 
+After installation, import ``getfactormodels``, then call the ``get_factors()`` function using the ``model`` and ``frequency`` parameters.
 
-<<<<<<< HEAD
-**Really quick usage notes until I rewrite it...**
-||||||| parent of b34b499 (Update README.md)
 - For example, to get the data for the ${q}^{5}$-factors:
-=======
-*Really quick usage notes until I rewrite it...*
->>>>>>> b34b499 (Update README.md)
 
-<<<<<<< HEAD
-#### Python 
-
-- In Python, import the getfactormodels package and call the get_factors()
-function:
-
-    ```py
-    import getfactormodels
-    data = getfactormodels.get_factors(model='carhart', frequency='d')
-    ```
-   - Example output:
-    ```txt
-||||||| parent of b34b499 (Update README.md)
   ```python
    import getfactormodels
   
    data = getfactormodels.get_factors(model='q', frequency='m')
-=======
-### Python 
-
-- In Python, import the getfactormodels package and call the get_factors()
-function:
-
-    ```py
-    import getfactormodels
-    
-    data = getfactormodels.get_factors(model='carhart', frequency='d')
-    ```
-    ```
->>>>>>> b34b499 (Update README.md)
-    >>> print(data)
-
-                Mkt-RF     SMB     HML      RF     MOM
-    date
-    1926-11-03  0.0020 -0.0020 -0.0033  0.0001  0.0054
-    1926-11-04  0.0059 -0.0012  0.0065  0.0001 -0.0051
-    1926-11-05  0.0007 -0.0011  0.0026  0.0001  0.0117
-    1926-11-06  0.0015 -0.0029  0.0005  0.0001 -0.0003
-    1926-11-08  0.0052 -0.0012  0.0018  0.0001 -0.0002
-    ...            ...     ...     ...     ...     ...
-    2025-10-27  0.0117 -0.0056 -0.0121  0.0002  0.0047
-    2025-10-28  0.0018 -0.0034 -0.0061  0.0002  0.0080
-    2025-10-29 -0.0009 -0.0091 -0.0081  0.0002  0.0194
-    2025-10-30 -0.0110 -0.0018  0.0067  0.0002 -0.0003
-    2025-10-31  0.0040  0.0010 -0.0024  0.0002 -0.0051
-
-     [26009 rows x 5 columns]
-    ```
-
-- Another example:
-    ```python
-    # To get annual data for the 5-factor model:
-    data = FamaFrenchFactors(frequency="y", model=5, start_date='1970-01-01', 
-                               end_date='2000-01-01' output="yes.csv")
-
-    # Monthly 3-factor model data, since 1970 (not specifying an end date 
-    #  will return data up until today).
-  data = FamaFrenchFactors(model="3", frequency="m", start_date="1970-01-01") #model can be int or str
   ```
 
+  ```txt
+  > print(data)
+                Mkt-RF      R_ME      R_IA     R_ROE      R_EG        RF
+  date                                                                  
+  1967-01-03  0.000778  0.004944  0.001437 -0.007118 -0.008563  0.000187
+  1967-01-04  0.001667 -0.003487 -0.000631 -0.002044 -0.000295  0.000187
+  1967-01-05  0.012990  0.004412 -0.005688  0.000838 -0.003075  0.000187
+  1967-01-06  0.007230  0.006669  0.008897  0.003603  0.002669  0.000187
+  1967-01-09  0.008439  0.006315  0.000331  0.004949  0.002979  0.000187
+  ...              ...       ...       ...       ...       ...       ...
+  2022-12-23  0.005113 -0.001045  0.004000  0.010484  0.003852  0.000161
+  2022-12-27 -0.005076 -0.001407  0.010190  0.009206  0.003908  0.000161
+  2022-12-28 -0.012344 -0.004354  0.000133 -0.010457 -0.004953  0.000161
+  2022-12-29  0.018699  0.008568 -0.008801 -0.012686 -0.002162  0.000161
+  2022-12-30 -0.002169  0.001840  0.001011 -0.004151 -0.003282  0.000161
+ 
+   [14096 rows x 6 columns]
+  ```
 
-- Import only the models you need:
-    ```py 
-    from getfactormodels import QFactors, LiquidityFactors
-    data = LiquidityFactors(frequency='m', start_date='1980-01-01')
-    df = data.download()
-    
-    # Passing a model class without params defaults to monthly data.
-    # Look! No params! Chained into .download()! zamn
-    q_df = QFactors().download()
-    
-    # The 'q' models, and the 3-factor model of Fama-French have weekly data available
-    q_df = QFactors(frequency='w', start='2025-11-01')
-    print(df.tail(3))
-<<<<<<< HEAD
-    ``` 
-    - Model classes have a `.download()` module.
-    - `get_factors()` will automatically download and return the data in a df.
-
-    ```
-||||||| parent of b34b499 (Update README.md)
 * To retrieve the daily data for the Fama-French 3-factor model, since `start_date`:
 
   ```python
@@ -145,68 +84,38 @@ function:
   ```python
   import getfactormodels as gfm
   
-  df = gfm.get_factors(model='mispricing', start_date='1970-01-01', 
-                       end_date=1999-12-31, output='mispricing_factors.csv')
+  df = gfm.get_factors(model='mispricing', start_date='1970-01-01', end_date=1999-12-31, output='mispricing_factors.csv')
   ```
 
   >``output`` can be a filename, directory, or path. If no extension is specified, defaults to .csv (can be one of: .xlsx, .csv, .txt, .pkl, .md)
 
 You can import only the models that you need:
 
-
 * For example, to import only the *ICR* and *q-factor* models:
 
   ```python
-  from getfactormodels import ICRFactors, QFactors
+  from getfactormodels import icr_factors, q_factors
 
-  # Passing a model class without params defaults to monthly data.
-  icr = ICRFactors()
-  df = icr.download()
+  # Passing a model function without params defaults to monthly data.
+  df = icr_factors()
 
-  # The 'q' models, and the 3-factor model of Fama-French have weekly data available
-  df = QFactors(frequency='w', start_date='1992-05-22', end_date='2019-01-05').download()
-  print(df.tail(3))
-  
+  # The 'q' models, and the 3-factor model of Fama-French have weekly data available:
+  df = q_factors(frequency="W", start_date="1992-01-01, output='.xlsx')
   ```
 
-  >``All modules: HMLDevil, CarhartFactors, FamaFrenchFactors, QFactors,
-=======
-    ```
-    
-    - Model classes have a `.download()` module.
-    - `get_factors()` will automatically download and return the data in a df.
+  >``output`` allows just a file extension (with the `.`, else it'll be passed as a filename).
 
->>>>>>> b34b499 (Update README.md)
-
-- All models have the parameters: `frequency`, `start_date`, `end_date`, `output_file`.
-    - `FamaFrenchFactors()` has a `model=` param. Accepts: 3, 4 (Carhart), 5, 6 (default: '3')
-    - `QFactors()` has a `classic=` param (default: false) for returing the classic `q4` Q-Factor model (2015).
-
-- List of classes/models: ``HMLDevil, CarhartFactors, FamaFrenchFactors, QFactors,
-  LiquidityFactors, MispricingFactors, BarillasShankenFactors, ICRFactors,
-  DHSFactors``
-
-<<<<<<< HEAD
-#### CLI
-||||||| parent of b34b499 (Update README.md)
-  >``output_file`` ...
-
-* All models include the same parameters: `frequency`, `start_date`, `end_date`, `output_file`.
-
-Additionally:
-* `FamaFrenchFactors()` has a `model=` param. Accepts `3` `4` (Carhart) `5` `6` (default: '3') int or str.
-* `QFactors()` has a `classic=` bool param (default: false) for returing the 4-Factor Q-Factor model (2015).
+* When using `ff_factors()`, specify an additional `model` parameter (**this might be changed**):
   
   ```python
   # To get annual data for the 5-factor model:
-  data = FamaFrenchFactors(frequency="y", model=5, start_date='1970-01-01', end_date='2000-01-01' output="yes.xlsx") #model can be int or str
+  data = ff_factors(model="5", frequency="Y", output=".xlsx")
 
-  # Monthly 3-factor model data, since 1970 (not specifying an end date 
-  #  will return data up until today).
-  data = FamaFrenchFactors(model="3", frequency="m", start_date="1970-01-01")
+  # Daily 3-factor model data, since 1970 (not specifying an end date
+  # will return data up until today):
+  data = ff_factors(model="3", frequency="D", start_date="1970-01-01")
   ```
 
-# IGNORE THIS
 There's also the ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI):
 
   ```python
@@ -229,17 +138,11 @@ There's also the ``FactorExtractor`` class (which doesn't do much yet, it's main
 
 >``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
 
-## REWRITE ME
 ### CLI
-=======
-### CLI
->>>>>>> b34b499 (Update README.md)
-
-__This is old but should still work until redo.__
 
 Requires ``bash >=4.2``
 
-* You can use getfactormodels from the command line. Very simple at the moment:
+* You can also use getfactormodels from the command line. It's very basic at the moment, here's the `--help`:
 
   ```shell
   $ getfactormodels -h
@@ -247,55 +150,41 @@ Requires ``bash >=4.2``
   usage: getfactormodels [-h] -m MODEL [-f FREQ] [-s START] [-e END] [-o OUTPUT] [--no_rf] [--no_mkt]
   ```
 
-* Retrieve the Fama-French 3-factor model data:
+* An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
 
-  ```bash
+  ```shell
   $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output .csv
   ```
 
-* Download the annual 5-factor data of Fama-French, without the RF column (using ``--no[_]rf``)
+* Here's another example that retrieves the annual 5-factor data of Fama-French, without the RF column (using ``--no[_]rf``)
 
   ```shell
-  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf -o ~/some_dir/filename.csv
+  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf -o ~/some_dir/filename.xlsx
   ```
-
 * To return the factors without the risk-free rate `RF`, or the excess market return `Mkt-RF`, columns:
 
   ```shell
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf --nomkt -o ~/some_dir/filename.xlsx
   ```
 
-  ```
-
-<<<<<<< HEAD
-  >``output`` can be a filename, directory, or path. If no extension is specified, defaults to .csv (can be one of: .xlsx, .csv, .txt, .pkl, .md) 
-  >``output_file`` ... not implemented properly.
-||||||| parent of b34b499 (Update README.md)
-=======
-- ``output`` can be a filename, directory, or path. If no extension is specified, defaults to .csv (can be one of: .xlsx, .csv, .txt, .pkl, .md) 
-- ``output_file`` ... not implemented properly.
->>>>>>> b34b499 (Update README.md)
-
-
-
 ## Data Availability
 
 _This table shows each model's start date, available frequencies, and the latest datapoint if not current. The ``id`` column 
 contains the shortest identifier for each model. These should all work in python and the CLI._
 
-| `id` | Factor Model         | Start      | D            | W            | M            | Q            | Y            | End        |
+| `id` | Model         | Start      | D            | W            | M            | Q            | Y            | End        |
 |:--:|:--------------|:----------:|--------------|--------------|--------------|--------------|--------------|:----------:|
 |`3`| Fama-French 3 | 1926-07-01 | $\checkmark$ | $\checkmark$ | $\checkmark$ |              | $\checkmark$ |     -       |
 |`4`| Carhart 4      | 1926-11-03 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
 |`5`| Fama-French 5  | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
 |`6`| Fama-French 6 | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |      -      |
-|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | $\checkmark$ |         | $\checkmark$ |              |              |-|
-|`dhs`| DHS          | 1972-07-03 | $\checkmark$ |            | $\checkmark$ |              |              | 2023-12-29 |
+|`hmld`| HML $^{DEVIL}$ | 1927-01-03  | $\checkmark$ |         | $\checkmark$ |              |              |-|
+|`dhs`| DHS          | 1972-07-03 | $\checkmark$ |            | $\checkmark$ |              |              | 2022-12-30 |
 |`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | $\checkmark$ ||$\checkmark$| $\checkmark$ | | 2025-06-27 |
-|`mis`| Mispricing    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-30 |
-|`liq`| Liquidity     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2024-12-31 |
+|`mis`| Mispricing Factors    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-31 |
+|`liq`| Liquidity Factors     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2022-12-31 |
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$| 2022-12-30|
-|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2024-12-31 |
+|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2022-12-30 |
 
 >[TODO]
 >Docs!
@@ -341,61 +230,8 @@ contains the shortest identifier for each model. These should all work in python
 #### Todo
 - [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
 - [ ] Docs
-- [ ] Every model should have an about and author/copyright info, and general disclaimer
 - [ ] This README
   - [ ] Examples
 - [ ] Tests
 - [ ] Error handling
-
-<<<<<<< HEAD
-
-
-# IGNORE THIS
-There's also the ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI):
-
-  ```python
-  from getfactormodels import FactorExtractor
-
-  fe = FactorExtractor(model='carhart', start_date='1980-01-01', end_date='1980-05-01)
-  fe.get_factors()
-  fe.drop_rf() 
-  fe.to_file('~/carhart_factors.md')
-  ```
-
-* _The resulting ``carhart_factors.md`` file will look like this:_
-    
-  | date                |   Mkt-RF |     SMB |     HML |     MOM |
-  |:--------------------|---------:|--------:|--------:|--------:|
-  | 1980-01-31 00:00:00 |   0.0551 |  0.0162 |  0.0175 |  0.0755 |
-  | 1980-02-29 00:00:00 |  -0.0122 | -0.0185 |  0.0061 |  0.0788 |
-  | 1980-03-31 00:00:00 |  -0.129  | -0.0664 | -0.0101 | -0.0955 |
-  | 1980-04-30 00:00:00 |   0.0397 |  0.0105 |  0.0106 | -0.0043 |
-
->``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
-
-||||||| parent of b34b499 (Update README.md)
-=======
-# IGNORE THIS
-There's also the ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI):
-
-  ```python
-  from getfactormodels import FactorExtractor
-
-  fe = FactorExtractor(model='carhart', start_date='1980-01-01', end_date='1980-05-01)
-  fe.get_factors()
-  fe.drop_rf() 
-  fe.to_file('~/carhart_factors.md')
-  ```
-
-* _The resulting ``carhart_factors.md`` file will look like this:_
-    
-  | date                |   Mkt-RF |     SMB |     HML |     MOM |
-  |:--------------------|---------:|--------:|--------:|--------:|
-  | 1980-01-31 00:00:00 |   0.0551 |  0.0162 |  0.0175 |  0.0755 |
-  | 1980-02-29 00:00:00 |  -0.0122 | -0.0185 |  0.0061 |  0.0788 |
-  | 1980-03-31 00:00:00 |  -0.129  | -0.0664 | -0.0101 | -0.0955 |
-  | 1980-04-30 00:00:00 |   0.0397 |  0.0105 |  0.0106 | -0.0043 |
-
->``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
->>>>>>> b34b499 (Update README.md)
 
