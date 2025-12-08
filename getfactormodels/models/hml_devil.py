@@ -20,6 +20,7 @@ from io import BytesIO
 from typing import Optional, Union  # can drop Union for "|" if dropping py 3.9
 import pandas as pd  # need to type everything properly,
 from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.utils import _process
 
                                          # implement typechecking, testing
 
@@ -92,6 +93,8 @@ class HMLDevil:
 
         #if self.output_file:
         #     data.to_csv(self.output_file) # TODO: filewriter when pa
+
+        data = _process(data, self.start_date, self.end_date, self.output_file)
         return data
 
 
@@ -141,6 +144,9 @@ class HMLDevil:
 
         # Drops all data where HML_Devil is NaN
         data = data.dropna(subset=['HML_Devil'])
+
+        # Just send through _process for now, for filewriting
+        
 
         return data
 
