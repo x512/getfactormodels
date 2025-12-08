@@ -50,7 +50,7 @@ class MispricingFactors:
         _url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}.csv"
         self.url = _url
 
-    def download(self): 
+    def download(self):
         """Download the Stambaugh-Yuan Mispricing factors."""
         return self._download(self.start_date, self.end_date, self.output_file)
 

@@ -27,10 +27,9 @@ from getfactormodels.utils.utils import _get_model_key, _process
 
 #import logging  #TODO
 
-
 #
-# TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped 
-# and base class and FactorExtractor done) 
+# TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
+# and base class and FactorExtractor done)
 # just getting get_factors to work!
 #
 
@@ -41,7 +40,7 @@ def get_factors(model: str|int = 3,
                 output: Optional[str] = None):
     """Get data for a specified factor model."""
     frequency = frequency.lower()
-    model_key = _get_model_key(model) 
+    model_key = _get_model_key(model)
 
     factor_instance = None
 
@@ -53,12 +52,12 @@ def get_factors(model: str|int = 3,
         factor_instance = QFactors(frequency, start_date, end_date,
                                    output, classic=True)
     
-    elif model_key == "HMLDevil": 
+    elif model_key == "HMLDevil":
         factor_instance = HMLDevil(frequency, start_date, end_date, output)
         
     else:
         # Class loading: tries CamelCaseFactors then UPPERCASEFactors
-        class_name_camel = f"{model_key}Factors" 
+        class_name_camel = f"{model_key}Factors"
         class_name_upper = f"{model_key.upper()}Factors"
         
         # search for the class in the global scope

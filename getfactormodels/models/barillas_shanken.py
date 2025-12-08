@@ -64,13 +64,13 @@ class BarillasShankenFactors:
         df = q.merge(ff, left_index=True, right_index=True, how='inner')
 
         print("  - Getting HML_Devil factor (this can take a while, please be patient)...")
-        hmld_data = HMLDevil(frequency=self.frequency, 
+        hmld_data = HMLDevil(frequency=self.frequency,
                                  start_date=self.start_date,
                                  end_date=self.end_date)
 
         hml_d = hmld_data.download()
 
-        # NOTE: Taking the 'RF' from AQR's series since it's here, and it's the 
+        # NOTE: Taking the 'RF' from AQR's series since it's here, and it's the
         #  same data as Fama-French but to 4 decimals. Mkt-RF shows a difference
         #  though -- and bs6 should use the mkt-rf of ff!
         hml_d = hml_d[['HML_Devil', 'RF']]

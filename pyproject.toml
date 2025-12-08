@@ -32,7 +32,6 @@ dependencies = [
     "diskcache>=5.6.3",
     "httpx (>=0.28.1,<0.29.0)",
     "certifi (>=2025.11.12,<2026.0.0)",
-    "requests (>=2.32.5,<3.0.0)",   # Something's using it!
 ]
 
 [tool.poetry.group.dev.dependencies]
@@ -77,16 +76,23 @@ exclude = [".git", ".git-rewrite",]
 #ignore = ["E501", "F401", "I001", "UP007", "ANN"]
 # run `ruff linter` to see all available rules
 ## see: docs.astral.sh/ruff/rules/
-select = ["E4", "E7", "E9", "F", "B",
-          "DTZ", "W2", "W5", "N", "PL",
-          "NPY", "SIM", "TID", "PD",
-          "E241", "S", "PTH", "RUF", 
-          "FIX001", "TD004", "EM",
-          "TD005", "TD007", "E501",
-          "FA", "FIX002", "ANN",   # fix
-          "E261"]                        # requires '--preview'
+#select = ["E4", "E7", "E9", "F", "B",
+#          "DTZ", "W2", "W5", "N", "PL",
+#          "NPY", "SIM", "TID", "PD",
+#          "E241", "S", "PTH", "RUF", 
+#          "FIX001", "TD004", "EM",
+#          "TD005", "TD007", "E501",
+#          "FA", "FIX002",   # fix
+#          "E261"]                        # requires '--preview'
+
+select = [
+    "PTH110", #`os.path.exists()` should be replaced by `Path.exists()`
+    "PTH107", #os.remove > Path.unlink
+    "F401", #remove unused import
+
+]
 # temp
-ignore = ["PD901",]
+ignore = ["PD901", "ANN", "W293"]  #W293 whitespace to the left?
 
 # see: docs.astral.sh/ruff/configuration/
 fixable = ["W29", "W5", "E241", "E261"]

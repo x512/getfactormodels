@@ -26,7 +26,7 @@ class ICRFactors:
                  output_file=None, cache_ttl: int = 86400):
         self.frequency = frequency.lower()    #TODO: base model ....
 
-        if self.frequency not in ["d", "m", "q"]:  
+        if self.frequency not in ["d", "m", "q"]:
             raise ValueError("Frequency must be 'd', 'm' or 'q'")
 
         self.start_date = start_date

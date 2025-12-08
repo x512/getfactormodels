@@ -30,7 +30,7 @@ __all__ = [ "MispricingFactors",
             "HMLDevil",
             "FamaFrenchFactors",
             "BarillasShankenFactors",
-            "FactorExtractor", 
+            "FactorExtractor",
             "get_factors",
            ]
 #TODO: kill, repurpose FactorExtractor() to extract factors.

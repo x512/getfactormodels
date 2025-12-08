@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # TODO: break this all up into models/*.py !
-# TODO: httpx, a client class, model classes... (done done and done) 
+# TODO: httpx, a client class, model classes... (done done and done)
 from io import BytesIO
 from typing import Optional, Union  # can drop Union for "|" if dropping py 3.9
 import pandas as pd  # need to type everything properly,
@@ -48,7 +48,7 @@ class HMLDevil:
         self.cache_ttl = cache_ttl
         self.frequency = frequency.lower()
 
-        if self.frequency not in ["d", "m", "q"]: 
+        if self.frequency not in ["d", "m", "q"]:
             raise ValueError("Frequency must be 'd', 'm' or 'q'")
 
         self.start_date = start_date

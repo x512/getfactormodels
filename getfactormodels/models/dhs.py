@@ -48,7 +48,7 @@ class DHSFactors:
         if self.frequency == 'm':
             gs_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
         elif self.frequency == 'd':
-            gs_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC' 
+            gs_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
         else:
             raise ValueError("Frequency must be daily ('d') or monthly ('m')")
 

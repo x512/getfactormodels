@@ -1,12 +1,24 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+# getfactormodels: A Python package to retrieve financial factor model data.
+# Copyright (C) 2025 S. Martin <x512@pm.me>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import re
-import zipfile as zip
 from datetime import datetime
-from io import BytesIO, StringIO
 from pathlib import Path
 from types import MappingProxyType
 import pandas as pd
-import requests
 from dateutil import parser
 
 __model_input_map = MappingProxyType({
@@ -46,29 +58,7 @@ def _get_model_key(model):
             return key
     raise ValueError(f'Invalid model: {model}')
 
-
-def get_file_from_url(url):
-    """Get a file from a URL and return its content as a StringIO object."""
-    response = requests.get(url, verify=True, timeout=15)
-    response.raise_for_status()
-    response_content = response.content.decode('utf-8')
-    content = StringIO(response_content)
-    return content
-
-
-def get_zip_from_url(url):
-    """Download a zip file from a URL and return a ZipFile object."""
-    try:
-        response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        content = response.content
-    except (KeyboardInterrupt, Exception) as e:
-        print(f"An error occurred downloading the zip file from {url}: {e}")
-        raise
-
-    return zip.ZipFile(BytesIO(content))
-
-
+# TODO: Will redo as a Writer class, prob. use pyarrow
 def _save_to_file(data, filename=None, output_dir=None):
     """Save a pandas dataFrame to a file."""
     if isinstance(data, (pd.DataFrame, pd.Series)):
