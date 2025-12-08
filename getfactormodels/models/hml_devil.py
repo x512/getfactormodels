@@ -1,16 +1,30 @@
+#!/usr/bin/env python3
+# getfactormodels: A Python package to retrieve financial factor model data.
+# Copyright (C) 2025 S. Martin <x512@pm.me>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # TODO: break this all up into models/*.py !
-# TODO: httpx, a client class, model classes... 
-from __future__ import annotations
-from functools import cache
+# TODO: httpx, a client class, model classes... (done done and done) 
 from io import BytesIO
-from typing import Optional, Union
-#import diskcache as dc
-import pandas as pd
+from typing import Optional, Union  # can drop Union for "|" if dropping py 3.9
+import pandas as pd  # need to type everything properly,
+from getfactormodels.http_client import HttpClient
 
-from getfactormodels.http_client import HttpClient #testing http_client with a few models
+                                         # implement typechecking, testing
 
 class HMLDevil:
-    """ Retrieve the HML Devil factors from AQR.com.
+    """Retrieve the HML Devil factors from AQR.com.
 
     Notes:
     - Very slow. This model implements a cache, and second run today/this month 
@@ -28,11 +42,10 @@ class HMLDevil:
         pd.DataFrame: the HML Devil model data indexed by date.
         pd.Series: the HML factor as a pd.Series
         """
-
-    # CHECK WHEN HML DEVIL STARTS?? Can get back to 1927 (FF3), but NaNs for HMLD
-
     def __init__(self, frequency: str = 'm', start_date: Optional[str] = None,
-                 end_date: Optional[str] = None, output_file: Optional[str] = None):
+                 end_date: Optional[str] = None, output_file: Optional[str] = None, cache_ttl: int = 43200):
+        
+        self.cache_ttl = cache_ttl
         self.frequency = frequency.lower()
 
         if self.frequency not in ["d", "m", "q"]: 
@@ -44,7 +57,6 @@ class HMLDevil:
 
         base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
         file = 'daily' if self.frequency == 'd' else 'monthly'
-
         self.url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
         # From func - cache stuff -- OLD CACHE STUFF
@@ -66,15 +78,7 @@ class HMLDevil:
         """
         Retrieves the HML Devil factors, using cache if available.
         """
-        #OLD CACHE STUFF
-        #current_date = datetime.date.today().strftime('%Y-%m-%d')
-        #cache_key = ('hmld', self.frequency, self.start_date, self.end_date, current_date)
-        #data, cached_end_date = self.cache.get(cache_key, default=(None, None))
-
-        #if data is not None and (self.end_date is None or self.end_date <= cached_end_date):
-        #    print("Data retrieved from cache.")
-        #    return data['HML_Devil'] if series else data
-        xls = self._aqr_download_data()
+        xls = self._aqr_download_xls()
         data = self._aqr_process_data(xls)
 
         if self.start_date:
@@ -91,10 +95,12 @@ class HMLDevil:
         return data
 
 
-    def _aqr_download_data(self):  #FIX:context manager!
-        with HttpClient(timeout=8.0) as client:  # 12 hr cache for daily? 24 hr
-                                                 # from filecr date (aqr upload time?)
-            resp = client.download(self.url, cache_ttl=43200)
+    def _aqr_download_xls(self) -> pd.ExcelFile:
+        with HttpClient(timeout=15) as client:  # should cache do 12? 24? Hours from the file modified dt?
+            # Really should check cache here! (cache_ttl was below frequency in
+            # init and errored the whole model?!)... Not good! FIXME FIXME after
+            # base model
+            resp = client.download(self.url)
             xls = pd.ExcelFile(BytesIO(resp))
             return xls
 
@@ -115,7 +121,7 @@ class HMLDevil:
 
         for sheet_index, sheet_name in sheets.items():
             df = df_dict[sheet_name]
-            # Only take USA column for non-RF sheets
+            # Only take USA column for non-RF sheets   # TODO: countries
             if sheet_index not in [8, 0]:  # 8 is RF, 0 is HML Devil
                 df = df[['USA']]
             else:
@@ -129,11 +135,11 @@ class HMLDevil:
 
         # Rename columns to standard factor names
         data.rename(columns={
-            'MKT': 'Mkt-RF', 
+            'MKT': 'Mkt-RF',     # TODO: double check!! This could just be mkt.
             'HML Devil': 'HML_Devil'
         }, inplace=True)
 
-        # Drops all data where hml_d is NaN
+        # Drops all data where HML_Devil is NaN
         data = data.dropna(subset=['HML_Devil'])
 
         return data

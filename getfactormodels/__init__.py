@@ -16,11 +16,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 __version__ = "0.0.6"
 
-from .models import (MispricingFactors, DHSFactors, ICRFactors, QFactors, 
-                     LiquidityFactors, CarhartFactors, HMLDevil, 
-                     FamaFrenchFactors, BarillasShankenFactors)
-
 from .__main__ import FactorExtractor, get_factors
+from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
+                     FamaFrenchFactors, HMLDevil, ICRFactors, LiquidityFactors,
+                     MispricingFactors, QFactors)
 
 __all__ = [ "MispricingFactors",
             "DHSFactors",
@@ -34,9 +33,8 @@ __all__ = [ "MispricingFactors",
             "FactorExtractor", 
             "get_factors",
            ]
-
 #TODO: kill, repurpose FactorExtractor() to extract factors.
 #TODO: cli moved
-#TODO: caching
+#DONE: caching
 #TODO: file writing
 #TODO: README.md usage needs to be updated to new classes

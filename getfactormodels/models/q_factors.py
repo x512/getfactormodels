@@ -14,12 +14,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pandas as pd
 import io
-#import diskcache as dc  # TODO: caching properly
-
-from getfactormodels.utils.utils import _process
+import pandas as pd
 from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.utils import _process
+
 
 class QFactors:
     #not really for docstr
@@ -116,4 +115,3 @@ class QFactors:
 
         return _process(data, self.start_date, self.end_date,
                         filepath=self.output_file)  # type err: TODO
-

@@ -14,12 +14,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import httpx    # changing from requests, testing first.
-import certifi  # adding certifi for CA with httpx
-import logging
 import hashlib
+import logging
 from typing import Optional, Union
-from .utils.cache import _Cache   # TESTING CACHE
+import certifi  # adding certifi for CA with httpx
+import httpx  # changing from requests, testing first.
+from .utils.cache import _Cache  # TESTING CACHE
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -31,6 +31,7 @@ class HttpClient:
                  default_cache_timeout: int = 86400): # 1 day default
         self.timeout = timeout
 
+        # TODO: should open connection only after cache checked
         self._client = httpx.Client(
             verify=certifi.where(),
             timeout=self.timeout,
@@ -46,9 +47,6 @@ class HttpClient:
 
         log.debug(f"HttpClient initialized. Cache directory: {self.cache.directory}")
 
-        #
-        # TODO: http2
-        #
     def close(self) -> None:
         log.debug("Closing connection and cache.")
         self._client.close()
@@ -83,7 +81,7 @@ class HttpClient:
             response.raise_for_status()
             data = response.content  # Always bytes
 
-            # Store in cache
+            # Store in cache: need to verify it
             self.cache.set(cache_key, data, expire_secs=cache_ttl)
             log.debug(f"CACHE WRITE SUCCESS: Stored {len(data)} bytes in cache.")
 

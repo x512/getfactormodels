@@ -14,12 +14,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #from __future__ import annotations
-import pandas as pd
-import zipfile
 import io
-import logging
-
+import logging  # TODO: FF logging! FIXME
+import zipfile
+import pandas as pd
 from getfactormodels.http_client import HttpClient
+
 
 class FamaFrenchFactors:
     # will do proper docstr later, this from this func

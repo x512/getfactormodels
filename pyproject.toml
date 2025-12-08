@@ -5,9 +5,11 @@ description = "Download datasets for various multifactor asset pricing models."
 authors = [
     { name = "S. Martin", email = "x512@pm.me" }
 ]
+exclude = ["**/*.ipynb"]
 license = "AGPL-3.0-or-later"
 readme = "README.md"
-keywords = ['finance', 'asset pricing', 'multifactor models', 'finance', 'price models', 'financial analysis']
+keywords = ['finance', 'asset pricing', 'multifactor models', 'finance',
+    'price models', 'financial analysis']
 classifiers = [
     "Topic :: Office/Business :: Financial",
     "Topic :: Scientific/Engineering :: Mathematics",
@@ -21,38 +23,35 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
 ]
 urls = { Homepage = "https://github.com/x512/getfactormodels" }
-requires-python = ">=3.9" #requests requires 3.9
+requires-python = ">=3.10"
+
 dependencies = [
     "pandas>=2.1.4",
-    "requests>=2.32.5",
-    "pyarrow>=19.1.0",
+    "pyarrow>=22.0.0",
     "openpyxl>=3.0.3",
-    "cachetools==5.3.2",
-    "diskcache",
+    "diskcache>=5.6.3",
     "httpx (>=0.28.1,<0.29.0)",
     "certifi (>=2025.11.12,<2026.0.0)",
+    "requests (>=2.32.5,<3.0.0)",   # Something's using it!
 ]
 
-[tool.poetry]
-exclude = ["**/*.ipynb"]
-
 [tool.poetry.group.dev.dependencies]
-ruff = "==0.14.7"
-pytest-cov = "*"
-pytest = ">=7.0"
-isort = ">=5.12"
-pytest-randomly = "*"
-nox = "==2023.4.22"
+ruff = "0.14.8"
+pytest-cov = ">=7.0.0"
+pytest = "^9.0"
+isort = "^7.0"
+pytest-randomly = ">=4.0.1"
+tox = "4.32.0"
 
 [project.scripts]
 getfactormodels = "getfactormodels.__main__:main"
 
-[tool.isort]
-lines_between_sections = false
-
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.isort]
+lines_between_sections = false
 
 [tool.ruff]
 line-length = 79
@@ -72,6 +71,10 @@ preview = true
 
 [tool.ruff.lint]
 exclude = [".git", ".git-rewrite",]
+
+# TODO: select/ignore, fixable/unfixable
+#select = ["E", "F", "W", "I"]                        # requires '--preview'
+#ignore = ["E501", "F401", "I001", "UP007", "ANN"]
 # run `ruff linter` to see all available rules
 ## see: docs.astral.sh/ruff/rules/
 select = ["E4", "E7", "E9", "F", "B",
@@ -82,8 +85,7 @@ select = ["E4", "E7", "E9", "F", "B",
           "TD005", "TD007", "E501",
           "FA", "FIX002", "ANN",   # fix
           "E261"]                        # requires '--preview'
-
-# Undo soon:
+# temp
 ignore = ["PD901",]
 
 # see: docs.astral.sh/ruff/configuration/

@@ -14,31 +14,32 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pandas as pd
 import io
+import pandas as pd
+from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.utils import \
+    _process  # tangled mess. after replacing req, untangle... TODO
 
-from getfactormodels.http_client import HttpClient #testing http_client with a few models
-from getfactormodels.utils.utils import _process   # tangled mess. after replacing req, untangle... TODO
-
-### TESTING CACHE
 
 class ICRFactors:
     def __init__(self, frequency='m', start_date=None, end_date=None,
                  output_file=None, cache_ttl: int = 86400):
-        self.frequency = frequency.lower()    #frequency check helper/normalizer needed
+        self.frequency = frequency.lower()    #TODO: base model ....
 
         if self.frequency not in ["d", "m", "q"]:  
             raise ValueError("Frequency must be 'd', 'm' or 'q'")
 
+        self.start_date = start_date
+        self.end_date = end_date
+        self.output_file = output_file
+        self.cache_ttl = cache_ttl
+
+        # _construct_url in a base TODO
         _file = {"d": "daily", "m": "monthly", "q": "quarterly"}.get(self.frequency)
         _url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
 
         self.url = _url
-        #self.client = HttpClient(timeout=8.0)
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        self.cache_ttl = cache_ttl   #test
+
 
     def download(self):
         """
@@ -50,13 +51,13 @@ class ICRFactors:
     def _download (self, start_date, end_date, output_file):
         """Download and process the Intermediary Capital Ratio factors data."""
         with HttpClient(timeout=5.0) as client:
-            _data = client.download(self.url, self.cache_ttl)   #handles caching now
+            _data = client.download(self.url, self.cache_ttl)
         
         if _data is None:
             print("Error downloading")
 
-        data = io.StringIO(_data.decode('utf-8'))  # Now models do this if they need, no as_bytes
-        # ----------------------------------
+        data = io.StringIO(_data.decode('utf-8'))
+       
         # back to pd, old func stuff
         df = pd.read_csv(data)
         df = df.rename(columns={df.columns[0]: "date"})

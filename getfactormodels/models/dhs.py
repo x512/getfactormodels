@@ -14,15 +14,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pandas as pd
 import io
-
+import pandas as pd
 from getfactormodels.http_client import HttpClient
-#from getfactormodels.models.ff_models import _get_ff_factors
-
 from getfactormodels.models.fama_french import FamaFrenchFactors
+from getfactormodels.utils.utils import \
+    _process  # TODO: URGENT: FIXME: Untangle this
 
-from getfactormodels.utils.utils import _process
 
 class DHSFactors:
     # roughing in infos, not approp for docstr but need TODO a reliable
@@ -62,8 +60,6 @@ class DHSFactors:
         self.output_file = output_file
         self.cache_ttl = cache_ttl   #test
 
-
-
     # do base class if we're repeating? later. TODO
     def download(self):
         """Download the DHS Behavioural factors."""
@@ -73,8 +69,7 @@ class DHSFactors:
         """Retrieve the DHS behavioural factors. Daily and monthly."""
         # - start, end, output: keeping here until _process, and the data transformations/date
         #   validations are untangled... TODO
-        
-        with HttpClient(timeout=5.0) as client:
+        with HttpClient() as client:
             _bytes = client.download(self.url, self.cache_ttl)
 
         _file = io.BytesIO(_bytes)

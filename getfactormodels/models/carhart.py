@@ -14,13 +14,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+#import logging #todo
 from getfactormodels.utils.utils import _process
 from .fama_french import FamaFrenchFactors
 
-import logging #todo
+
 #TODO: clean up getting ff, getting mom, this.
-#
-# still just using old func, just a wrapper
 class CarhartFactors:
     """Download the Carhart 4-Factor model data.
 
@@ -45,6 +44,7 @@ class CarhartFactors:
         self.output_file = output_file
 
     def download(self):
+        # Relies on FamaFrenchFactors.
         ff_data = FamaFrenchFactors(model='4', frequency=self.frequency,
                                  start_date=self.start_date, end_date=self.end_date)
         _data = ff_data.download()

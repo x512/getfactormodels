@@ -14,62 +14,64 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pandas as pd
 import io
+import pandas as pd
+from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.utils import \
+    _process  # tangled mess. after replacing req, untangle... TODO
 
-from getfactormodels.http_client import HttpClient #testing http_client with a few models
-from getfactormodels.utils.utils import _process   # tangled mess. after replacing req, untangle... TODO
 
 class MispricingFactors:
-    """
-    Retrieves the Stambaugh-Yuan (SY) mispricing factors
+    """Stambaugh-Yuan mispricing factors.
 
-    - Available in monthly (`m`) and daily (`d`) frequencies only.
-    - Factors: Mkt-RF, SMB_SY, RMW, CMA, RF
-    NOTE: Stambaugh-Yuan's Mispricing `SMB` factor is renamed from the source
-            data to `SMB_SY`.
+    - Frequencies: monthly ('m'), daily ('d')
+    - Factors: SMB_SY, RMW, CMA Mkt-RF, RF
+        * Note: the Mispricing SMB factor is renamed SMB_SY.
+    - Pub: R. F. Stambaugh and Y. Yuan, ‘Mispricing Factors’, The
+      Review of Financial Studies, vol. 30, no. 4, pp. 1270–1315,
+      12 2016.
+    - Source: https://finance.wharton.upenn.edu/~stambaug/ 
+    - Date: 01-01-1963 - 2016-12-31
     """
     def __init__(self, frequency = 'm', start_date=None, end_date=None,
-                 output_file=None):
+                 output_file=None, cache_ttl=86400):
 
         if frequency.lower() not in ["d", "m"]:
             raise ValueError("Mispricing factors are only available for daily (d) and "
                          "monthly (m) frequency.")
+        
         self.frequency = frequency.lower()
+        self.start_date = start_date
+        self.end_date = end_date
+        self.output_file = output_file
+        self.cache_ttl = cache_ttl
+
         _file_url = "M4d" if self.frequency == "d" else "M4"
         _url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}.csv"
         self.url = _url
 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-
-    def download(self):
-        """
-        Download Liquidity factors
-        """
-        # public func here?
-        # wrapper around _download
-        # do in base class
+    def download(self): 
+        """Download the Stambaugh-Yuan Mispricing factors."""
         return self._download(self.start_date, self.end_date, self.output_file)
 
     def _download(self, start_date, end_date, output_file):
         """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
-        # - start, end, output: keeping here until _process, and the data transformations/date
-        #   validations are untangled... TODO
-        with HttpClient(timeout=10.0) as client:
-            _data = client.download(self.url)
+        with HttpClient() as client:
+            _data = client.download(self.url, self.cache_ttl)
             _data = _data.decode('utf-8')
-        # this is/was done in util.get_file_from_url
-        data = io.StringIO(_data)
 
-        data = pd.read_csv(data, index_col=0, parse_dates=False,
-                            date_format="%Y%m%d", engine="pyarrow")
+        data = pd.read_csv(io.StringIO(_data),
+                           index_col=0,
+                           parse_dates=False,
+                           date_format="%Y%m%d",
+                           engine="pyarrow")
+
         data = data.rename(columns={"SMB": "SMB_SY",
-                                     "MKTRF": "Mkt-RF"}).rename_axis("date")
+                                    "MKTRF": "Mkt-RF"}).rename_axis("date")
 
         if self.frequency == "d":
             data.index = pd.to_datetime(data.index, format="%Y%m%d")
+
         elif self.frequency == "m":
             data.index = pd.to_datetime(data.index, format="%Y%m")
             data.index = data.index + pd.offsets.MonthEnd(0)

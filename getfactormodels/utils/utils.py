@@ -14,14 +14,14 @@ __model_input_map = MappingProxyType({
     "5": r"\b(ff)?5|ff2015\b",
     "4": r"\b(c(ar(hart)?)?4?|ff4|carhart1997|4)\b",
     "6": r"\b(ff)?6|ff2018\b",
-    "q": r"\b(q(5)?|hmxz)\b",
-    "q_classic": r"\b(q4|q(_)?classic)|classic_q\b",
-    "mispricing": r"\b(sy4?|mispricing)|misp|yuan$|m4|mis|sy\b",
-    "liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
-    "icr": r"\bicr|hkm\b",
-    "dhs": r"^(\bdhs\b|behav.*)$",
-    "hml_devil": r"\bhml(_)?d(evil)?|hmld\b",
-    "barillas_shanken": r"\b(bs|bs6|barillas|shanken)\b", })
+    "Q": r"\b(q(5)?|hmxz)\b",
+    "Qclassic": r"\b(q4|q(_)?classic)|classic_q\b",
+    "Mispricing": r"\b(sy4?|mispricing)|misp|yuan$|m4|mis|sy\b",
+    "Liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
+    "ICR": r"\bicr|hkm\b",
+    "DHS": r"^(\bdhs\b|behav.*)$",
+    "HMLDevil": r"\bhml(_)?d(evil)?|hmld\b",
+    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b", })
 
 
 def _get_model_key(model):

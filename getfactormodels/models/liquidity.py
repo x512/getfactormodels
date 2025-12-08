@@ -13,11 +13,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pandas as pd
 import io
-
+import pandas as pd
 from getfactormodels.http_client import HttpClient
 from getfactormodels.utils.utils import _process
+
 #TODO: type everything...
 """
 Download the 'Pastor-Stambaugh liquidity series' data from Robert F. Stambaugh's 
@@ -30,7 +30,7 @@ Download the 'Pastor-Stambaugh liquidity series' data from Robert F. Stambaugh's
 ### NOTE: ISSUE: TODO: FIXME: the first 65 NaN values are 0.00
 class LiquidityFactors:
     def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, cache_ttl=604800): #monthly data, daily cache for now (need util to find if its near end of month etc
+                 output_file=None, cache_ttl=86400): #monthly data, daily cache for now (need util to find if its near end of month etc
         self.frequency = frequency.lower()
 
         if self.frequency != 'm':

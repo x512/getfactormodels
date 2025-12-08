@@ -28,7 +28,7 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 **Requirements:**
 
-- Python ``>=3.9``.
+- Python ``>=3.10``.
 
 The easiest way to install getfactormodels is via ``pip``:
 
@@ -37,12 +37,14 @@ The easiest way to install getfactormodels is via ``pip``:
   ```
 
 ## Usage
+**USAGE NEEDS REWRITE. TODO TODO TODO**
+
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 
-After installation, import ``getfactormodels``, then call the ``get_factors()`` function using the ``model`` and ``frequency`` parameters.
+After installation, import ``getfactormodels``, then call ``get_factors()`` with the ``model`` and ``frequency`` parameters.
 
 - For example, to get the data for the ${q}^{5}$-factors:
 
@@ -84,38 +86,52 @@ After installation, import ``getfactormodels``, then call the ``get_factors()`` 
   ```python
   import getfactormodels as gfm
   
-  df = gfm.get_factors(model='mispricing', start_date='1970-01-01', end_date=1999-12-31, output='mispricing_factors.csv')
+  df = gfm.get_factors(model='mispricing', start_date='1970-01-01', 
+                       end_date=1999-12-31, output='mispricing_factors.csv')
   ```
 
   >``output`` can be a filename, directory, or path. If no extension is specified, defaults to .csv (can be one of: .xlsx, .csv, .txt, .pkl, .md)
 
 You can import only the models that you need:
 
+
 * For example, to import only the *ICR* and *q-factor* models:
 
   ```python
-  from getfactormodels import icr_factors, q_factors
+  from getfactormodels import ICRFactors, QFactors
 
-  # Passing a model function without params defaults to monthly data.
-  df = icr_factors()
+  # Passing a model class without params defaults to monthly data.
+  icr = ICRFactors()
+  df = icr.download()
 
-  # The 'q' models, and the 3-factor model of Fama-French have weekly data available:
-  df = q_factors(frequency="W", start_date="1992-01-01, output='.xlsx')
+  # The 'q' models, and the 3-factor model of Fama-French have weekly data available
+  df = QFactors(frequency='w', start_date='1992-05-22', end_date='2019-01-05').download()
+  print(df.tail(3))
+  
   ```
 
-  >``output`` allows just a file extension (with the `.`, else it'll be passed as a filename).
+  >``All modules: HMLDevil, CarhartFactors, FamaFrenchFactors, QFactors,
+  LiquidityFactors, MispricingFactors, BarillasShankenFactors, ICRFactors,
+  DHSFactors``
 
-* When using `ff_factors()`, specify an additional `model` parameter (**this might be changed**):
+  >``output_file`` ...
+
+* All models include the same parameters: `frequency`, `start_date`, `end_date`, `output_file`.
+
+Additionally:
+* `FamaFrenchFactors()` has a `model=` param. Accepts `3` `4` (Carhart) `5` `6` (default: '3') int or str.
+* `QFactors()` has a `classic=` bool param (default: false) for returing the 4-Factor Q-Factor model (2015).
   
   ```python
   # To get annual data for the 5-factor model:
-  data = ff_factors(model="5", frequency="Y", output=".xlsx")
+  data = FamaFrenchFactors(frequency="y", model=5, start_date='1970-01-01', end_date='2000-01-01' output="yes.xlsx") #model can be int or str
 
-  # Daily 3-factor model data, since 1970 (not specifying an end date
-  # will return data up until today):
-  data = ff_factors(model="3", frequency="D", start_date="1970-01-01")
+  # Monthly 3-factor model data, since 1970 (not specifying an end date 
+  #  will return data up until today).
+  data = FamaFrenchFactors(model="3", frequency="m", start_date="1970-01-01")
   ```
 
+# IGNORE THIS
 There's also the ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI):
 
   ```python
@@ -138,7 +154,10 @@ There's also the ``FactorExtractor`` class (which doesn't do much yet, it's main
 
 >``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
 
+## REWRITE ME
 ### CLI
+
+__This is old but should still work until redo.__
 
 Requires ``bash >=4.2``
 
