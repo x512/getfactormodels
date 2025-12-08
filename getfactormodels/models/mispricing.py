@@ -59,7 +59,7 @@ class MispricingFactors:
         #   validations are untangled... TODO
         with HttpClient(timeout=10.0) as client:
             _data = client.download(self.url)
-
+            _data = _data.decode('utf-8')
         # this is/was done in util.get_file_from_url
         data = io.StringIO(_data)
 

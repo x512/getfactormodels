@@ -43,7 +43,7 @@ class DHSFactors:
     * Warnings: depr notice, wrap in bytesIO
     """
     def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=''):
+                 output_file=None, cache_ttl: int = 86400):
         #validate freq
         self.frequency = frequency.lower()
 
@@ -60,6 +60,8 @@ class DHSFactors:
         self.end_date = end_date
         # if start or end date, parse dates with pa ?
         self.output_file = output_file
+        self.cache_ttl = cache_ttl   #test
+
 
 
     # do base class if we're repeating? later. TODO
@@ -73,11 +75,10 @@ class DHSFactors:
         #   validations are untangled... TODO
         
         with HttpClient(timeout=5.0) as client:
-            _file = client.download(self.url, as_bytes=True)
-        # download_bytes as a wraper around download that will just decide whether
-        # bytes (gsheets link, model id?) or not.
+            _bytes = client.download(self.url, self.cache_ttl)
 
-        # BytesIO -- Excel files aren't text
+        _file = io.BytesIO(_bytes)
+
         data = pd.read_excel(_file, index_col="Date",
                          usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
                          header=0, parse_dates=False)

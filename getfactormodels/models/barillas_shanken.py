@@ -4,6 +4,8 @@ from .q_factors import QFactors
 from .hml_devil import HMLDevil
 import pandas as pd
 
+#TODO: logging
+
 class BarillasShankenFactors:
     """Class for Barillas-Shanken 6-Factor Model"""
     def __init__(self, frequency='m', start_date=None, end_date=None,

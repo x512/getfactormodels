@@ -47,7 +47,7 @@ class FamaFrenchFactors:
         self.frequency = frequency.lower()
         self.start_date = start_date if start_date else None
         self.end_date = end_date if start_date else None
-        self.model = model
+        self.model = str(model) #allow str, '3', or int, 3, for ff model numbers
 
         self._validate()
         self.url = self._construct_url()
@@ -96,10 +96,12 @@ class FamaFrenchFactors:
     def _download_and_read_zip(url: str, freq: str = None):
         """Download and read CSV from zip file."""
         with HttpClient(timeout=10.0) as client:
-            data = client.download(url, as_bytes=True)
+            _data = client.download(url)
+
+        #data = io.StringIO(_data.decode('utf-8'))
 
         try:
-            with zipfile.ZipFile(io.BytesIO(data)) as zip_file:
+            with zipfile.ZipFile(io.BytesIO(_data)) as zip_file:
                 filename = zip_file.namelist()[0]
 
                 with zip_file.open(filename) as file:

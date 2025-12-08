@@ -17,48 +17,77 @@
 import httpx    # changing from requests, testing first.
 import certifi  # adding certifi for CA with httpx
 import logging
+import hashlib
+from typing import Optional, Union
+from .utils.cache import _Cache   # TESTING CACHE
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 class HttpClient:
-    """Simple http client: wrapper around httpx.Client."""
-    # retries and backoff factor might be good later... TODO.
-    def __init__(self, timeout: 15.0):  #TODO: fix type hint on timeout
+    """Simple http client: wrapper around httpx.Client with caching."""
+    def __init__(self, timeout: Union[float, int] = 15.0, #fixed:type hint...
+                 cache_dir: str = '~/.getfactormodels_cache',  # TODO: xdg cache
+                 default_cache_timeout: int = 86400): # 1 day default
         self.timeout = timeout
+
         self._client = httpx.Client(
             verify=certifi.where(),
             timeout=self.timeout,
             follow_redirects=True,
             max_redirects=3,
         )
+
+        # cache
+        self.cache = _Cache(
+            cache_dir=cache_dir,
+            default_timeout=default_cache_timeout
+        )
+
+        log.debug(f"HttpClient initialized. Cache directory: {self.cache.directory}")
+
         #
         # TODO: http2
         #
     def close(self) -> None:
-        log.debug("closing connection.")
+        log.debug("Closing connection and cache.")
         self._client.close()
+        self.cache.close()
 
     def __enter__(self):
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb): #fix
+    def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
 
-    def download(self, url: str, as_bytes: bool = False):   #TODO type 
+    def _generate_cache_key(self, url: str) -> str:
+        """Generates a cache key/hash for the URL."""
+        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+
+    def download(self, url: str, cache_ttl: Optional[int] = None) -> bytes:
         """Downloads content from a given URL.
-        args :
-            as_bytes: returns bytes if True, str if false
+           cache_ttl: int, secs
         """
-        # TODO, seperate download_bytes?
+        cache_key = self._generate_cache_key(url)
+        cached_data = self.cache.get(cache_key)
+
+        if cached_data is not None:
+            log.info(f"Cache hit: {url}")
+            return cached_data
+
+        log.info(f"Cache miss: {url}")
+
         try:
-            log.info(f"Connecting: {url}...")
+            log.debug(f"Connecting: {url[:30]}...")
             response = self._client.get(url)
             response.raise_for_status()
-            if as_bytes:
-                return response.content
-            else:
-                return response.text
+            data = response.content  # Always bytes
+
+            # Store in cache
+            self.cache.set(cache_key, data, expire_secs=cache_ttl)
+            log.debug(f"CACHE WRITE SUCCESS: Stored {len(data)} bytes in cache.")
+
+            return data
         except httpx.HTTPStatusError as e:
             log.error(f"HTTP error {e.response.status_code} for {url}")
             raise ConnectionError(f"HTTP error: {e.response.status_code}")
@@ -68,10 +97,6 @@ class HttpClient:
 
     def check_connection(self, url: str) -> bool:
         """Simple url ping."""
-        #
-        # TODO: improve check (try HEAD, check status code value. then try GET)
-        #    if file url isn't avail, check if base url is good, etc...
-        #    handle errors
         check_timeout = 4.0
 
         try:
@@ -89,4 +114,3 @@ class HttpClient:
 
         except Exception:
             return False
-

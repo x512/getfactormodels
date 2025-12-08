@@ -45,10 +45,10 @@ class CarhartFactors:
         self.output_file = output_file
 
     def download(self):
-        data = FamaFrenchFactors(model='4', frequency=self.frequency,
+        ff_data = FamaFrenchFactors(model='4', frequency=self.frequency,
                                  start_date=self.start_date, end_date=self.end_date)
-        data = data.download()
-        if data is None:
+        _data = ff_data.download()
+        if _data is None:
             raise ValueError("ERR: returned data is None?")
 
-        return _process(data, self.start_date, self.end_date, self.output_file)
+        return _process(_data, self.start_date, self.end_date, self.output_file)

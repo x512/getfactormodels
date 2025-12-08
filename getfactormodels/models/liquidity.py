@@ -29,7 +29,8 @@ Download the 'Pastor-Stambaugh liquidity series' data from Robert F. Stambaugh's
 """
 ### NOTE: ISSUE: TODO: FIXME: the first 65 NaN values are 0.00
 class LiquidityFactors:
-    def __init__(self, frequency='m', start_date=None, end_date=None, output_file=None):
+    def __init__(self, frequency='m', start_date=None, end_date=None,
+                 output_file=None, cache_ttl=604800): #monthly data, daily cache for now (need util to find if its near end of month etc
         self.frequency = frequency.lower()
 
         if self.frequency != 'm':
@@ -43,6 +44,8 @@ class LiquidityFactors:
         #self.client = HttpClient(timeout=5.0)
         #self.url = 'https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt'
         self.url = 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
+        self.cache_ttl = cache_ttl   #test
+
     def download(self):
         return self._download(self.start_date, self.end_date, self.output_file)
 
@@ -50,10 +53,11 @@ class LiquidityFactors:
     def _download(self, start_date, end_date, output_file):
         with HttpClient(timeout=5.0) as client:
             #TODO make timeout Optional
-            data = client.download(self.url)
+            _data = client.download(self.url, self.cache_ttl)
 
         # simple validate data returned TODO
-        data = io.StringIO(data)  # couldnt get it to work til this
+        data = _data.decode('utf-8')
+        data = io.StringIO(data)
         
         # Headers are last commented line
         headers = [line[1:].strip().split('\t')

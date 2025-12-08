@@ -47,7 +47,7 @@ class QFactors:
     # Note: weekly wednesday-to-wednesday needs to be added TODO
     # Need to do all typing everywhere
     def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, classic=False): # classic=False default
+                 output_file=None, classic=False, cache_ttl: int = 86400): # classic=False default
         self.frequency = frequency.lower()
         
         if self.frequency not in ["d", "m", "q"]: 
@@ -64,6 +64,7 @@ class QFactors:
         self.end_date = end_date
         self.output_file = output_file
      #   self.client = HttpClient(timeout=8.0)
+        self.cache_ttl = cache_ttl   #test
 
     def download(self) -> pd.DataFrame:
         """public wrapper."""
@@ -74,11 +75,13 @@ class QFactors:
         Downloads the factor data using HttpClient and processes it.
         This method will use the attributes set during class instantiation.
         """
-        with HttpClient(timeout=5.0) as client:
-            _file = client.download(self.url)
+        with HttpClient(timeout=8.0) as client:
+            _data = client.download(self.url, self.cache_ttl)
+
+        _file = io.StringIO(_data.decode('utf-8'))
 
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
-        data = pd.read_csv(io.StringIO(_file), parse_dates=False, index_col=index_cols, float_precision="high")
+        data = pd.read_csv(_file, parse_dates=False, index_col=index_cols, float_precision="high")
 
         if self.classic:
             data = data.drop(columns=["R_EG"])

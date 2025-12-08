@@ -1,6 +1,7 @@
 # TODO: break this all up into models/*.py !
 # TODO: httpx, a client class, model classes... 
 from __future__ import annotations
+from functools import cache
 from io import BytesIO
 from typing import Optional, Union
 #import diskcache as dc
@@ -46,7 +47,7 @@ class HMLDevil:
 
         self.url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-        # From func - cache stuff
+        # From func - cache stuff -- OLD CACHE STUFF
         #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
         #self.cache_dir.mkdir(parents=True, exist_ok=True)
         #self.cache = dc.Cache(str(self.cache_dir)) # diskcache requires a string path
@@ -65,6 +66,7 @@ class HMLDevil:
         """
         Retrieves the HML Devil factors, using cache if available.
         """
+        #OLD CACHE STUFF
         #current_date = datetime.date.today().strftime('%Y-%m-%d')
         #cache_key = ('hmld', self.frequency, self.start_date, self.end_date, current_date)
         #data, cached_end_date = self.cache.get(cache_key, default=(None, None))
@@ -80,6 +82,7 @@ class HMLDevil:
         if self.end_date:
             data = data[data.index <= self.end_date]
 
+        # Will be a util for file writer. TODO
         #actual_end_date = data.index.max().strftime('%Y-%m-%d') if not data.empty else self.end_date
         #self.cache[cache_key] = (data, actual_end_date)
 
@@ -89,12 +92,13 @@ class HMLDevil:
 
 
     def _aqr_download_data(self):  #FIX:context manager!
-        with HttpClient(timeout=8.0) as client:
-            resp = client.download(self.url, as_bytes=True)
+        with HttpClient(timeout=8.0) as client:  # 12 hr cache for daily? 24 hr
+                                                 # from filecr date (aqr upload time?)
+            resp = client.download(self.url, cache_ttl=43200)
             xls = pd.ExcelFile(BytesIO(resp))
             return xls
 
-
+    # FIXME: takes ages reading (not just downloading) TODO TODO
     def _aqr_process_data(self, xls: pd.ExcelFile) -> pd.DataFrame:
         """Process the downloaded Excel file."""
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
@@ -129,7 +133,10 @@ class HMLDevil:
             'HML Devil': 'HML_Devil'
         }, inplace=True)
 
-        # Drops all data where hml_d is NaN   TODO: add to hmld
+        # Drops all data where hml_d is NaN
         data = data.dropna(subset=['HML_Devil'])
 
         return data
+
+# TODO: can see the last modified date in debug log; possibly set cache
+# according to this
