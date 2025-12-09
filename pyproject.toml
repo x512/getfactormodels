@@ -1,6 +1,6 @@
 [project]
 name = "getfactormodels"
-version = "0.0.6"
+version = "0.0.7"
 description = "Download datasets for various multifactor asset pricing models."
 authors = [
     { name = "S. Martin", email = "x512@pm.me" }
