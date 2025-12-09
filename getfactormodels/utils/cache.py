@@ -4,8 +4,8 @@ from pathlib import Path
 from typing import Optional
 from diskcache import Cache
 
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.ERROR)
+log = logging.getLogger(__name__)
 
 class _Cache:
     def __init__(self, cache_dir='~/.getfactormodels_cache',
@@ -16,7 +16,7 @@ class _Cache:
         self.cache = Cache(str(cache_path))
         self.default_timeout = default_timeout
 
-        logging.info(f"Cache initialized at: {cache_path}")
+        log.debug(f"Cache initialized at: {cache_path}")
 
     @property
     def directory(self) -> str:
@@ -26,9 +26,9 @@ class _Cache:
         """Retrieves data from cache if valid, otherwise returns None."""
         data = self.cache.get(key)
         if data is not None:
-            logging.debug(f"Cache hit, key: {key}")
+            log.debug(f"Cache hit, key: {key}")
         else:
-            logging.debug(f"Cache miss, key: {key}")
+            log.debug(f"Cache miss, key: {key}")
         return data
 
     def set(self, key: str, data: bytes, expire_secs: Optional[int] = None):
@@ -36,12 +36,12 @@ class _Cache:
         timeout = expire_secs if expire_secs is not None else self.default_timeout
         try:
             self.cache.set(key, data, expire=timeout)
-            logging.debug(f"Data saved to cache for key: {key}, expires in {timeout}s")
+            log.debug(f"Data saved to cache for key: {key}, expires in {timeout}s")
         except Exception as e:
-            logging.error(f"Failed to write to cache for key {key}: {e}")
+            log.error(f"Failed to write to cache for key {key}: {e}")
 
     def close(self):
-        logging.debug("Closing cache.")
+        log.debug("Closing cache.")
         self.cache.close()
 
     def __enter__(self):

@@ -21,32 +21,29 @@ from getfactormodels.utils.utils import _process
 
 
 class QFactors:
-    #not really for docstr
-    """Download the q or q-classic factor models.
-    - q5-factor model
-    - Classic q-factor model of Hou, Xue, and Zhang (2015).
-    - decimals: 4
-    - Authors: Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang (2021);
-      Hou, Kewei, Chen Xue, and Lu Zhang (2015).
-    Sources:
-    - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An
-      augmented q-factor model with expected growth, Review of Finance
-      25 (1), 1-41. Editor's Choice. This article constructs the
-      expected growth factor in the q5 model from January 1967 onward.
-    - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An
-      investment approach, Review of Financial Studies 28 (3), 650-705.
-      Editor's Choice. This article constructs the q-factors series
-      from January 1972 onward.
-    - data source: https://global-q.org/factors.html
     """
-    # Changed (from func):
-    # freq.uppercase to lowercase
-    # stringIO needs to be wrapped around file
-    # dropped numpy, again the model only used it for multiply.
-    # Note: weekly wednesday-to-wednesday needs to be added TODO
-    # Need to do all typing everywhere
+    Download the q or q5 factor models from global-q.org.
+
+    params:
+        frequency (str): The data frequency ('d', 'w', 'm', 'q', 'y'). Defaults to 'm'.
+        start_date (str, datetime): The start date YYYY-MM-DD
+        end_date (str, datetime): The end date YYYY-MM-DD
+        output_file (str):
+        classic (bool): If True, returns the classic 4-factor model (drops R_EG).
+        cache_ttl (int): Time-to-live for cache in seconds (default 86400s/1 day).
+
+    Sources:
+
+    - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented q-factor model
+      with expected growth, Review of Finance 25 (1), 1-41. (q5 model)
+    - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An investment
+      approach, Review of Financial Studies 28 (3), 650-705. (Classic q-factor model)
+    
+    Data Source URL: https://global-q.org/factors.html
+    """
+    # Note: weekly wednesday-to-wednesday needs to be added TODO:
     def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, classic=False, cache_ttl: int = 86400): # classic=False default
+                 output_file=None, classic=False, cache_ttl: int = 86400):
         self.frequency = frequency.lower()
         
         if self.frequency not in ["d", "m", "w", "q"]:
@@ -57,16 +54,14 @@ class QFactors:
                 "q": "quarterly",
                 "w": "weekly",
                 "y": "annual", }.get(self.frequency)
-        self.classic = classic   # store the state
+        self.classic = classic
         self.url = f'https://global-q.org/uploads/1/2/2/6/122679606/q5_factors_{self.file}_2024.csv' # TODO: YEAR
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
-     #   self.client = HttpClient(timeout=8.0)
-        self.cache_ttl = cache_ttl   #test
+        self.cache_ttl = cache_ttl
 
     def download(self) -> pd.DataFrame:
-        """public wrapper."""
         return self._download()
 
     def _download(self) -> pd.DataFrame:
@@ -114,4 +109,4 @@ class QFactors:
         data = data.rename(columns={"R_MKT": "Mkt-RF"})
 
         return _process(data, self.start_date, self.end_date,
-                        filepath=self.output_file)  # type err: TODO
+                        filepath=self.output_file)

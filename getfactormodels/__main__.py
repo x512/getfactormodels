@@ -24,8 +24,7 @@ from getfactormodels.models.hml_devil import HMLDevil
 from getfactormodels.models.q_factors import QFactors
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
-
-#import logging  #TODO
+import logging  #TODO
 
 #
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped

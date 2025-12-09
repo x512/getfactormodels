@@ -18,17 +18,24 @@ import pandas as pd
 from getfactormodels.http_client import HttpClient
 from getfactormodels.utils.utils import _process
 
-#TODO: type everything...
-"""
-Download the 'Pastor-Stambaugh liquidity series' data from Robert F. Stambaugh's 
-- Factors: AGG_LIQ, INNOV_LIQ, TRADED_LIQ
-
-- Pub: L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock Returns’, 
-  Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
-- Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
-"""
 ### NOTE: ISSUE: TODO: FIXME: the first 65 NaN values are 0.00
 class LiquidityFactors:
+    """Download the Pastor-Stambaugh Liquidity factors from Robert F. Stambaugh's website.
+
+    * Only available in monthly data.
+
+    params:
+        frequency (str): The data frequency. 'm'
+        start_date (str, datetime):
+        end_date (str, datetime):
+        output_file
+        
+    Source:
+    - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock Returns’, 
+      Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
+    - Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
+
+    """
     def __init__(self, frequency='m', start_date=None, end_date=None,
                  output_file=None, cache_ttl=86400): #monthly data, daily cache for now (need util to find if its near end of month etc
         self.frequency = frequency.lower()
@@ -41,7 +48,6 @@ class LiquidityFactors:
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
-        #self.client = HttpClient(timeout=5.0)
         #self.url = 'https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt'
         self.url = 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
         self.cache_ttl = cache_ttl   #test

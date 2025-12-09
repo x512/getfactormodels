@@ -14,7 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-__version__ = "0.0.6"
+__version__ = "0.0.7"
 
 from .__main__ import FactorExtractor, get_factors
 from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
@@ -33,8 +33,4 @@ __all__ = [ "MispricingFactors",
             "FactorExtractor",
             "get_factors",
            ]
-#TODO: kill, repurpose FactorExtractor() to extract factors.
-#TODO: cli moved
-#DONE: caching
-#TODO: file writing
-#TODO: README.md usage needs to be updated to new classes
+

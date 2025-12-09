@@ -21,8 +21,8 @@ from pathlib import Path
 from types import MappingProxyType
 import pandas as pd
 
-logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger(__name__) #TODO: logging
+logging.basicConfig(level=logging.ERROR) #default
+log = logging.getLogger(__name__) #TODO: consistent logging.
 
 __model_input_map = MappingProxyType({
     "3": r"\b((f?)f)?3\b|(ff)?1993",
@@ -42,8 +42,6 @@ __model_input_map = MappingProxyType({
 def _get_model_key(model):
     """
     Convert a model name to a model key.
-    * This provides more flexibility in input by converting various model names
-    to a standardized model key.
 
     >>> _get_model_key('ff1993')
     '3'
@@ -60,6 +58,7 @@ def _get_model_key(model):
         if re.match(regex, model, re.I):
             return key
     raise ValueError(f'Invalid model: {model}')
+
 
 # TODO: Will redo as a Writer class with use pyarrow
 # changing: no longer uses filename, output_dir, just filepath. Always returns Path 
@@ -78,43 +77,7 @@ def _prepare_filepath(filepath=None) -> Path:
         print(f"Directory provided, creating: {filepath.name}")
     
     return filepath
-#def _prepare_filepath(filepath=None, filename=None, output_dir=None): # NOTE: filename and output_dir are the old way, need to remove them.
-    #filepath = Path(filepath).expanduser()
- #   if filepath is None:
- #       timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
- #       filepath = Path.cwd() / f"data_{timestamp}.csv"
- #       print(f"No filepath provided, creating: {filepath.name}")
- #       return filepath
- #   
- #   filepath = Path(filepath).expanduser()
-#   # directory: create a timestamped filename
- #   if filepath.is_dir():
- #       timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
- #       filepath = filepath / f"data_{timestamp}.csv"
- #       print(f"No filename provided, creating: {filepath.name}")
- #   
- #       return filepath
- #   
- #   # [OLD] filename and output_dir are still in use at the moment, so keeping them here
- #   if filename and output_dir:
- #       output_dir = Path(output_dir).expanduser()
- #       return output_dir / filename
- #   
- #   # [OLD] just filename, save it to current dir
- #   if filename:
- #       return Path.cwd() / filename
- #   
- #   # [OLD] just output_dir, create timestamped file
- #   if output_dir:
- #       output_dir = Path(output_dir).expanduser()
- #       timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
- #       return output_dir / f"data_{timestamp}.csv"
-    
-    # Default: create timestamped file in current directory
- #   timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
- #   filepath = Path.cwd() / f"data_{timestamp}.csv"
- #   print(f"Creating file: {filepath.name}")
- #   return filepath
+
 
 def _save_to_file(data, filepath=None):
     if not isinstance(data, (pd.DataFrame, pd.Series)):
@@ -128,7 +91,7 @@ def _save_to_file(data, filepath=None):
  
     if full_path.is_file():
         print(f'File exists: {full_path.name} - overwriting...')
-    
+
     try:
         if extension == '.txt':
             data.to_csv(str(full_path), sep='\t')
@@ -139,11 +102,11 @@ def _save_to_file(data, filepath=None):
         elif extension == '.pkl':
             data.to_pickle(str(full_path))
        # elif extension == '.md':
-       #     data.to_markdown(str(full_path))
+       #    #.md removed for now 
         else:
-            supported = ['.txt', '.csv', '.xlsx', '.pkl', '.md']
+            supported = ['.txt', '.csv', '.xlsx', '.pkl']
             raise ValueError(f'Unsupported file extension: {extension}. Must be one of: {supported}')
-        
+
         print(f"File saved to: {full_path}")
     except Exception as e:
         raise IOError(f"Failed to save file to {full_path}: {str(e)}")
@@ -162,11 +125,11 @@ def _pd_rearrange_cols(data):
     
     if 'Mkt-RF' in cols:
         cols.insert(0, cols.pop(cols.index('Mkt-RF')))
-        logging.debug("`Mkt-RF` column moved to start")
+        log.debug("`Mkt-RF` column moved to start")
 
     if 'RF' in cols:
         cols.append(cols.pop(cols.index('RF')))
-        logging.debug("`RF` column moved to end of df.")
+        log.debug("`RF` column moved to end of df.")
 
     return data.loc[:, cols]
 

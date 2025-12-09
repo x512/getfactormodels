@@ -18,9 +18,7 @@ import io
 import pandas as pd
 from getfactormodels.http_client import HttpClient
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.utils import \
-    _process  # TODO: URGENT: FIXME: Untangle this
-
+from getfactormodels.utils.utils import _process
 
 class DHSFactors:
     # roughing in infos, not approp for docstr but need TODO a reliable
@@ -42,7 +40,6 @@ class DHSFactors:
     """
     def __init__(self, frequency='m', start_date=None, end_date=None,
                  output_file=None, cache_ttl: int = 86400):
-        #validate freq
         self.frequency = frequency.lower()
 
         if self.frequency == 'm':
@@ -53,14 +50,11 @@ class DHSFactors:
             raise ValueError("Frequency must be daily ('d') or monthly ('m')")
 
         self.url = f'https://docs.google.com/spreadsheets/d/{gs_id}/export?format=xlsx' #possibly unbound
-        #input validations
         self.start_date = start_date
         self.end_date = end_date
-        # if start or end date, parse dates with pa ?
         self.output_file = output_file
         self.cache_ttl = cache_ttl   #test
 
-    # do base class if we're repeating? later. TODO
     def download(self):
         """Download the DHS Behavioural factors."""
         return self._download(self.start_date, self.end_date, self.output_file)
@@ -85,7 +79,6 @@ class DHSFactors:
             data.index = pd.to_datetime(data.index, format="%Y%m")
             data.index = data.index + pd.offsets.MonthEnd(0)
 
-        # decimalize
         data = data * 0.01    # TODO: Decimal types possibly
 
         # Need Fama-French Factors -- only model without rf or mkt-rf?
@@ -103,5 +96,4 @@ class DHSFactors:
         data.index.name = "date"
 
         return _process(data, start_date, end_date, filepath=output_file)
-    # There's a second sheet, 'Details' wh. Construction, Universe, Period, More details
-    # TODO: when decided on implementing .info()
+

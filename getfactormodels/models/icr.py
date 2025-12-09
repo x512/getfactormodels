@@ -17,11 +17,19 @@
 import io
 import pandas as pd
 from getfactormodels.http_client import HttpClient
-from getfactormodels.utils.utils import \
-    _process  # tangled mess. after replacing req, untangle... TODO
+from getfactormodels.utils.utils import _process
 
 
 class ICRFactors:
+    """Download the Intermediary Capital Ratio (ICR) Factors from Zhiguo He's website.
+
+    params:
+        frequency (str): The data frequency ('d', 'm', 'q'). Defaults to 'm'.
+        start_date (str, datetime): The start date YYYY-MM-DD for the factor data
+        end_date (str, datetime): The end date YYYY-MM-DD
+        output_file (str)
+        cache_ttl (int): Time-to-live for cache in seconds (default: 86400).
+    """
     def __init__(self, frequency='m', start_date=None, end_date=None,
                  output_file=None, cache_ttl: int = 86400):
         self.frequency = frequency.lower()    #TODO: base model ....

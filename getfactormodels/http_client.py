@@ -17,17 +17,17 @@
 import hashlib
 import logging
 from typing import Optional, Union
-import certifi  # adding certifi for CA with httpx
-import httpx  # changing from requests, testing first.
-from .utils.cache import _Cache  # TESTING CACHE
+import certifi
+import httpx
+from .utils.cache import _Cache
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)  # reset to ERR(in one loc) before updating build.
 log = logging.getLogger(__name__)
 
 class HttpClient:
     """Simple http client: wrapper around httpx.Client with caching."""
-    def __init__(self, timeout: Union[float, int] = 15.0, #fixed:type hint...
-                 cache_dir: str = '~/.getfactormodels_cache',  # TODO: xdg cache
+    def __init__(self, timeout: Union[float, int] = 15.0,
+                 cache_dir: str = '~/.getfactormodels_cache',  # TODO: xdg
                  default_cache_timeout: int = 86400): # 1 day default
         self.timeout = timeout
 
@@ -39,7 +39,6 @@ class HttpClient:
             max_redirects=3,
         )
 
-        # cache
         self.cache = _Cache(
             cache_dir=cache_dir,
             default_timeout=default_cache_timeout
@@ -93,8 +92,8 @@ class HttpClient:
             log.error(f"Network error for {url}: {e}")
             raise ConnectionError(f"Request error: {e}")
 
-    def check_connection(self, url: str) -> bool:
-        """Simple url ping."""
+    def check_connection(self, url: str):
+        """Simple url ping. Boolean."""
         check_timeout = 4.0
 
         try:

@@ -99,7 +99,7 @@ class FamaFrenchFactors:
             _data = client.download(url)
 
         #data = io.StringIO(_data.decode('utf-8'))
-
+        # old func stuff from here. TODO: clean it
         try:
             with zipfile.ZipFile(io.BytesIO(_data)) as zip_file:
                 filename = zip_file.namelist()[0]
@@ -217,9 +217,9 @@ class FamaFrenchFactors:
 
         return df
 
-
     def download(self):
         return self._download(self.url)
+
 
     def _download(self, url) -> pd.DataFrame:
         try:
@@ -241,7 +241,7 @@ class FamaFrenchFactors:
             # and for aqr...: hmld will go back to 1926 full of nans, momentum
             # fills with nans til 1926 with the carhart 4, etc. atm. TODO.
 
-            # Decimalize  -- make helper. Keep last step here. Finicky.
+            # Decimalize. Keep here for now. Finicky.
             df = df.astype(float)
             df = df * 0.01
 

@@ -18,11 +18,9 @@
 # TODO: httpx, a client class, model classes... (done done and done)
 from io import BytesIO
 from typing import Optional, Union  # can drop Union for "|" if dropping py 3.9
-import pandas as pd  # need to type everything properly,
+import pandas as pd
 from getfactormodels.http_client import HttpClient
 from getfactormodels.utils.utils import _process
-
-                                         # implement typechecking, testing
 
 class HMLDevil:
     """Retrieve the HML Devil factors from AQR.com.
@@ -35,7 +33,7 @@ class HMLDevil:
         frequency (str): The frequency of the data. M, D (default: M)
         start_date (str, optional): The start date of the data, YYYY-MM-DD.
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
-        output (str, optional): The filepath to save the output data.
+        output_file (str, optional): The filepath to save the output data.
         series (bool, optional): If True, return the HML Devil factors as a
             pandas Series.
 

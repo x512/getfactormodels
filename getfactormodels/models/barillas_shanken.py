@@ -88,9 +88,5 @@ class BarillasShankenFactors:
             df = df[df.index <= end_dt]
  
         return df
-            # TODO: CACHE! FILE WRITER! FIXME TODO
-            #if self.output_file:
-            #    df.to_csv(self.output_file)
-            #    print(f"Data saved to {self.output_file}")
 
 

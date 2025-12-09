@@ -17,9 +17,7 @@
 import io
 import pandas as pd
 from getfactormodels.http_client import HttpClient
-from getfactormodels.utils.utils import \
-    _process  # tangled mess. after replacing req, untangle... TODO
-
+from getfactormodels.utils.utils import _process  
 
 class MispricingFactors:
     """Stambaugh-Yuan mispricing factors.
@@ -36,11 +34,10 @@ class MispricingFactors:
     def __init__(self, frequency = 'm', start_date=None, end_date=None,
                  output_file=None, cache_ttl=86400):
 
-        if frequency.lower() not in ["d", "m"]:
-            raise ValueError("Mispricing factors are only available for daily (d) and "
-                         "monthly (m) frequency.")
-        
         self.frequency = frequency.lower()
+        if frequency.lower() not in ["d", "m"]:
+            raise ValueError("Mispricing factors are only available in daily (d) and "
+                         "monthly (m) frequencies.") 
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
@@ -78,10 +75,3 @@ class MispricingFactors:
 
         # then into the mystical spaghetti _process still
         return _process(data, start_date, end_date, filepath=output_file)
-
-# NOTES:
-# - Need to do helpers for:
-#    get mkt-rf, rf, and add them if needed.
-#    check, correct freq/model names; input validation
-#    datetime utils
-#    debug util -- traceback
