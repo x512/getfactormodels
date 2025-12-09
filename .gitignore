@@ -38,4 +38,4 @@ ENV/
 lib/
 lib64/
 var/
-
+.tox/

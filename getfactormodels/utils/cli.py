@@ -18,6 +18,7 @@
 # Needs to be redone! TODO
 import argparse
 
+
 def parse_args() -> argparse.Namespace:
     """Argument parser, allowing for command line arguments.
     This is the function used in pyproject.toml to run the CLI."""

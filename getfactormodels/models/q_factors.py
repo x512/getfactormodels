@@ -49,8 +49,8 @@ class QFactors:
                  output_file=None, classic=False, cache_ttl: int = 86400): # classic=False default
         self.frequency = frequency.lower()
         
-        if self.frequency not in ["d", "m", "q"]:
-            raise ValueError("Frequency must be 'd', 'm' or 'q'")
+        if self.frequency not in ["d", "m", "w", "q"]:
+            raise ValueError("Frequency must be 'd', 'w', 'm' or 'q'")
 
         self.file = {'m': "monthly",
                 "d": "daily",

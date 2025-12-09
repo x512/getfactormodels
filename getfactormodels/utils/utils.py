@@ -14,12 +14,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 import pandas as pd
-import logging
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__) #TODO: logging
@@ -229,40 +229,3 @@ def _process(data, start_date=None, end_date=None, filepath=None):
     return data
     
 
-
-#OLDS
-#def _validate_date(date_str):
-#    """Use `dateutil.parser.parse` to validate a date format."""
-#    if date_str is None:
-#        return None
-#    if isinstance(date_str, pd.Timestamp):
-#        return date_str.strftime("%Y-%m-%d")
-#    try:
-#        return parser.parse(date_str).strftime("%Y-%m-%d")
-#    except ValueError as err:
-#        raise ValueError("Incorrect date format, use YYYY-MM-DD.") from err
-
-#def _process(data: pd.DataFrame,
-#             start_date: str = None,
-#             end_date: str = None,
-#             filepath: str = None) -> pd.DataFrame:
-#    """Process the data and optionally save it to a file.
-#    Note: the `filepath` takes a filename, path or directory.
-#    """
-#    data = _pd_rearrange_cols(data)
-#    data = _slice_dates(data, start_date, end_date)
-#
-#    if filepath:
-#        # Convert the filepath to a Path object and expand the '~' character
-#        filepath = Path(filepath).expanduser()
-#
-#        # If filepath is a directory, append a default file name to it
-#        if filepath.is_dir():
-#            filename = datetime.datetime.now().strftime('%Y%m%d%H%M')
-#            filepath = filepath / filename
-#
-#        dir_path, filename = filepath.parent, filepath.name
-#
-#        _save_to_file(data, filename, dir_path)
-#
-#    return data

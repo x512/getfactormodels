@@ -23,6 +23,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
 ]
 urls = { Homepage = "https://github.com/x512/getfactormodels" }
+
 requires-python = ">=3.10"
 
 dependencies = [
@@ -53,6 +54,7 @@ build-backend = "poetry.core.masonry.api"
 lines_between_sections = false
 
 [tool.ruff]
+# see: docs.astral.sh/ruff/configuration/
 line-length = 79
 target-version = "py312"
 indent-width = 4
@@ -64,44 +66,32 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
-# Some rules in preview, enable them:
-## docs.astral.sh/ruff/settings/#format-preview
 preview = true
 
 [tool.ruff.lint]
-exclude = [".git", ".git-rewrite",]
+exclude = [".git", ".git-rewrite"]
+ignore = ["E501", "ANN", "F401", "W293", "I"]
 
-# TODO: select/ignore, fixable/unfixable
-#select = ["E", "F", "W", "I"]                        # requires '--preview'
-#ignore = ["E501", "F401", "I001", "UP007", "ANN"]
-# run `ruff linter` to see all available rules
-## see: docs.astral.sh/ruff/rules/
-#select = ["E4", "E7", "E9", "F", "B",
-#          "DTZ", "W2", "W5", "N", "PL",
-#          "NPY", "SIM", "TID", "PD",
-#          "E241", "S", "PTH", "RUF", 
-#          "FIX001", "TD004", "EM",
-#          "TD005", "TD007", "E501",
-#          "FA", "FIX002",   # fix
-#          "E261"]                        # requires '--preview'
-
-select = [
-    "PTH110", #`os.path.exists()` should be replaced by `Path.exists()`
-    "PTH107", #os.remove > Path.unlink
-    "F401", #remove unused import
-
+select = [ "E", "F", "PTH110", "PTH107", "SIM", "C901",
+    "UP", "DTZ901", "B", "FIX001", "FIX002", "LOG",
+    "UP007", #"PT"
 ]
-# temp
-ignore = ["PD901", "ANN", "W293"]  #W293 whitespace to the left?
 
-# see: docs.astral.sh/ruff/configuration/
 fixable = ["W29", "W5", "E241", "E261"]
 unfixable = ["B", "FIX001", "FIX002", "UP"]
 
-[tool.ruff.lint.per-file-ignores] 
-"**/__init__.py" = ["F401"]
-"__main__.py" = ["F401"]
+[tool.ruff.lint.per-file-ignores]
+#"**/__init__.py" = ["F401"]
+#"__main__.py" = ["F401"]
+#"**/tests" = ["F401"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/*.py"]
 
 [tool.coverage.run]
-omit = ['tests/*']
-
+source = ['getfactormodels']
+omit = [
+    'tests/*.py',
+    '*/__pycache__/*',
+    '*/setup.py',
+]

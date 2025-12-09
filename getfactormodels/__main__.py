@@ -51,7 +51,7 @@ def get_factors(model: str|int = 3,
     elif model_key == "Qclassic":
         factor_instance = QFactors(frequency, start_date, end_date,
                                    output, classic=True)
-    
+
     elif model_key == "HMLDevil":
         factor_instance = HMLDevil(frequency, start_date, end_date, output)
         
