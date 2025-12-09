@@ -14,5 +14,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-from . import ff_models, models
+from .barillas_shanken import BarillasShankenFactors
+from .carhart import CarhartFactors
+from .dhs import DHSFactors
+from .fama_french import FamaFrenchFactors
+from .hml_devil import HMLDevil
+from .icr import ICRFactors
+from .liquidity import LiquidityFactors
+from .mispricing import MispricingFactors
+from .q_factors import QFactors

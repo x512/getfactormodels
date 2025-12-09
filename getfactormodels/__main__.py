@@ -1,70 +1,78 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# getfactormodels: A Python package to retrieve financial factor model data.
+# Copyright (C) 2025 S. Martin <x512@pm.me>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from pathlib import Path
 from typing import Optional
 import pandas as pd
 from dateutil import parser
-# ruff: noqa: RUF100
-from getfactormodels.models.models import barillas_shanken_factors  # noqa: F401
-from getfactormodels.models.models import carhart_factors  # noqa: F401, E501
-from getfactormodels.models.models import (dhs_factors, ff_factors,
-                                           hml_devil_factors, icr_factors,
-                                           liquidity_factors,
-                                           mispricing_factors,
-                                           q_classic_factors, q_factors)
+from getfactormodels.models import *
+from getfactormodels.models.fama_french import FamaFrenchFactors
+from getfactormodels.models.hml_devil import HMLDevil
+from getfactormodels.models.q_factors import QFactors
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
+import logging  #TODO
 
+#
+# TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
+# and base class and FactorExtractor done)
+# just getting get_factors to work!
+#
 
-def get_factors(model: str = "3",
-                frequency: Optional[str] = "M",
+def get_factors(model: str|int = 3,
+                frequency: Optional[str] = "m",
                 start_date: Optional[str] = None,
                 end_date: Optional[str] = None,
-                output: Optional[str] = None) -> pd.DataFrame:
-    """Get data for a specified factor model.
-
-    Return a DataFrame containing the data for the specified model and
-    frequency. If an output is specified, factor data is saved to a file.
-
-    Notes:
-    - Any string matching a model's regex (e.g., `liq` for `liquidity`) can be
-      used as a model name.
-    - Dates should be in ``YYYY-MM-DD`` format, but anything that
-      ``dateutil.parser.parse()`` can interpret will work.
-    - Weekly data is only available for the q-factor and Fama-French 3-factor
-      models.
-
-    Parameters:
-        model (str): the factor model to return. One of: `liquidity`,
-            `icr`, `dhs`, `q`, `q_classic`, `ff3`, `ff5`, `ff6`, `carhart4`,
-            `hml_devil`, `barrilas_shanken`, or `mispricing`.
-        frequency (str): the frequency of the data. D, W, M or A (default: M).
-        start_date (str, optional): the start date of the data, YYYY-MM-DD.
-        end_date (str, optional): the end date of the data, YYYY-MM-DD.
-        output (str, optional): a filename, directory, or filepath. Accepts
-            '.txt', '.csv', '.md', '.xlsx', '.pkl' as file extensions.
-
-    Returns:
-        pandas.DataFrame: factor data, indexed by date.
-    """
+                output: Optional[str] = None):
+    """Get data for a specified factor model."""
     frequency = frequency.lower()
-    model = _get_model_key(model)
+    model_key = _get_model_key(model)
 
-    # Get the function by its name, if it exists call it with params
-    if model in ["3", "4", "5", "6"]:
-        return ff_factors(model, frequency, start_date, end_date)
+    factor_instance = None
+
+    if model_key in ["3", "4", "5", "6"]:
+        factor_instance = FamaFrenchFactors(frequency, start_date,
+                                            end_date, output, model_key)
+
+    elif model_key == "Qclassic":
+        factor_instance = QFactors(frequency, start_date, end_date,
+                                   output, classic=True)
+
+    elif model_key == "HMLDevil":
+        factor_instance = HMLDevil(frequency, start_date, end_date, output)
+        
     else:
-        function_name = f"{model}_factors"
-        function = globals().get(function_name)
+        # Class loading: tries CamelCaseFactors then UPPERCASEFactors
+        class_name_camel = f"{model_key}Factors"
+        class_name_upper = f"{model_key.upper()}Factors"
+        
+        # search for the class in the global scope
+        FactorClass = globals().get(class_name_camel) or globals().get(class_name_upper)
 
-    if not function:
-        raise ValueError(f"Invalid model: {model}")
+        if not FactorClass:
+            raise ValueError(f"Invalid model: '{model_key}'. Tried class names: '{class_name_camel}' or '{class_name_upper}'.")
+            
+        factor_instance = FactorClass(frequency, start_date, end_date, output)
 
-    df = function(frequency, start_date, end_date, output)
-
-    return df
+    return factor_instance.download()
 
 
+
+### zzzzzzzzzzzzzz. Old mess. This will be repurposed for extracting factors,
+# ie, returns a combination of factors from models. For now, leaving it.
 class FactorExtractor:
     """
     Extracts factor data based on specified parameters.
@@ -89,10 +97,8 @@ class FactorExtractor:
                  output: Optional[str] = None):
         self.model: str = model
         self.frequency: str = frequency
-        self.start_date = self.validate_date_format(start_date) if start_date \
-            else None
-        self.end_date = self.validate_date_format(end_date) if end_date \
-            else None
+        self.start_date = self.validate_date_format(start_date) if start_date else None
+        self.end_date = self.validate_date_format(end_date) if end_date else None
         self.output = output
         self._no_rf = False
         self._no_mkt = False

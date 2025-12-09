@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 # getfactormodels: A Python package to retrieve financial factor model data.
 # Copyright (C) 2025 S. Martin <x512@pm.me>
 #
@@ -18,21 +17,20 @@
 __version__ = "0.0.7"
 
 from .__main__ import FactorExtractor, get_factors
-from .models import models  # noqa: F401, RUF100 (silent flake8 in VScode)
-from .models.models import (barillas_shanken_factors, carhart_factors,
-                            dhs_factors, ff_factors, hml_devil_factors,
-                            icr_factors, liquidity_factors, mispricing_factors,
-                            q_classic_factors, q_factors)
+from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
+                     FamaFrenchFactors, HMLDevil, ICRFactors, LiquidityFactors,
+                     MispricingFactors, QFactors)
 
-__all__ = ["FactorExtractor",
-           "ff_factors",
-           "icr_factors",
-           "q_factors",
-           "q_classic_factors",
-           "mispricing_factors",
-           "dhs_factors",
-           "liquidity_factors",
-           "hml_devil_factors",
-           "barillas_shanken_factors",
-           "carhart_factors",
-           "get_factors", ]
+__all__ = [ "MispricingFactors",
+            "DHSFactors",
+            "ICRFactors",
+            "QFactors",
+            "LiquidityFactors",
+            "CarhartFactors",
+            "HMLDevil",
+            "FamaFrenchFactors",
+            "BarillasShankenFactors",
+            "FactorExtractor",
+            "get_factors",
+           ]
+
