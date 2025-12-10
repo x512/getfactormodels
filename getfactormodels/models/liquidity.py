@@ -43,10 +43,6 @@ class LiquidityFactors(FactorModel):
             raise ValueError(err_msg)
 
         super().__init__(frequency=frequency, **kwargs)
-
-        if self.frequency != 'm':
-            err_msg = ("Invalid frequency: Liquidity factors are only available in monthly.")
-            raise ValueError(err_msg)
  
     def _get_url(self) -> str:
         #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
@@ -70,8 +66,6 @@ class LiquidityFactors(FactorModel):
 
         # Fix: was losing first line of data
         data.seek(0)
-
-        # read .csv
         data = pd.read_csv(data, sep='\\s+', names=headers, 
                            comment='%', index_col=0)
 
