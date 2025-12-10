@@ -14,17 +14,16 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging  # TODO logging
 from pathlib import Path
 from typing import Optional
 import pandas as pd
 from dateutil import parser
 from getfactormodels.models import *
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.models.hml_devil import HMLDevil
 from getfactormodels.models.q_factors import QFactors
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _get_model_key, _process
-import logging #TODO logging
 
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
 # and base class and FactorExtractor done)
@@ -49,9 +48,6 @@ def get_factors(model: str|int = 3,
         factor_instance = QFactors(frequency, start_date, end_date,
                                    output, classic=True)
 
-    elif model_key == "HMLDevil":
-        factor_instance = HMLDevil(frequency, start_date, end_date, output)
-        
     else:
         # Class loading: tries CamelCaseFactors then UPPERCASEFactors
         class_name_camel = f"{model_key}Factors"

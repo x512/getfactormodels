@@ -17,12 +17,13 @@
 # TODO: break this all up into models/*.py !
 # TODO: httpx, a client class, model classes... (done done and done)
 from io import BytesIO
-from typing import Optional, Union  # can drop Union for "|" if dropping py 3.9
+from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
 from getfactormodels.utils.utils import _process
+from getfactormodels.models.base import FactorModel
 
-class HMLDevil:
+
+class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep consistent)
     """Retrieve the HML Devil factors from AQR.com.
 
     Notes:
@@ -34,80 +35,41 @@ class HMLDevil:
         start_date (str, optional): The start date of the data, YYYY-MM-DD.
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
         output_file (str, optional): The filepath to save the output data.
-        series (bool, optional): If True, return the HML Devil factors as a
-            pandas Series.
+
 
     Returns:
         pd.DataFrame: the HML Devil model data indexed by date.
-        pd.Series: the HML factor as a pd.Series
         """
-    def __init__(self, frequency: str = 'm', start_date: Optional[str] = None,
-                 end_date: Optional[str] = None, output_file: Optional[str] = None, cache_ttl: int = 43200):
+    # NOTE: series param removed, will handle it with factor extractor TODO
+    def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
+        
+        if frequency not in ["d", "m"]:  # Need to check q, w, y
+            raise ValueError("Frequency must be 'd', 'm'")
         
         self.cache_ttl = cache_ttl
-        self.frequency = frequency.lower()
 
-        if self.frequency not in ["d", "m", "q"]:
-            raise ValueError("Frequency must be 'd', 'm' or 'q'")
+        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-
+    def _get_url(self) -> str:
         base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
         file = 'daily' if self.frequency == 'd' else 'monthly'
-        self.url = f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-        # From func - cache stuff -- OLD CACHE STUFF
-        #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
-        #self.cache_dir.mkdir(parents=True, exist_ok=True)
-        #self.cache = dc.Cache(str(self.cache_dir)) # diskcache requires a string path
-
-    def download(self, series: bool = False) -> Union[pd.Series, pd.DataFrame]:
-        """
-        Download the HML Devil factor from AQR 
-        - Pub:
-        - Data: AQR.com's datasets
-        If is series is True, returns pd.Series
-        """
-        return self._download(series=series)
+        return f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
 
-    def _download(self, series: bool = False) -> Union[pd.Series, pd.DataFrame]:
-        """
-        Retrieves the HML Devil factors, using cache if available.
-        """
-        xls = self._aqr_download_xls()
+    def download(self):
+        _data = self._download()
+        xls = pd.ExcelFile(BytesIO(_data))
         data = self._aqr_process_data(xls)
 
-        if self.start_date:
-            data = data[data.index >= self.start_date]
-        if self.end_date:
-            data = data[data.index <= self.end_date]
+        if data is None:
+            print("Error.")
 
-        # Will be a util for file writer. TODO
-        #actual_end_date = data.index.max().strftime('%Y-%m-%d') if not data.empty else self.end_date
-        #self.cache[cache_key] = (data, actual_end_date)
-
-        #if self.output_file:
-        #     data.to_csv(self.output_file) # TODO: filewriter when pa
-
-        data = _process(data, self.start_date, self.end_date, self.output_file)
         return data
-
-
-    def _aqr_download_xls(self) -> pd.ExcelFile:
-        with HttpClient(timeout=15) as client:  # should cache do 12? 24? Hours from the file modified dt?
-            # Really should check cache here! (cache_ttl was below frequency in
-            # init and errored the whole model?!)... Not good! FIXME FIXME after
-            # base model
-            resp = client.download(self.url)
-            xls = pd.ExcelFile(BytesIO(resp))
-            return xls
-
-    # FIXME: takes ages reading (not just downloading) TODO TODO
-    def _aqr_process_data(self, xls: pd.ExcelFile) -> pd.DataFrame:
+# --------------------------------------------------------------------------------#
+    def _aqr_process_data(self, xls) -> pd.DataFrame:
         """Process the downloaded Excel file."""
+
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
         dfs = []
         
@@ -143,10 +105,10 @@ class HMLDevil:
         # Drops all data where HML_Devil is NaN
         data = data.dropna(subset=['HML_Devil'])
 
-        # Just send through _process for now, for filewriting
-        
-
-        return data
-
+        return _process(data, self.start_date, self.end_date, filepath=self.output_file)
+        # From func - cache stuff -- OLD CACHE STUFF
+        #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
+        #self.cache_dir.mkdir(parents=True, exist_ok=True)
+        #self.cache = dc.Cache(str(self.cache_dir)) # diskcache requires a string path
 # TODO: can see the last modified date in debug log; possibly set cache
 # according to this

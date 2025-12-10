@@ -26,25 +26,28 @@ class DHSFactors(FactorModel):
     # roughing in infos, not approp for docstr but need TODO a reliable
     # way of getting and setting these when more models are redone. Most
     # importantly the copyright/attribution info! TODO
-    """Retrieves the Daniel-Hirshliefer-Sun behavioural factors 
-    - Factors: FIN and PEAD factor (returns)
-    - Freq: monthly ('m'), daily ('d')
-    - Date range: 1972-07-01 - 2023-12-31
+    """Retrieves the Daniel-Hirshliefer-Sun behavioural (FIN, PEAD) factor 
+      return data.
 
+    Parameters:
+        frequency (str): The frequency of the data. m, d (default: m)
+        start_date (str, optional): The start date of the data, YYYY-MM-DD.
+        end_date (str, optional): The end date of the data, YYYY-MM-DD.
+        output_file (str, optional): The filepath to save the output data.
+
+    - Authors:  Kent Daniel, David Hirshleifer, Lin Sun
+    - Date range: 1972-07-01 - 2023-12-31
     - Source: "Short and Long Horizon Behavioral Factors," Kent Daniel,
                   David Hirshleifer and Lin Sun, Review of Financial
                   Studies, 2020, 33 (4): 1673-1736.
- 
     - Datasource: https://sites.google.com/view/linsunhome provides
       two links to daily and monthly data.
-    - Authors:  Kent Daniel, David Hirshleifer, Lin Sun
-    * Warnings: depr notice, wrap in bytesIO
     """
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
 
         if frequency.lower() not in  ['d', 'm']:
             err_msg = (f"Invalid frequency '{frequency}': " 
-                       "DHS only available in daily 'd' and monthly 'm'.")
+                "DHS only available in daily 'd' and monthly 'm'.")
             raise ValueError(err_msg)
 
         super().__init__(frequency=frequency, **kwargs)
@@ -59,19 +62,21 @@ class DHSFactors(FactorModel):
 
         return  f'{base_url}{gsheet_id}/export?format=xlsx' 
 
+
     def download(self):
         """Retrieve the DHS behavioural factors. Daily and monthly."""
         _data = self._download() #in base_model
         data = self._read(_data)
-    
+        
         return data
+
 
     def _read(self, data):
         _file = io.BytesIO(data)
 
         data = pd.read_excel(_file, index_col="Date",
-                         usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
-                         header=0, parse_dates=False)
+                             usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
+                             header=0, parse_dates=False)
         data.index.name = "date"
 
         if self.frequency == "d":
@@ -85,7 +90,7 @@ class DHSFactors(FactorModel):
         # Get the RF and Mkt-FF from FF3. TODO: store Mkt-RF and RF; make function.
         try:
             ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
-                                 start_date=data.index[0], end_date=data.index[-1])
+                                       start_date=data.index[0], end_date=data.index[-1])
             ff = ffdata.download()
             ff = ff.round(4)
             data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
@@ -93,6 +98,7 @@ class DHSFactors(FactorModel):
             print("Warning: _get_ff_factors function not found. Skipping FF merge.")
 
         data.index.name = "date"
+        
         return _process(data, self.start_date,
                         self.end_date, filepath=self.output_file)
 
