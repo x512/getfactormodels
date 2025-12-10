@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import pandas as pd
 from .fama_french import FamaFrenchFactors
-from .hml_devil import HMLDevil
+from .hml_devil import HMLDevilFactors
 from .q_factors import QFactors
 
 #TODO: logging
@@ -64,7 +64,7 @@ class BarillasShankenFactors:
         df = q.merge(ff, left_index=True, right_index=True, how='inner')
 
         print("  - Getting HML_Devil factor (this can take a while, please be patient)...")
-        hmld_data = HMLDevil(frequency=self.frequency,
+        hmld_data = HMLDevilFactors(frequency=self.frequency,
                                  start_date=self.start_date,
                                  end_date=self.end_date)
 
