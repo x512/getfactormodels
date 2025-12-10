@@ -15,11 +15,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
 import pandas as pd
-from getfactormodels.http_client import HttpClient
 from getfactormodels.utils.utils import _process
+from getfactormodels.models.base import FactorModel
+from typing import Optional
 
-### NOTE: ISSUE: TODO: FIXME: the first 65 NaN values are 0.00
-class LiquidityFactors:
+class LiquidityFactors(FactorModel):
     """Download the Pastor-Stambaugh Liquidity factors from Robert F. Stambaugh's website.
 
     * Only available in monthly data.
@@ -36,57 +36,69 @@ class LiquidityFactors:
     - Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
 
     """
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, cache_ttl=86400): #monthly data, daily cache for now (need util to find if its near end of month etc
-        self.frequency = frequency.lower()
+    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
 
-        if self.frequency != 'm':
-            err_msg = "Frequency must be 'm'."
-            print('Liquidity factors are only available for monthly frequency.')
+        if frequency.lower() != 'm':
+            err_msg = f"Invalid frequency '{frequency}': Liquidity only available in monthly 'm'."
             raise ValueError(err_msg)
 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        #self.url = 'https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt'
-        self.url = 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
-        self.cache_ttl = cache_ttl   #test
+        super().__init__(frequency=frequency, **kwargs)
+
+        if self.frequency != 'm':
+            err_msg = ("Invalid frequency: Liquidity factors are only available in monthly.")
+            raise ValueError(err_msg)
+ 
+    def _get_url(self) -> str:
+        #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
+        return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
 
     def download(self):
-        return self._download(self.start_date, self.end_date, self.output_file)
+        """Get the Liquidity factors"""
+        _data = self._download() #in base_model
+        data = self._read_csv(_data)
+    
+        return data 
 
-        
-    def _download(self, start_date, end_date, output_file):
-        with HttpClient(timeout=5.0) as client:
-            #TODO make timeout Optional
-            _data = client.download(self.url, self.cache_ttl)
+    # Still old func stuff below here. Need to move some to base, but when consistent across models. 
+    def _read_csv(self, data) -> pd.DataFrame:
+        _data = data.decode('utf-8')
+        data = io.StringIO(_data)
 
-        # simple validate data returned TODO
-        data = _data.decode('utf-8')
-        data = io.StringIO(data)
-        
-        # Headers are last commented line
+        # Note: headers are the last commented line in header.
         headers = [line[1:].strip().split('\t')
-                   for line in data.readlines() if line.startswith('%')][-1]
+            for line in data.readlines() if line.startswith('%')][-1]
 
         # Fix: was losing first line of data
         data.seek(0)
-        
-        # ...read .csv here
-        data = pd.read_csv(data, sep='\\s+', names=headers, comment='%', index_col=0)
 
-        data.index.name = 'date'
+        # read .csv
+        data = pd.read_csv(data, sep='\\s+', names=headers, 
+                           comment='%', index_col=0)
+
+        data.index.name = 'date'  # Should make it all DATE
         data.index = data.index.astype(str)
 
         data = data.rename(columns={'Agg Liq.': 'AGG_LIQ',
-                                'Innov Liq (eq8)': 'INNOV_LIQ',
-                                'Traded Liq (LIQ_V)': 'TRADED_LIQ'})
+                                    'Innov Liq (eq8)': 'INNOV_LIQ',
+                                    'Traded Liq (LIQ_V)': 'TRADED_LIQ'})
 
-        # The first 65 values in the traded liquidity series are -99.000000.
-        data['TRADED_LIQ'] = data['TRADED_LIQ'].replace(-99.000000, 0)
+        # -99.000... floats to NaN? Return the source data -99? (consistent with ff?)
+        data['TRADED_LIQ'] = data['TRADED_LIQ'].replace(-99.000000, -999)
+        #numpy for NaN handling?
 
-        if self.frequency.lower() == 'm':
-            data.index = pd.to_datetime(data.index, format='%Y%m') + pd.offsets.MonthEnd(0)
+        data.index = pd.to_datetime(data.index, 
+                                    format='%Y%m') + pd.offsets.MonthEnd(0)  
 
-        return _process(data, start_date, end_date, filepath=output_file)
+        # some things...
+        data = data.round(6)
+        # Need to either consistently return start or end of month across all 
+        #  models, and decide whether or not to use BDay start/end (depending 
+        #  on what the source data does. Don't think any models have a 
+        #  weekend/non bday? maybe?..)
+
+        # Check for nans, warn nd return 
+
+        return _process(data, self.start_date,
+                        self.end_date, filepath=self.output_file)
+
 

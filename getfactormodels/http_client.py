@@ -21,14 +21,13 @@ import certifi
 import httpx
 from .utils.cache import _Cache
 
-logging.basicConfig(level=logging.ERROR)  # reset to ERR(in one loc) before updating build.
 log = logging.getLogger(__name__)
 
 class HttpClient:
     """Simple http client: wrapper around httpx.Client with caching."""
     def __init__(self, timeout: Union[float, int] = 15.0,
                  cache_dir: str = '~/.getfactormodels_cache',  # TODO: xdg
-                 default_cache_timeout: int = 86400): # 1 day default
+                 default_cache_ttl: int = 86400): # 1 day default
         self.timeout = timeout
 
         # TODO: should open connection only after cache checked
@@ -37,18 +36,21 @@ class HttpClient:
             timeout=self.timeout,
             follow_redirects=True,
             max_redirects=3,
-        )
+        ) 
+        # TODO: add headers
 
         self.cache = _Cache(
             cache_dir=cache_dir,
-            default_timeout=default_cache_timeout
+            default_timeout=default_cache_ttl
         )
 
-        log.debug(f"HttpClient initialized. Cache directory: {self.cache.directory}")
-
     def close(self) -> None:
-        log.debug("Closing connection and cache.")
+        msg = f'closing {self._client.__class__.__name__}'
+        log.debug(msg)  # No print in log messages, ruff
         self._client.close()
+
+        msg =f'closing {self.cache.__class__.__name__}'
+        log.debug(msg)
         self.cache.close()
 
     def __enter__(self):
@@ -56,6 +58,8 @@ class HttpClient:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        msg = f"closed: {self._client.__class__.__name__}"
+        log.debug(msg)
 
     def _generate_cache_key(self, url: str) -> str:
         """Generates a cache key/hash for the URL."""
@@ -69,27 +73,29 @@ class HttpClient:
         cached_data = self.cache.get(cache_key)
 
         if cached_data is not None:
-            log.info(f"Cache hit: {url}")
             return cached_data
 
-        log.info(f"Cache miss: {url}")
-
         try:
-            log.debug(f"Connecting: {url[:30]}...")
+            msg = f'Connecting: {url[:30]}...'
+            log.info(msg)
+
             response = self._client.get(url)
             response.raise_for_status()
             data = response.content  # Always bytes
 
             # Store in cache: need to verify it
             self.cache.set(cache_key, data, expire_secs=cache_ttl)
-            log.debug(f"CACHE WRITE SUCCESS: Stored {len(data)} bytes in cache.")
+            msg = f"{len(data)} bytes cached."
+            log.info(msg)
 
             return data
         except httpx.HTTPStatusError as e:
-            log.error(f"HTTP error {e.response.status_code} for {url}")
+            err = f"HTTP error {e.response.status_code} for {url}"
+            log.error(err)
             raise ConnectionError(f"HTTP error: {e.response.status_code}")
         except httpx.RequestError as e:
-            log.error(f"Network error for {url}: {e}")
+            err = f"Network error for {url}: {e}"
+            log.error(err)
             raise ConnectionError(f"Request error: {e}")
 
     def check_connection(self, url: str):
@@ -97,17 +103,26 @@ class HttpClient:
         check_timeout = 4.0
 
         try:
+            msg = f"Attempting HEAD: {url}..."
+            log.info(msg)
+
             response = self._client.head(url, timeout=check_timeout)
 
             if response.is_success:
-                log.info(f"URL:{url}\nstatus: {response.status_code}")
+                msg = f"URL:{url}\nstatus: {response.status_code}"
+                log.info(msg)
                 return True
 
-            log.info("Falling back to try GET...")
+            msg = "Falling back to GET..."
+            log.info(msg)
+
             response = self._client.get(url, timeout=check_timeout)
 
             if response.is_success:
                 return True
+
+            msg = f"Couldn't establish connection."
+            log.info(msg)
 
         except Exception:
             return False
