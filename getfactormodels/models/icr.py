@@ -15,12 +15,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
+from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _process
 
 
-class ICRFactors:
+class ICRFactors(FactorModel):
     """Download the Intermediary Capital Ratio (ICR) Factors from Zhiguo He's website.
 
     params:
@@ -30,46 +31,40 @@ class ICRFactors:
         output_file (str)
         cache_ttl (int): Time-to-live for cache in seconds (default: 86400).
     """
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, cache_ttl: int = 86400):
-        self.frequency = frequency.lower()    #TODO: base model ....
+    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
 
-        if self.frequency not in ["d", "m", "q"]:
+        if frequency not in ["d", "m", "q"]:
             raise ValueError("Frequency must be 'd', 'm' or 'q'")
+        super().__init__(frequency=frequency, **kwargs)
 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        self.cache_ttl = cache_ttl
-
-        # _construct_url in a base TODO
-        _file = {"d": "daily", "m": "monthly", "q": "quarterly"}.get(self.frequency)
-        _url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
-
-        self.url = _url
-
+    def _get_url(self) -> str:
+        _file = {"d": "daily", 
+                 "m": "monthly", 
+                 "q": "quarterly"}.get(self.frequency)
+        url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
+        return url
 
     def download(self):
         """
         Download the Intermediary Capital Ratio factors of He, 
         Kelly & Manela (2017)
         """
-        return self._download(self.start_date, self.end_date, self.output_file)
+        _data = self._download()
+        data = self._read(_data)
 
-    def _download (self, start_date, end_date, output_file):
-        """Download and process the Intermediary Capital Ratio factors data."""
-        with HttpClient(timeout=5.0) as client:
-            _data = client.download(self.url, self.cache_ttl)
-        
-        if _data is None:
+        if data is None:
             print("Error downloading")
 
-        data = io.StringIO(_data.decode('utf-8'))
+        return data
+
+    def _read(self, data) -> pd.DataFrame:  
+        _data = io.StringIO(data.decode('utf-8'))
        
         # back to pd, old func stuff
-        df = pd.read_csv(data)
+        df = pd.read_csv(_data)
         df = df.rename(columns={df.columns[0]: "date"})
 
+        # TODO: moving similar date validations to base
         if self.frequency == "q":
             # Quarterly dates are in a YYYYQ format [19752 to 1975Q2]
             df["date"] = df["date"].astype(str)
@@ -94,5 +89,9 @@ class ICRFactors:
 
         df = df.set_index("date")
 
-        return _process(df, start_date, end_date, filepath=output_file)
+        # 4 decimals in ICR m
+        df = df.round(4)
+
+        return _process(df, self.start_date,
+                        self.end_date, filepath=self.output_file)
 

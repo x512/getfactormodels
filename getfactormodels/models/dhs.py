@@ -15,12 +15,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
+from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.utils import _process
 
-class DHSFactors:
+
+class DHSFactors(FactorModel):
     # roughing in infos, not approp for docstr but need TODO a reliable
     # way of getting and setting these when more models are redone. Most
     # importantly the copyright/attribution info! TODO
@@ -38,35 +40,34 @@ class DHSFactors:
     - Authors:  Kent Daniel, David Hirshleifer, Lin Sun
     * Warnings: depr notice, wrap in bytesIO
     """
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, cache_ttl: int = 86400):
-        self.frequency = frequency.lower()
+    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
 
-        if self.frequency == 'm':
-            gs_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
-        elif self.frequency == 'd':
-            gs_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
+        if frequency.lower() not in  ['d', 'm']:
+            err_msg = (f"Invalid frequency '{frequency}': " 
+                       "DHS only available in daily 'd' and monthly 'm'.")
+            raise ValueError(err_msg)
+
+        super().__init__(frequency=frequency, **kwargs)
+
+    def _get_url(self) -> str:
+        base_url = 'https://docs.google.com/spreadsheets/d/'
+
+        if self.frequency == 'd':
+            gsheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
         else:
-            raise ValueError("Frequency must be daily ('d') or monthly ('m')")
+            gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
 
-        self.url = f'https://docs.google.com/spreadsheets/d/{gs_id}/export?format=xlsx' #possibly unbound
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        self.cache_ttl = cache_ttl   #test
+        return  f'{base_url}{gsheet_id}/export?format=xlsx' 
 
     def download(self):
-        """Download the DHS Behavioural factors."""
-        return self._download(self.start_date, self.end_date, self.output_file)
-
-    def _download(self, start_date, end_date, output_file):
         """Retrieve the DHS behavioural factors. Daily and monthly."""
-        # - start, end, output: keeping here until _process, and the data transformations/date
-        #   validations are untangled... TODO
-        with HttpClient() as client:
-            _bytes = client.download(self.url, self.cache_ttl)
+        _data = self._download() #in base_model
+        data = self._read(_data)
+    
+        return data
 
-        _file = io.BytesIO(_bytes)
+    def _read(self, data):
+        _file = io.BytesIO(data)
 
         data = pd.read_excel(_file, index_col="Date",
                          usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
@@ -80,10 +81,8 @@ class DHSFactors:
             data.index = data.index + pd.offsets.MonthEnd(0)
 
         data = data * 0.01    # TODO: Decimal types possibly
-
         # Need Fama-French Factors -- only model without rf or mkt-rf?
         # Get the RF and Mkt-FF from FF3. TODO: store Mkt-RF and RF; make function.
-
         try:
             ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
                                  start_date=data.index[0], end_date=data.index[-1])
@@ -94,6 +93,6 @@ class DHSFactors:
             print("Warning: _get_ff_factors function not found. Skipping FF merge.")
 
         data.index.name = "date"
-
-        return _process(data, start_date, end_date, filepath=output_file)
+        return _process(data, self.start_date,
+                        self.end_date, filepath=self.output_file)
 

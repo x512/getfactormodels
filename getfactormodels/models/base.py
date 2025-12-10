@@ -1,7 +1,8 @@
-from abc import ABC, abstractmethod
-from getfactormodels.http_client import HttpClient
 import logging
-from typing import Optional, Any
+from abc import ABC, abstractmethod
+from typing import Any, Optional
+from getfactormodels.http_client import HttpClient
+
 
 class FactorModel(ABC):
     def __init__(self, frequency: str = 'm',

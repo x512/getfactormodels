@@ -14,10 +14,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+from typing import Any, Optional
 import pandas as pd
-from getfactormodels.utils.utils import _process
 from getfactormodels.models.base import FactorModel
-from typing import Optional
+from getfactormodels.utils.utils import _process
+
 
 class LiquidityFactors(FactorModel):
     """Download the Pastor-Stambaugh Liquidity factors from Robert F. Stambaugh's website.
@@ -94,5 +95,3 @@ class LiquidityFactors(FactorModel):
 
         return _process(data, self.start_date,
                         self.end_date, filepath=self.output_file)
-
-

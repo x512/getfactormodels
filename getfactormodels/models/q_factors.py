@@ -15,12 +15,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
+from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _process
 
 
-class QFactors:
+class QFactors(FactorModel):
     """
     Download the q or q5 factor models from global-q.org.
 
@@ -38,41 +39,35 @@ class QFactors:
       with expected growth, Review of Finance 25 (1), 1-41. (q5 model)
     - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An investment
       approach, Review of Financial Studies 28 (3), 650-705. (Classic q-factor model)
-    
+
     Data Source URL: https://global-q.org/factors.html
     """
     # Note: weekly wednesday-to-wednesday needs to be added TODO:
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, classic=False, cache_ttl: int = 86400):
-        self.frequency = frequency.lower()
-        
-        if self.frequency not in ["d", "m", "w", "q"]:
-            raise ValueError("Frequency must be 'd', 'w', 'm' or 'q'")
 
-        self.file = {'m': "monthly",
+    def __init__(self, frequency: str = 'm', classic=False, **kwargs: Any) -> None:
+
+        if frequency not in ["d", "w", "m", "q", "y"]: # TODO: handle this in base, it's all freqs
+            raise ValueError("Frequency must be 'd', 'w', 'm', 'q' or 'y'")
+        self.classic = classic 
+        super().__init__(frequency=frequency, classic=classic, **kwargs)
+
+    def _get_url(self) -> str:
+        file = {'m': "monthly",
                 "d": "daily",
                 "q": "quarterly",
                 "w": "weekly",
                 "y": "annual", }.get(self.frequency)
-        self.classic = classic
-        self.url = f'https://global-q.org/uploads/1/2/2/6/122679606/q5_factors_{self.file}_2024.csv' # TODO: YEAR
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        self.cache_ttl = cache_ttl
+
+        url = f'https://global-q.org/uploads/1/2/2/6/122679606/q5_factors_{file}_2024.csv' # TODO: YEAR
+        return url
 
     def download(self) -> pd.DataFrame:
-        return self._download()
+        _data = self._download()
+        data = self._read(_data)
+        return data
 
-    def _download(self) -> pd.DataFrame:
-        """
-        Downloads the factor data using HttpClient and processes it.
-        This method will use the attributes set during class instantiation.
-        """
-        with HttpClient(timeout=8.0) as client:
-            _data = client.download(self.url, self.cache_ttl)
-
-        _file = io.StringIO(_data.decode('utf-8'))
+    def _read(self, data) -> pd.DataFrame:
+        _file = io.StringIO(data.decode('utf-8'))
 
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
         data = pd.read_csv(_file, parse_dates=False, index_col=index_cols, float_precision="high")
@@ -91,8 +86,8 @@ class QFactors:
 
             data["date"] = pd.PeriodIndex(
                 data["year"].astype(str)
-                + char
-                + data[col].astype(str), freq=self.frequency.upper()  #fix:FutureWarning 'm' is deprecated, use 'M'
+                    + char
+                    + data[col].astype(str), freq=self.frequency.upper()  #fix:FutureWarning 'm' is deprecated, use 'M'
             ).to_timestamp(how="end")
 
             data["date"] = data["date"].dt.normalize()
@@ -106,7 +101,8 @@ class QFactors:
 
         data.columns = data.columns.str.upper()
         data.index.name = "date"
-        data = data.rename(columns={"R_MKT": "Mkt-RF"})
+        data = data.rename(columns={"R_MKT": "Mkt-RF"})  # check: its market, not mkt-rf
 
         return _process(data, self.start_date, self.end_date,
                         filepath=self.output_file)
+

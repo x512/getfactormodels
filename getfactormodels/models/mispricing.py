@@ -15,11 +15,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
-from getfactormodels.utils.utils import _process  
+from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _process
 
-class MispricingFactors:
+
+class MispricingFactors(FactorModel):
     """Stambaugh-Yuan mispricing factors.
 
     - Frequencies: monthly ('m'), daily ('d')
@@ -31,31 +33,29 @@ class MispricingFactors:
     - Source: https://finance.wharton.upenn.edu/~stambaug/ 
     - Date: 01-01-1963 - 2016-12-31
     """
-    def __init__(self, frequency = 'm', start_date=None, end_date=None,
-                 output_file=None, cache_ttl=86400):
-
-        self.frequency = frequency.lower()
+    def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, **kwargs: Any) -> None:
+        print("Yes")
         if frequency.lower() not in ["d", "m"]:
             raise ValueError("Mispricing factors are only available in daily (d) and "
                          "monthly (m) frequencies.") 
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
-        self.cache_ttl = cache_ttl
 
+        super().__init__(frequency=frequency, **kwargs)
+
+    def _get_url(self) -> str:
         _file_url = "M4d" if self.frequency == "d" else "M4"
-        _url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}.csv"
-        self.url = _url
+        url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}.csv"
+        return url
 
     def download(self):
-        """Download the Stambaugh-Yuan Mispricing factors."""
-        return self._download(self.start_date, self.end_date, self.output_file)
+        """Get the Liquidity factors"""
+        _data = self._download() #in base_model
+        data = self._read(_data)
 
-    def _download(self, start_date, end_date, output_file):
+        return data
+
+    def _read(self, data):
         """Retrieve the Stambaugh-Yuan mispricing factors. Daily and monthly."""
-        with HttpClient() as client:
-            _data = client.download(self.url, self.cache_ttl)
-            _data = _data.decode('utf-8')
+        _data = data.decode('utf-8')
 
         data = pd.read_csv(io.StringIO(_data),
                            index_col=0,
@@ -74,4 +74,5 @@ class MispricingFactors:
             data.index = data.index + pd.offsets.MonthEnd(0)
 
         # then into the mystical spaghetti _process still
-        return _process(data, start_date, end_date, filepath=output_file)
+        return _process(data, self.start_date,
+                        self.end_date, filepath=self.output_file)
