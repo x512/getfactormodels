@@ -18,35 +18,37 @@
 from getfactormodels.utils.utils import _process
 from .fama_french import FamaFrenchFactors
 
-class CarhartFactors:
+
+class CarhartFactors(FamaFrenchFactors): # inheritence ooo
     """Download the Carhart 4-Factor model data.
 
-    NOTES:
-    - Fama-French 4-factor model/Fama-French 3-Factor model with a Momentum factor (MOM).
-    - Factors: Mkt-RF, SMB, HML, MOM
-    - Author: Mark M. Carhart
+    - Factors: Mkt-RF, SMB, HML, MOM, RF
     - pub: M. Carhart, ‘On Persistence in Mutual Fund Performance’,
       Journal of Finance, vol. 52, no. 1, pp. 57–82, 1997.
     - Data source: k. french data lib
     """
     def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None):
-        self.frequency = frequency.lower()
-
-        if frequency.lower() not in ['d', 'm', 'y']:
-            raise ValueError("Carhart factors are only available for daily (d),"
-                         "monthly (m) and yearly ('y') frequencies.")
-
-        self.start_date = start_date
-        self.end_date = end_date
-        self.output_file = output_file
+                 output_file=None, **kwargs):
+        model = '4'                     # enforce model 
+        super().__init__(
+            frequency=frequency,
+            model=model,                # give it to ff
+            start_date=start_date,
+            end_date=end_date,
+            output_file=output_file,
+            **kwargs
+        )
+        
+        if self.frequency == 'w':
+             raise ValueError("Carhart factors are only available for daily (d),"
+                             "monthly (m) and yearly ('y') frequencies (no weekly).")
 
     def download(self):
-        ff_data = FamaFrenchFactors(model='4', frequency=self.frequency,
-                                 start_date=self.start_date, end_date=self.end_date)
-        _data = ff_data.download()
- 
-        if _data is None:
-            raise ValueError("ERR: returned data is None?")
+        """Downloads Carhart 4-factor data."""
+        # call the parent download logic.      
+        _data = super().download() 
+        
+        if _data.empty:
+            raise ValueError("ERR: returned data is empty.")
 
         return _process(_data, self.start_date, self.end_date, self.output_file)

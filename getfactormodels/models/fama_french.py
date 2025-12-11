@@ -20,8 +20,21 @@ import zipfile
 import pandas as pd
 from getfactormodels.http_client import HttpClient
 
+from typing import Any
+from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _slice_dates
 
-class FamaFrenchFactors:
+# TODO: yearly data isn't inclusive of end yr
+#  but start_date includes partial start year/month !!
+#
+# eg start_date=1968-12-25, end_date=1970-01-01 with frequency='y' 
+## will return yearly data for all of 1968 and none of 1970.
+#
+# Potentially warn user if month and day is passed to year? 
+# Warn the returned data includes the full year, or not the last year because they specifed date...
+#  just read YYYY?
+
+class FamaFrenchFactors(FactorModel):
     # will do proper docstr later, this from this func
     # Class is an implementation of the function, a little less spaghetti.
     # utils and getting every model with pyarrow and pushing pandas to
@@ -42,21 +55,11 @@ class FamaFrenchFactors:
    NOTES (DEV): no output_file at the moment. Need Writer class to do it
     as the function aimed to do.
     """
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, model='3'):
-        self.frequency = frequency.lower()
-        self.start_date = start_date if start_date else None
-        self.end_date = end_date if start_date else None
-        self.model = str(model) #allow str, '3', or int, 3, for ff model numbers
-
-        self._validate()
-        self.url = self._construct_url()
-
-    def _validate(self) -> None:
-        """Validates ff input parameters."""
+    def __init__(self, frequency: str = 'm', model: int|str = '3',  **kwargs: Any) -> None:
+        self.frequency = frequency
         if self.frequency.lower() not in ["d", "m", "y", "w"]:
             raise ValueError("Fama-French factors frequencies: d m y w.")
-
+        self.model = model
         if self.model not in ["3", "4", "5", "6"]:
             raise ValueError(
                 f"Invalid model '{self.model}'. "
@@ -68,8 +71,9 @@ class FamaFrenchFactors:
                 "Weekly data is only available for Fama-French 3 and 4 factor(Carhart) models"
             )
 
+        super().__init__(frequency=frequency, model=model, **kwargs)
 
-    def _construct_url(self) -> str:
+    def _get_url(self) -> str:
         """Construct the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
@@ -91,15 +95,23 @@ class FamaFrenchFactors:
 
         return f"{base_url}/{file_name}"
 
+    def download(self):
+        """
+        Download the Intermediary Capital Ratio factors of He, 
+        Kelly & Manela (2017)
+        """
+        _data = self._download()
+        data = self.ff_read(_data)
 
+        if data is None:
+            print("Error downloading")
+
+        return data
+    
     @staticmethod
-    def _download_and_read_zip(url: str, freq: str = None):
+    def _read_zip(_data, frequency):
         """Download and read CSV from zip file."""
-        with HttpClient(timeout=10.0) as client:
-            _data = client.download(url)
-
-        #data = io.StringIO(_data.decode('utf-8'))
-        # old func stuff from here. TODO: clean it
+        # old function stuff....
         try:
             with zipfile.ZipFile(io.BytesIO(_data)) as zip_file:
                 filename = zip_file.namelist()[0]
@@ -113,29 +125,35 @@ class FamaFrenchFactors:
                 annual_marker = " Annual Factors: January-December"
                 marker_pos = content.find(annual_marker)
 
-                if freq in ['y', 'm'] and marker_pos != -1:
-                    if freq == 'm':
+                # fix: wasn't reading annual headers. Default header:
+                header_row = 0
+
+                if frequency in ['y', 'm'] and marker_pos != -1:
+                    if frequency == 'm':
                         # monthly = content before marker
                         content = content[:marker_pos]
                     else:  # freq == 'y'
-                        # annual = skip marker and header
-                        # finds end of marker line and skip it
-                        lines = content[marker_pos:].split('\n', 3)
-                        if len(lines) >= 4:
-                            content = lines[2]  # Data starts after marker and header
+                        # annual = find the annual section and take its header/data
+                        all_lines = content[marker_pos:].split('\n')
+                        # [0] Annual Factors: January-December
+                        # [1] Header Line 
+                        # [2] First Data Line
+                        if len(all_lines) > 2:
+                            # Join lines starting from the Header Line
+                            content = '\n'.join(all_lines[1:])
                             skip_rows = 0
+                            header_row = 0
 
                 df = pd.read_csv(
                     io.StringIO(content),
                     skiprows=skip_rows,
                     index_col=[0],
-                    header=0,
+                    header=header_row,
                     parse_dates=False,
                     skipfooter=1,
                     engine="python",
-                    na_filter=False,    #this was causing problems, couldnt change dtype
-                    on_bad_lines='error')
-                # note verbose=True (deprecation warning) was showing "1 NA
+                    na_filter=False,
+                    on_bad_lines='error')                # note verbose=True (deprecation warning) was showing "1 NA
                 # filled" preventing conversion to float, until na_filter=False.
 
             df.index = df.index.astype(str)
@@ -145,12 +163,12 @@ class FamaFrenchFactors:
             return df
 
         except Exception as e:
-            print(f"Error reading file from {url}: {e}")
+            print(f"Error parsing zip file: {e}")
             return pd.DataFrame()
 
 
     @classmethod
-    def _download_mom_data(cls, frequency: str) -> pd.DataFrame:
+    def _download_mom_data(cls, frequency: str, model: str) -> pd.DataFrame:
         """Download and process momentum factor data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
         file = "F-F_Momentum_Factor_CSV.zip"
@@ -161,13 +179,19 @@ class FamaFrenchFactors:
         url = f"{base_url}/{file}"
 
         try:
-            df = cls._download_and_read_zip(url)
-            df.columns = ["MOM"]
+            # TODO: FIXME: 
+            with HttpClient(timeout=10.0) as client:
+                _zip = client.download(url)
+
+            df = cls._read_zip(_zip, frequency)
+
+            col_name = "UMD" if model == "6" else "MOM"
+
+            df.columns = [col_name]
             return df
         except Exception as e:
             print(f"Warning: Could not download momentum data: {e}")
             return pd.DataFrame()
-
 
     # parse_date=True prob handles this now.
     # keeping for now.
@@ -203,7 +227,7 @@ class FamaFrenchFactors:
     def _momentum_factor(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add momentum factor to the DataFrame if required by model."""
         if self.model in {"4", "6"}:
-            mom_data = self._download_mom_data(self.frequency)
+            mom_data = self._download_mom_data(self.frequency, self.model)
 
             if not mom_data.empty:
                 mom_data = self._parse_dates(mom_data)
@@ -211,19 +235,11 @@ class FamaFrenchFactors:
                 mom_data = mom_data.reindex(df.index)
                 df = df.join(mom_data)
 
-                # rename column for 6 factor model
-                if self.model == "6" and "MOM" in df.columns:
-                    df = df.rename(columns={"MOM": "UMD"})
-
         return df
 
-    def download(self):
-        return self._download(self.url)
-
-
-    def _download(self, url) -> pd.DataFrame:
+    def ff_read(self, _data) -> pd.DataFrame:
         try:
-            df = self._download_and_read_zip(url)
+            df = self._read_zip(_data, self.frequency)
 
             if df.empty:
                 print("Warning: No data downloaded")
@@ -232,7 +248,7 @@ class FamaFrenchFactors:
             # Parse dates and add momentum if needed
             df = self._parse_dates(df)
             df = self._momentum_factor(df)
-            df = self._date_range_mask(df)
+            df = _slice_dates(df, self.start_date, self.end_date)
 
             # Sort by date
             df = df.sort_index()
@@ -250,22 +266,4 @@ class FamaFrenchFactors:
         except Exception as e:
             print(f"Error downloading Fama-French data: {e}")
             raise
-
-
-    def _date_range_mask(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Filter DataFrame by start and end dates."""
-        if df.empty:
-            return df
-
-        if self.start_date is not None or self.end_date is not None:
-            mask = pd.Series(True, index=df.index)
-
-            if self.start_date is not None:
-                mask = mask & (df.index >= self.start_date)
-
-            if self.end_date is not None:
-                mask = mask & (df.index <= self.end_date)
-
-            df = df[mask]
-
-        return df
+# Welllll its using the base class at least... TODO FIXME FIXME 

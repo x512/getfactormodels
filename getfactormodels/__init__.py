@@ -20,7 +20,7 @@ import logging
 logging.getLogger('getfactormodels').setLevel(logging.DEBUG)
 
 from .__main__ import FactorExtractor, get_factors
-from .models import (BarillasShankenFactors, DHSFactors,
+from .models import (BarillasShankenFactors, DHSFactors, CarhartFactors,
                      FamaFrenchFactors, HMLDevilFactors, ICRFactors, LiquidityFactors,
                      MispricingFactors, QFactors)
 
@@ -31,7 +31,7 @@ __all__ = [ "MispricingFactors",
             "ICRFactors",
             "QFactors",
             "LiquidityFactors",
-           #"CarhartFactors",   #TODO: FIXME: dev, while moving to base models carhart's erroring
+            "CarhartFactors",   #TODO: FIXME: dev, while moving to base models carhart's erroring
             "HMLDevilFactors",
             "FamaFrenchFactors",
             "BarillasShankenFactors",
