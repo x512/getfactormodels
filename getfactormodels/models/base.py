@@ -18,7 +18,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from getfactormodels.utils.http_client import HttpClient
-
+import pandas as pd
 
 class FactorModel(ABC):
     """base model used by all factor models."""
@@ -27,12 +27,22 @@ class FactorModel(ABC):
     def _frequencies(self) -> list[str]:
         pass
 
+    @abstractmethod
+    def _get_url(self) -> str:
+        """builds the unique data source URL."""
+        pass
+
+    @abstractmethod
+    def _read(self, data: bytes) -> pd.DataFrame:
+        """converts the bytes into a DataFrame."""
+        pass
+        
     def __init__(self, frequency: str = 'm',
                  start_date: Optional[str] = None,
                  end_date: Optional[str] = None,
                  output_file: Optional[str] = None,
                  cache_ttl: int = 86400,
-                 **kwargs: Any): #ff has models, qfactors have classic boolean, no RF etc
+                 **kwargs: Any):
 
         logger_name = f"{self.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(logger_name)
@@ -43,34 +53,40 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
 
-        self.log.debug(f"FactorModel initialized with frequency='{self.frequency}'")
+        self._data: Optional[pd.DataFrame] = None # Internal storage for processed data
 
-        # Validate input frequency for model
-        if self.frequency not in self._frequencies: 
+        # Validate input frequency
+        if self.frequency not in self._frequencies:
             raise ValueError(f"Invalid frequency {frequency}. Valid options: {self._frequencies}")
         super().__init__()
 
+    @property
+    def data(self) -> pd.DataFrame:
+        """public: access the data. Calls download()."""
+        return self.download()
 
-    @abstractmethod
-    def download(self) -> Any:  #TODO: type hints!
-        pass
+    # Making download concrete, and moved the abstractmethod to _read!
+    def download(self) -> pd.DataFrame:
+        if self._data is not None:
+            self.log.debug("Data loaded. Returning stored DataFrame.")
+            return self._data
+        
+        raw_data = self._http_download() 
+        data = self._read(raw_data)
 
-    @abstractmethod
-    def _get_url(self) -> str:
-        """build url based on freq etc"""
-        pass 
+        self._data = data
+        return self._data
 
     @property
     def url(self) -> str:
         """data source URL"""
         return self._get_url()
 
-    def _download(self) -> bytes:
+    def _http_download(self) -> bytes:
         url = self.url
-
-        msg = f"Downloading data from: {url}"
-        self.log.info(msg)
+        self.log.info(f"Downloading data from: {url}")
 
         with HttpClient(timeout=15.0) as client:
+            # Uses the cache_ttl set in __init__
             return client.download(url, self.cache_ttl)
 

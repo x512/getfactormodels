@@ -48,15 +48,15 @@ class LiquidityFactors(FactorModel):
         #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
         return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
 
-    def download(self):
-        """Get the Liquidity factors"""
-        _data = self._download() #in base_model
-        data = self._read_csv(_data)
-    
-        return data 
+   # def download(self):
+   #     """Get the Liquidity factors"""
+   #     _data = self._download() #in base_model
+   #     data = self._read_csv(_data)
+   # 
+   #     return data 
 
     # Still old func stuff below here. Need to move some to base, but when consistent across models. 
-    def _read_csv(self, data) -> pd.DataFrame:
+    def _read(self, data) -> pd.DataFrame:
         _data = data.decode('utf-8')
         data = io.StringIO(_data)
 

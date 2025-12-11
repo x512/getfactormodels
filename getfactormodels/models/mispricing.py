@@ -57,12 +57,12 @@ class MispricingFactors(FactorModel):
 
         return url
 
-    def download(self):
-        """Download Stambaugh-Yuan (2016) Mispricing factor data."""
-        _data = self._download() #in base_model
-        data = self._read(_data)
+    #def download(self):
+    #    """Download Stambaugh-Yuan (2016) Mispricing factor data."""
+    #    _data = self._download() #in base_model
+    #    data = self._read(_data)
 
-        return data
+    #    return data
 
     def _read(self, data):
         """Reads the Mispricing factors CSV."""
