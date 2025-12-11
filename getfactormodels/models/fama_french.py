@@ -19,7 +19,7 @@ import logging  # TODO: FF logging! FIXME
 import zipfile
 from typing import Any
 import pandas as pd
-from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.http_client import HttpClient
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _slice_dates
 

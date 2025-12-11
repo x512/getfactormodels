@@ -19,7 +19,7 @@ import logging
 from typing import Optional, Union
 import certifi
 import httpx
-from .utils.cache import _Cache
+from .cache import _Cache
 from platformdirs import user_cache_path
 
 log = logging.getLogger(__name__)
@@ -60,6 +60,11 @@ class HttpClient:
                 max_redirects=3,
             )
         return self
+ 
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        msg = f"closed: {self._client.__class__.__name__}"
+        log.debug(msg)
 
     def close(self) -> None:
         if self._client is not None:
@@ -70,11 +75,6 @@ class HttpClient:
         msg =f'closing {self.cache.__class__.__name__}'
         log.debug(msg)
         self.cache.close()
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        msg = f"closed: {self._client.__class__.__name__}"
-        log.debug(msg)
 
     def _generate_cache_key(self, url: str) -> str:
         """Generates a cache key/hash for the URL."""
@@ -151,8 +151,16 @@ class HttpClient:
         except Exception:
             return False
 
+    # TODO:
+    def _clear_cache(self) -> None:
+        """
+        Clears all cached files stored by this client. 
+        Delegates the call to the underlying cache object.
+        """
+        self.cache.clear()
+        log.debug("cache cleared by HttpClient")
 
 # TODO: Exception handling...
 class ClientNotOpenError(Exception):
-    """Raised when an operation is attempted on HttpClient outside of a 'with' block."""
+    """Raised when HttpClient is used outside of a 'with' block."""
     pass

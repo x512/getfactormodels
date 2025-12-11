@@ -17,7 +17,7 @@
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Optional
-from getfactormodels.http_client import HttpClient
+from getfactormodels.utils.http_client import HttpClient
 
 
 class FactorModel(ABC):

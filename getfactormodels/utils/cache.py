@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.ERROR)
 log = logging.getLogger(__name__)
 
 class _Cache:
-    def __init__(self, cache_dir: str, default_timeout=86400):  # TODO: XDG cache
+    def __init__(self, cache_dir: str, default_timeout=86400):
 
         cache_path = Path(cache_dir) 
         
@@ -53,3 +53,10 @@ class _Cache:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+    def clear(self):
+        """Removes all data entries from the cache directory."""
+        self.cache.clear()
+        
+        msg = f"cache cleared: (dir: {self.directory})"
+        log.info(msg)
