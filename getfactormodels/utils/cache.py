@@ -8,12 +8,12 @@ logging.basicConfig(level=logging.ERROR)
 log = logging.getLogger(__name__)
 
 class _Cache:
-    def __init__(self, cache_dir='~/.getfactormodels_cache',
-                 default_timeout=86400):  # TODO: XDG cache
+    def __init__(self, cache_dir: str, default_timeout=86400):  # TODO: XDG cache
 
-        cache_path = Path(cache_dir).expanduser()
-
+        cache_path = Path(cache_dir) 
+        
         self.cache = Cache(str(cache_path))
+
         self.default_timeout = default_timeout
 
         msg = f"Cache initialized: {cache_path}"

@@ -20,42 +20,57 @@ from typing import Optional, Union
 import certifi
 import httpx
 from .utils.cache import _Cache
+from platformdirs import user_cache_path
 
 log = logging.getLogger(__name__)
 
 class HttpClient:
     """Simple http client: wrapper around httpx.Client with caching."""
+    APP_NAME = "getfactormodels"  #platformdirs for xdg cache 
     def __init__(self, timeout: Union[float, int] = 15.0,
-                 cache_dir: str = '~/.getfactormodels_cache',  # TODO: xdg
+                 cache_dir: Union[str, None] = None, # None by default!
                  default_cache_ttl: int = 86400): # 1 day default
         self.timeout = timeout
+        self.default_cache_ttl = default_cache_ttl
+        self._client = None # initializes client as None
 
-        # TODO: should open connection only after cache checked
-        self._client = httpx.Client(
-            verify=certifi.where(),
-            timeout=self.timeout,
-            follow_redirects=True,
-            max_redirects=3,
-        ) 
-        # TODO: add headers
+        # XDG path
+        if cache_dir is None:
+            msg = "cache path: None"
+            log.debug(msg)
+            _cache_path = user_cache_path(appname=self.APP_NAME, 
+                                       ensure_exists=True)
+            self.cache_dir = str(_cache_path.resolve())
+            
+        else:
+            # user explicitly passed a path, use it...
+            self.cache_dir = cache_dir
 
-        self.cache = _Cache(
-            cache_dir=cache_dir,
-            default_timeout=default_cache_ttl
-        )
+        msg = f"cache directory: {self.cache_dir}"
+        log.debug(msg)
+
+        self.cache = _Cache(self.cache_dir, default_timeout=default_cache_ttl)
+
+    def __enter__(self):
+        if self._client is None:
+            self._client = httpx.Client( # initialization moved
+                verify=certifi.where(),
+                timeout=self.timeout,
+                follow_redirects=True,
+                max_redirects=3,
+            )
+        return self
 
     def close(self) -> None:
-        msg = f'closing {self._client.__class__.__name__}'
-        log.debug(msg)  # No print in log messages, ruff
-        self._client.close()
+        if self._client is not None:
+            msg = f'closing {self._client.__class__.__name__}'
+            log.debug(msg)  # No print in log messages, ruff
+            self._client.close()
 
         msg =f'closing {self.cache.__class__.__name__}'
         log.debug(msg)
         self.cache.close()
-
-    def __enter__(self):
-        return self
-
+    
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         msg = f"closed: {self._client.__class__.__name__}"
@@ -69,6 +84,12 @@ class HttpClient:
         """Downloads content from a given URL.
            cache_ttl: int, secs
         """
+        # To prevent non-context manager usage?
+        if self._client is None:
+            raise ClientNotOpenError(
+                "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block."
+            )
+
         cache_key = self._generate_cache_key(url)
         cached_data = self.cache.get(cache_key)
 
@@ -102,6 +123,9 @@ class HttpClient:
         """Simple url ping. Boolean."""
         check_timeout = 4.0
 
+        if self._client is None:
+            raise ClientNotOpenError("HttpClient is not open. Use in a `with` block.")
+
         try:
             msg = f"Attempting HEAD: {url}..."
             log.info(msg)
@@ -126,3 +150,9 @@ class HttpClient:
 
         except Exception:
             return False
+
+
+# TODO: Exception handling...
+class ClientNotOpenError(Exception):
+    """Raised when an operation is attempted on HttpClient outside of a 'with' block."""
+    pass
