@@ -19,8 +19,8 @@
 from io import BytesIO
 from typing import Any
 import pandas as pd
-from getfactormodels.utils.utils import _process
 from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _process
 
 
 class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep consistent)
@@ -40,14 +40,12 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
     Returns:
         pd.DataFrame: the HML Devil model data indexed by date.
         """
-    # NOTE: series param removed, will handle it with factor extractor TODO
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
-        
-        if frequency not in ["d", "m"]:  # Need to check q, w, y
-            raise ValueError("Frequency must be 'd', 'm'")
-        
-        self.cache_ttl = cache_ttl
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "m"]  # TODO: Check AQR's HML Devil frequencies again. 
 
+    def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
+        self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
 
     def _get_url(self) -> str:

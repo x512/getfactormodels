@@ -21,6 +21,12 @@ from getfactormodels.http_client import HttpClient
 
 
 class FactorModel(ABC):
+    """base model used by all factor models."""
+    @property
+    @abstractmethod
+    def _frequencies(self) -> list[str]:
+        pass
+
     def __init__(self, frequency: str = 'm',
                  start_date: Optional[str] = None,
                  end_date: Optional[str] = None,
@@ -37,8 +43,13 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
 
-        msg = f"FactorModel initialized"
-        self.log.debug(msg)
+        self.log.debug(f"FactorModel initialized with frequency='{self.frequency}'")
+
+        # Validate input frequency for model
+        if self.frequency not in self._frequencies: 
+            raise ValueError(f"Invalid frequency {frequency}. Valid options: {self._frequencies}")
+        super().__init__()
+
 
     @abstractmethod
     def download(self) -> Any:  #TODO: type hints!
@@ -63,8 +74,3 @@ class FactorModel(ABC):
         with HttpClient(timeout=15.0) as client:
             return client.download(url, self.cache_ttl)
 
-#    def _validate_frequency
-#        ...
-
-#    def _rearrange_cols
-#        ...

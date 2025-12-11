@@ -20,28 +20,24 @@ from .fama_french import FamaFrenchFactors
 
 
 class CarhartFactors(FamaFrenchFactors): # inheritence ooo
-    """Download the Carhart 4-Factor model data.
+    """Download the Carhart 4-Factor model.
 
-    - Factors: Mkt-RF, SMB, HML, MOM, RF
-    - pub: M. Carhart, ‘On Persistence in Mutual Fund Performance’,
-      Journal of Finance, vol. 52, no. 1, pp. 57–82, 1997.
-    - Data source: k. french data lib
+    References: 
+    - M. Carhart, ‘On Persistence in Mutual Fund Performance’, Journal
+    of Finance, vol. 52, no. 1, pp. 57–82, 1997.
+
+    Data source: k. french data lib
     """
-    def __init__(self, frequency='m', start_date=None, end_date=None,
-                 output_file=None, **kwargs):
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "m", "y"]
+
+    def __init__(self, frequency='m', **kwargs):
         model = '4'                     # enforce model 
-        super().__init__(
-            frequency=frequency,
-            model=model,                # give it to ff
-            start_date=start_date,
-            end_date=end_date,
-            output_file=output_file,
-            **kwargs
-        )
-        
-        if self.frequency == 'w':
-             raise ValueError("Carhart factors are only available for daily (d),"
-                             "monthly (m) and yearly ('y') frequencies (no weekly).")
+        super().__init__(frequency=frequency, 
+                         model=model,   # give it to ff 
+                         **kwargs)
+
 
     def download(self):
         """Downloads Carhart 4-factor data."""

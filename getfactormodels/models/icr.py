@@ -22,20 +22,31 @@ from getfactormodels.utils.utils import _process
 
 
 class ICRFactors(FactorModel):
-    """Download the Intermediary Capital Ratio (ICR) Factors from Zhiguo He's website.
+    """Download the Intermediary Capital Ratio of He, Kelly, Manela (2017)
 
-    params:
-        frequency (str): The data frequency ('d', 'm', 'q'). Defaults to 'm'.
-        start_date (str, datetime): The start date YYYY-MM-DD for the factor data
-        end_date (str, datetime): The end date YYYY-MM-DD
-        output_file (str)
+    Args:
+        frequency (str): The data frequency ('d', 'm', 'q') (default: 'm').
+        start_date (str, optional): The start date YYYY-MM-DD for the factor data
+        end_date (str, optional): The end date YYYY-MM-DD
+        output_file (str, optional): optional filepath to save data to. Supports .csv, .pkl.
         cache_ttl (int): Time-to-live for cache in seconds (default: 86400).
+    
+    Returns:
+        pd.DataFrame
+    
+    References:
+    - Z. He, B. Kelly, and A. Manela, ‘Intermediary asset pricing: New evidence
+    from many asset classes’, Journal of Financial Economics, vol. 126, no. 1, 
+    pp. 1–35, 2017. (https://doi.org/10.1016/j.jfineco.2017.08.002)
+    
+    Data source: https://zhiguohe.net
     """
-    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "m", "q"]
 
-        if frequency not in ["d", "m", "q"]:
-            raise ValueError("Frequency must be 'd', 'm' or 'q'")
-        super().__init__(frequency=frequency, **kwargs)
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
 
     def _get_url(self) -> str:
         _file = {"d": "daily", 
@@ -45,10 +56,7 @@ class ICRFactors(FactorModel):
         return url
 
     def download(self):
-        """
-        Download the Intermediary Capital Ratio factors of He, 
-        Kelly & Manela (2017)
-        """
+        """Download the Intermediary Capital Ratio factors of He, Kelly & Manela (2017)"""
         _data = self._download()
         data = self._read(_data)
 
@@ -57,7 +65,8 @@ class ICRFactors(FactorModel):
 
         return data
 
-    def _read(self, data) -> pd.DataFrame:  
+    def _read(self, data) -> pd.DataFrame:
+        """Helper to remove TODO"""
         _data = io.StringIO(data.decode('utf-8'))
        
         # back to pd, old func stuff
@@ -72,7 +81,7 @@ class ICRFactors(FactorModel):
             # Converts YYYYQ to a timestamp at the eoq
             df["date"] = pd.PeriodIndex(df["date"], freq="Q").to_timestamp() \
                 + pd.offsets.QuarterEnd(0)
-
+#PATTERN
         elif self.frequency == "m":
             df["date"] = pd.to_datetime(df["date"], format="%Y%m")
             df["date"] = df["date"] + pd.offsets.MonthEnd(0)
@@ -88,9 +97,14 @@ class ICRFactors(FactorModel):
             })
 
         df = df.set_index("date")
+        
+        if self.frequency == 'd':
+            df = df.round(15) # lol FIXME TODO FIXME FIXME Rounding errors: need Decimal
 
-        # 4 decimals in ICR m
-        df = df.round(4)
+        else:
+            df = df.round(4) #both m and q are 4 decimals
+
+        #TODO: check if decimalizing anything?
 
         return _process(df, self.start_date,
                         self.end_date, filepath=self.output_file)

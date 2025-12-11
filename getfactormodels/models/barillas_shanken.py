@@ -14,16 +14,15 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from typing import Any
 import pandas as pd
+from getfactormodels.utils.utils import _slice_dates
+from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
 from .q_factors import QFactors
 
-from .base import FactorModel
-from typing import Any
-from getfactormodels.utils.utils import _slice_dates
-#TODO: logging
-
+#TODO: logging!
 class BarillasShankenFactors(FactorModel):
     """Download the Barillas-Shanken 6 Factor Model (2018).
 
@@ -38,10 +37,12 @@ class BarillasShankenFactors(FactorModel):
     Returns:
         pd.DataFrame: A timeseries of the factor data.
     """
-    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        if frequency not in ["d", "m"]:
-            raise ValueError("Frequency must be 'd' or 'm'")
-        super().__init__(frequency=frequency, **kwargs)
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "m"]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
 
     def _get_url(self) -> str:  # I guess?
         raise NotImplementedError("no url for Barillas-Shanken")
@@ -53,6 +54,7 @@ class BarillasShankenFactors(FactorModel):
         return df
 
     # OVERRIDE -- TODO: return bytes, then construct. This could cause problems..
+    # TODO: FIXME:
     def _download(self) -> pd.DataFrame:
         """Constructs the Barillas 6 factor model from other models"""
 

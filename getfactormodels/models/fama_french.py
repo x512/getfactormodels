@@ -17,10 +17,9 @@
 import io
 import logging  # TODO: FF logging! FIXME
 import zipfile
+from typing import Any
 import pandas as pd
 from getfactormodels.http_client import HttpClient
-
-from typing import Any
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _slice_dates
 
@@ -46,32 +45,38 @@ class FamaFrenchFactors(FactorModel):
     is available in daily, weekly, monthly, and annual frequencies.
     Saves data to file if output_file is specified.
 
-    params :
-    - model (str, int): model to return. 3, 4, 5 or 6 (default: 3).
-    - frequency (str): the frequency of the data. d m y or w (default: m)
-    - start_date (str, optional): the start date of the data, as YYYY-MM-DD.
-    - end_date (str, optional): the end date of the data, as YYYY-MM-DD.
+    Args:
+        model (str, int): model to return. 3, 4, 5 or 6 (default: 3).
+        frequency (str): the frequency of the data. d m y or w (default: m)
+        start_date (str, optional): the start date of the data, as YYYY-MM-DD.
+        end_date (str, optional): the end date of the data, as YYYY-MM-DD.
 
    NOTES (DEV): no output_file at the moment. Need Writer class to do it
     as the function aimed to do.
     """
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "w", "m", "y"]
+
     def __init__(self, frequency: str = 'm', model: int|str = '3',  **kwargs: Any) -> None:
         self.frequency = frequency
-        if self.frequency.lower() not in ["d", "m", "y", "w"]:
-            raise ValueError("Fama-French factors frequencies: d m y w.")
         self.model = model
+        
+        self._validate_ff_input()
+
+        super().__init__(frequency=frequency, model=model, **kwargs)
+
+
+    def _validate_ff_input(self):
         if self.model not in ["3", "4", "5", "6"]:
             raise ValueError(
-                f"Invalid model '{self.model}'. "
-                "  - Must be one of: '3' '4' '5' '6'"
+                f"Invalid model '{self.model}': must be '3' '4' '5' or '6'"
             )
 
         if self.frequency == 'w' and self.model not in {"3", "4"}:
             raise ValueError(
-                "Weekly data is only available for Fama-French 3 and 4 factor(Carhart) models"
+                "Weekly data is only available for Fama-French 3 and 4 factor (Carhart) models"
             )
-
-        super().__init__(frequency=frequency, model=model, **kwargs)
 
     def _get_url(self) -> str:
         """Construct the URL for downloading Fama-French data."""
@@ -96,10 +101,7 @@ class FamaFrenchFactors(FactorModel):
         return f"{base_url}/{file_name}"
 
     def download(self):
-        """
-        Download the Intermediary Capital Ratio factors of He, 
-        Kelly & Manela (2017)
-        """
+        """Download the Fama French factor data."""
         _data = self._download()
         data = self.ff_read(_data)
 

@@ -20,6 +20,7 @@ import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _process
 
+
 class QFactors(FactorModel):
     """Download q-factor data from global-q.org.
 
@@ -42,13 +43,13 @@ class QFactors(FactorModel):
 
     Data Source: https://global-q.org/factors.html
     """
-    def __init__(self, frequency: str = 'm', classic=False, **kwargs: Any) -> None:
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "w", "w2w", "m", "q", "y"] # test
 
-        if frequency not in ["d", "w", "w2w", "m", "q", "y"]: # TODO: handle freqs in base model
-            raise ValueError("Frequency must be 'd', 'w', 'm', 'q', 'y',"
-                "or 'w2w' (weekly, Wednesday-to-Wedneday)")
+    def __init__(self, classic: bool = False, **kwargs: Any) -> None:
         self.classic = classic 
-        super().__init__(frequency=frequency, classic=classic, **kwargs)
+        super().__init__(classic=classic, **kwargs)
 
     def _get_url(self) -> str:
         file = {'m': "monthly", 
@@ -114,4 +115,3 @@ class QFactors(FactorModel):
         #TODO: slicing, saving, validating date to base model? util? Use here.
         return _process(data, self.start_date, self.end_date,
                         filepath=self.output_file)
-

@@ -26,33 +26,35 @@ class DHSFactors(FactorModel):
     # roughing in infos, not approp for docstr but need TODO a reliable
     # way of getting and setting these when more models are redone. Most
     # importantly the copyright/attribution info! TODO
-    """Retrieves the Daniel-Hirshliefer-Sun behavioural (FIN, PEAD) factor 
-      return data.
+    """Download the DHS Behavioural Factors.
 
-    Parameters:
-        frequency (str): The frequency of the data. m, d (default: m)
+    Downloads the Behavioural Factors of Kent Daniel, David Hirshleifer, and 
+    Lin Sun (DHS). Data from 1972-07-01 until end of 2023.
+
+    Args:
+        frequency (str): The frequency of the data. 'm' or 'd' (default: m)
         start_date (str, optional): The start date of the data, YYYY-MM-DD.
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
         output_file (str, optional): The filepath to save the output data.
 
-    - Authors:  Kent Daniel, David Hirshleifer, Lin Sun
-    - Date range: 1972-07-01 - 2023-12-31
-    - Source: "Short and Long Horizon Behavioral Factors," Kent Daniel,
-                  David Hirshleifer and Lin Sun, Review of Financial
-                  Studies, 2020, 33 (4): 1673-1736.
-    - Datasource: https://sites.google.com/view/linsunhome provides
-      two links to daily and monthly data.
+    References:
+    - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
+    Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
+    1673-1736.
+    
+    Data source: https://sites.google.com/view/linsunhome
     """
+    @property
+    def _frequencies(self) -> list[str]:
+        return ['d', 'm']
+
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-
-        if frequency.lower() not in  ['d', 'm']:
-            err_msg = (f"Invalid frequency '{frequency}': " 
-                "DHS only available in daily 'd' and monthly 'm'.")
-            raise ValueError(err_msg)
-
         super().__init__(frequency=frequency, **kwargs)
 
+
     def _get_url(self) -> str:
+        """Construct the Google Sheet URL for monthly or daily."""
+        # TODO: get the ID's from the site, instead of hardcoded here.
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
@@ -60,25 +62,25 @@ class DHSFactors(FactorModel):
         else:
             gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
 
-        return  f'{base_url}{gsheet_id}/export?format=xlsx' 
+        return  f'{base_url}{gsheet_id}/export?format=xlsx'  # maybe export to csv...? But info tab. TODO.
 
 
     def download(self):
         """Retrieve the DHS behavioural factors. Daily and monthly."""
         _data = self._download() #in base_model
         data = self._read(_data)
-        
+
         return data
 
 
     def _read(self, data):
         _file = io.BytesIO(data)
-
+        # PATTERN....
         data = pd.read_excel(_file, index_col="Date",
-                             usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl',
+                             usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl', #if can export as not excel... can drop openpyxl for this model...
                              header=0, parse_dates=False)
         data.index.name = "date"
-
+         # PATTERN.....
         if self.frequency == "d":
             data.index = pd.to_datetime(data.index, format="%m/%d/%Y")
         else:
@@ -86,19 +88,18 @@ class DHSFactors(FactorModel):
             data.index = data.index + pd.offsets.MonthEnd(0)
 
         data = data * 0.01    # TODO: Decimal types possibly
-        # Need Fama-French Factors -- only model without rf or mkt-rf?
-        # Get the RF and Mkt-FF from FF3. TODO: store Mkt-RF and RF; make function.
+        # Need Fama-French Factors
         try:
             ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
                                        start_date=data.index[0], end_date=data.index[-1])
             ff = ffdata.download()
             ff = ff.round(4)
             data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
+
         except NameError:
             print("Warning: _get_ff_factors function not found. Skipping FF merge.")
 
         data.index.name = "date"
-        
+
         return _process(data, self.start_date,
                         self.end_date, filepath=self.output_file)
-

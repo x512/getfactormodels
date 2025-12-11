@@ -37,12 +37,11 @@ class LiquidityFactors(FactorModel):
     - Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
 
     """
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["m"]
+
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-
-        if frequency.lower() != 'm':
-            err_msg = f"Invalid frequency '{frequency}': Liquidity only available in monthly 'm'."
-            raise ValueError(err_msg)
-
         super().__init__(frequency=frequency, **kwargs)
  
     def _get_url(self) -> str:
