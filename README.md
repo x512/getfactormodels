@@ -24,6 +24,7 @@ Reliably retrieve data for various multi-factor asset pricing models.
 
 _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they provide._
 
+
 ## Installation
 >[!IMPORTANT]
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
@@ -31,11 +32,35 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 Requires:
 
-- Python: `>=3.10`
+**Requires:**
 
-```sh
+- Python >=3.10
+
+
+The easiest way to install (and update) `getfactormodels` is with pip:
+
+
+```bash
 pip install -U getfactormodels
 ```
+
+<details>
+
+<summary>Install from source</summary>
+
+You can also install the [latest release](https://github.com/x512/getfactormodels/releases/latest
+) using pip.
+
+- Linux/macOS:
+  
+```bash
+ curl -LO https://github.com/x512/getfactormodels/archive/latest.tar.gz
+ tar -xzf latest.tar.gz
+ cd getfactormodels-*
+ pip install .
+```
+</details>
+
 
 ## Quick start
 
@@ -101,6 +126,7 @@ df = QFactors(frequency='w',
     - `output_file`: Export path
 * `FamaFrenchFactors` has a `model` param. Accepts `3` `4` `5` `6` or equivilent model name (`ff3`, `famafrench3`) (default: `3`).
 * `QFactors` has a `classic` boolean param (default: `false`) for returing the 4-factor q-factor model (2015).
+
 
 ### CLI
 Requires: ``bash >=4.2``
@@ -200,20 +226,3 @@ contains the shortest identifier for each model. These should all work in python
   - [ ] Examples
 - [ ] Tests
 - [ ] Error handling
-
-
-# IGNORE THIS
-There's also the ``FactorExtractor`` class (which doesn't do much yet, it's mainly used by the CLI):
-
-  ```python
-  from getfactormodels import FactorExtractor
-
-  fe = FactorExtractor(model='carhart', start_date='1980-01-01', end_date='1980-05-01)
-  fe.get_factors()
-  fe.drop_rf() 
-  fe.to_file('~/carhart_factors.csv')
-  ```
-
->``.drop_rf()`` will return the DataFrame without the `RF` column. You can also drop the `Mkt-RF` column with ``.drop_mkt()``
-
-## REWRITE ME
