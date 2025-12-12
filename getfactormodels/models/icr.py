@@ -55,15 +55,15 @@ class ICRFactors(FactorModel):
         url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
         return url
 
-    def download(self):
-        """Download the Intermediary Capital Ratio factors of He, Kelly & Manela (2017)"""
-        _data = self._download()
-        data = self._read(_data)
+    #def download(self):
+    #    """Download the Intermediary Capital Ratio factors of He, Kelly & Manela (2017)"""
+    #    _data = self._download()
+    #    data = self._read(_data)#
 
-        if data is None:
-            print("Error downloading")
+    #    if data is None:
+    #        print("Error downloading")
 
-        return data
+    #    return data
 
     def _read(self, data) -> pd.DataFrame:
         """Helper to remove TODO"""
@@ -99,7 +99,7 @@ class ICRFactors(FactorModel):
         df = df.set_index("date")
         
         if self.frequency == 'd':
-            df = df.round(15) # lol FIXME TODO FIXME FIXME Rounding errors: need Decimal
+            df = df.round(8) # lol FIXME TODO FIXME FIXME Rounding errors: 15 decimals in src, need Decimal
 
         else:
             df = df.round(4) #both m and q are 4 decimals

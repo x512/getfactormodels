@@ -65,12 +65,12 @@ class DHSFactors(FactorModel):
         return  f'{base_url}{gsheet_id}/export?format=xlsx'  # maybe export to csv...? But info tab. TODO.
 
 
-    def download(self):
-        """Retrieve the DHS behavioural factors. Daily and monthly."""
-        _data = self._download() #in base_model
-        data = self._read(_data)
+    #def download(self):
+    #    """Retrieve the DHS behavioural factors. Daily and monthly."""
+    #    _data = self._download() #in base_model
+    #    data = self._read(_data)
 
-        return data
+    #   return data
 
 
     def _read(self, data):

@@ -38,13 +38,12 @@ class CarhartFactors(FamaFrenchFactors): # inheritence ooo
                          model=model,   # give it to ff 
                          **kwargs)
 
-
-    def download(self):
-        """Downloads Carhart 4-factor data."""
-        # call the parent download logic.      
-        _data = super().download() 
-        
-        if _data.empty:
-            raise ValueError("ERR: returned data is empty.")
-
-        return _process(_data, self.start_date, self.end_date, self.output_file)
+    #def download(self):
+    #    """Downloads Carhart 4-factor data."""
+    #    # call the parent download logic.      
+    #    _data = super().download() 
+    #    
+    #    if _data.empty:
+    #        raise ValueError("ERR: returned data is empty.")#
+#
+ #       return _process(_data, self.start_date, self.end_date, self.output_file)

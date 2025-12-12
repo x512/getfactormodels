@@ -100,15 +100,15 @@ class FamaFrenchFactors(FactorModel):
 
         return f"{base_url}/{file_name}"
 
-    def download(self):
-        """Download the Fama French factor data."""
-        _data = self._download()
-        data = self.ff_read(_data)
+    #def download(self):
+    #    """Download the Fama French factor data."""
+    #    _data = self._download()
+    #    data = self.ff_read(_data)
+#
+    #    if data is None:
+    #        print("Error downloading")
 
-        if data is None:
-            print("Error downloading")
-
-        return data
+    #    return data
     
     @staticmethod
     def _read_zip(_data, frequency):
@@ -239,7 +239,7 @@ class FamaFrenchFactors(FactorModel):
 
         return df
 
-    def ff_read(self, _data) -> pd.DataFrame:
+    def _read(self, _data) -> pd.DataFrame:
         try:
             df = self._read_zip(_data, self.frequency)
 

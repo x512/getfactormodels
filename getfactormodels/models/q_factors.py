@@ -63,17 +63,18 @@ class QFactors(FactorModel):
         url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
         return url
 
-    def download(self) -> pd.DataFrame:
-        _data = self._download()
-        data = self._read(_data)
-        df = self._parse_q_factors(data)
-
-        return df
+   # def download(self) -> pd.DataFrame:
+   #     _data = self._download()
+   #     data = self._read(_data)
+   #     df = self._parse_q_factors(data)
+#
+ #       return df
 
     def _read(self, data) -> pd.DataFrame:
         _file = io.StringIO(data.decode('utf-8'))
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
         data = pd.read_csv(_file, parse_dates=False, index_col=index_cols, float_precision="high")
+        data = self._parse_q_factors(data)
 
         return data
 

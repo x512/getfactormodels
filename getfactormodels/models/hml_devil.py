@@ -55,18 +55,19 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
         return f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
 
-    def download(self):
-        _data = self._download()
-        xls = pd.ExcelFile(BytesIO(_data))
-        data = self._aqr_process_data(xls)
+    #def download(self):
+    #    _data = self._download()
+    #    xls = pd.ExcelFile(BytesIO(_data))
+    #    data = self._aqr_process_data(xls)
+#
+    #    if data is None:
+    #        print("Error.")
 
-        if data is None:
-            print("Error.")
-
-        return data
+    #    return data
 # --------------------------------------------------------------------------------#
-    def _aqr_process_data(self, xls) -> pd.DataFrame:
+    def _read(self, data) -> pd.DataFrame:
         """Process the downloaded Excel file."""
+        xls = pd.ExcelFile(BytesIO(data))
 
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
         dfs = []

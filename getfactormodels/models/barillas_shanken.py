@@ -37,6 +37,7 @@ class BarillasShankenFactors(FactorModel):
     Returns:
         pd.DataFrame: A timeseries of the factor data.
     """
+    # Not ideal but working
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
@@ -45,22 +46,39 @@ class BarillasShankenFactors(FactorModel):
         super().__init__(**kwargs)
 
     def _get_url(self) -> str:  # I guess?
-        raise NotImplementedError("no url for Barillas-Shanken")
+        msg = "_read called on BarillasShanken. Constructed from other models. No URL."
+        self.log.warning(msg)
+        return ""
+   # def download(self) -> pd.DataFrame:
+   #     df = self._download()
+   #     df = _slice_dates(df, self.start_date, self.end_date)
+   #     df = df.sort_index()
+   #     return df
 
+    def _read(self, data: bytes) -> pd.DataFrame:
+        # Must exist to satisfy the base class contract.
+        self.log.warning("_read called on a constructed model (Barillas Shanken). Don't do that.")
+        return pd.DataFrame()
+
+    # OVERRIDE 
     def download(self) -> pd.DataFrame:
-        df = self._download()
-        df = _slice_dates(df, self.start_date, self.end_date)
-        df = df.sort_index()
+        """Overrides base download() for barillas shanken."""
+        if self._data is not None:
+            self.log.debug("Data loaded. Returning stored DataFrame.")
+            return self._data
+
+        df = self._construct_bs()
+        
+        self._data = df 
+        
         return df
 
-    # OVERRIDE -- TODO: return bytes, then construct. This could cause problems..
-    # TODO: FIXME:
-    def _download(self) -> pd.DataFrame:
+    def _construct_bs(self) -> pd.DataFrame:
         """Constructs the Barillas 6 factor model from other models"""
 
         print("  - Getting q factors...")
-        qdata = QFactors(frequency=self.frequency, classic=True)
-        q = qdata.download()[['R_IA', 'R_ROE']]
+        qdata = QFactors(frequency=self.frequency, classic=True).download()
+        q = qdata[['R_IA', 'R_ROE']]
 
         print("  - Getting Fama-French factors...")
         ffdata = FamaFrenchFactors(model='6', frequency=self.frequency)
@@ -88,5 +106,7 @@ class BarillasShankenFactors(FactorModel):
         hml_d.index.name = 'date'
 
         df = df.merge(hml_d, left_index=True, right_index=True, how='inner')
+
+        df = _slice_dates(df, self.start_date, self.end_date)
 
         return df
