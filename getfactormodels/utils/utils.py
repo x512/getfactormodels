@@ -40,17 +40,16 @@ __model_input_map = MappingProxyType({
 
 
 def _get_model_key(model):
-    """
-    Convert a model name to a model key.
+    """Convert a model name to a model key.
 
     >>> _get_model_key('ff1993')
     '3'
     >>> _get_model_key('liQ')
-    'liquidity'
+    'Liquidity'
     >>>  _get_model_key('q4_factors')
-    'q_classic'
+    'Qclassic'
     >>> _get_model_key('ICR')
-    'icr'
+    'ICR'
     """
     model = str(model)
 

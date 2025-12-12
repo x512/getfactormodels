@@ -36,7 +36,7 @@ class FactorModel(ABC):
     def _read(self, data: bytes) -> pd.DataFrame:
         """converts the bytes into a DataFrame."""
         pass
-        
+
     def __init__(self, frequency: str = 'm',
                  start_date: Optional[str] = None,
                  end_date: Optional[str] = None,
@@ -62,31 +62,58 @@ class FactorModel(ABC):
 
     @property
     def data(self) -> pd.DataFrame:
-        """public: access the data. Calls download()."""
-        return self.download()
+        """public: access the data. Checks for data, calls download()."""
+        # Check if data is stored
+        if self._data is not None:
+            return self._data 
+        # Download, not stored
+        return self._download()
+
+    def download(self) -> pd.DataFrame:
+        """Public method to download and return the data. 
+        Calls .data property to fetch and store
+        """
+        return self.data
+
+    def extract(self, factor: str) -> pd.Series:
+        """Retrieves a single factor (column) from the dataset."""
+        # Call download to ensure data is loaded
+        data = self.download()
+
+        if factor not in data.columns:
+            self.log.error(f"Factor '{factor}' not in model.")
+            raise ValueError(f"Factor '{factor}' not available. Available: {list(data.columns)}")
+
+        return data[factor]
+
 
     # Making download concrete, and moved the abstractmethod to _read!
-    def download(self) -> pd.DataFrame:
-        if self._data is not None:
-            self.log.debug("Data loaded. Returning stored DataFrame.")
-            return self._data
-        
-        raw_data = self._http_download() 
-        data = self._read(raw_data)
+    def _download(self) -> pd.DataFrame:
+        """Private template method: called only when self._data is none
+        """
+        # Do not call directly in subclasses. Called by 'data' property only when
+        #   self._data is None (don't need to check for data here).
+        raw_data = self._download_from_url()
 
+        data = self._read(raw_data)
+        
+        # Storing
         self._data = data
-        return self._data
+
+        return data
+
 
     @property
-    def url(self) -> str:
-        """data source URL"""
+    def _url(self) -> str:
+        """Internal property: data source URL"""
+        # subclasses implement _get_url which this uses.
         return self._get_url()
 
-    def _http_download(self) -> bytes:
-        url = self.url
+    def _download_from_url(self) -> bytes:
+        url = self._url
         self.log.info(f"Downloading data from: {url}")
 
         with HttpClient(timeout=15.0) as client:
-            # Uses the cache_ttl set in __init__
             return client.download(url, self.cache_ttl)
+
 

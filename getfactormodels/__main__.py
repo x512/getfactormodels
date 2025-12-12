@@ -34,36 +34,63 @@ def get_factors(model: str|int = 3,
                 start_date: Optional[str] = None,
                 end_date: Optional[str] = None,
                 output: Optional[str] = None):
-    """Get data for a specified factor model."""
+    """Get data for a specified factor model.
+
+    Download a specified factor model's data. (Main public function)
+
+    NOTE: Parses input, assigns it to a factor model class, calls it, and returns the data.
+
+    Args:
+        model (str, float): the name of the factor model ('3', '4', '5', '6', 'carhart', 
+                            'liq', 'misp', 'icr', 'dhs', 'qclassic', 'q', 'hml_d').
+        frequency  (str, optional): the frequency of the data. ('d' 'w' 'm' 'q' or 'y', default: 'm')
+        start_date (str, optional): start date of the returned data, YYYY-MM-DD.
+        end_date (str, optional): end date of returned data, YYYY-MM-DD.
+        output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
+
+    """
+    #
+    # TODO: FIXME. kwargs. TODO: default outputs in CLI.
+    #
     frequency = frequency.lower()
     model_key = _get_model_key(model)
 
     factor_instance = None
 
     if model_key in ["3", "4", "5", "6"]:
-        factor_instance = FamaFrenchFactors(frequency, start_date,
-                                            end_date, output, model_key)
+        factor_instance = FamaFrenchFactors(model=model_key, frequency=frequency, 
+                                            start_date=start_date,
+                                            end_date=end_date, output_file=output)
 
     elif model_key == "Qclassic":
-        factor_instance = QFactors(frequency, start_date, end_date,
-                                   output, classic=True)
+        factor_instance = QFactors(frequency=frequency, start_date=start_date, 
+                                   end_date=end_date, output_file=output, classic=True)
 
     else:
         # Class loading: tries CamelCaseFactors then UPPERCASEFactors
         class_name_camel = f"{model_key}Factors"
         class_name_upper = f"{model_key.upper()}Factors"
-        
+
         # search for the class in the global scope
         FactorClass = globals().get(class_name_camel) or globals().get(class_name_upper)
 
         if not FactorClass:
-            raise ValueError(f"Invalid model: '{model_key}'. Tried class names: '{class_name_camel}' or '{class_name_upper}'.")
-            
-        factor_instance = FactorClass(frequency, start_date, end_date, output)
+            raise ValueError(f"Invalid model: '{model_key}'. "
+                f"Tried:'{class_name_camel}','{class_name_upper}'.")
+
+        factor_instance = FactorClass(frequency=frequency,
+                                      start_date=start_date,
+                                      end_date=end_date,
+                                      cache_ttl=86400,
+                                      output_file=output)
 
     return factor_instance.download()
 
 
+
+
+
+# CLI (TODO)
 
 ### zzzzzzzzzzzzzz. Old mess. This will be repurposed for extracting factors,
 # ie, returns a combination of factors from models. For now, leaving it.

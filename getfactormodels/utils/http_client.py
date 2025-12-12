@@ -24,6 +24,8 @@ from platformdirs import user_cache_path
 
 log = logging.getLogger(__name__)
 
+# TODO: clean up. Remove debug logs. 
+
 class HttpClient:
     """Simple http client: wrapper around httpx.Client with caching."""
     APP_NAME = "getfactormodels"  #platformdirs for xdg cache 
@@ -36,8 +38,6 @@ class HttpClient:
 
         # XDG path
         if cache_dir is None:
-            msg = "cache path: None"
-            log.debug(msg)
             _cache_path = user_cache_path(appname=self.APP_NAME, 
                                        ensure_exists=True)
             self.cache_dir = str(_cache_path.resolve())
