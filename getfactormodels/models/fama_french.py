@@ -43,15 +43,30 @@ class FamaFrenchFactors(FactorModel):
     Downloads the 3-factor (1993), 5-factor (2015), or 6-factor (2018)
     model of Fama & French, or Carhart's (1997) 4-factor model. Data
     is available in daily, weekly, monthly, and annual frequencies.
-    Saves data to file if output_file is specified.
+    Saves data to file if `output_file` is specified.
 
     Args:
-        model (str, int): model to return. 3, 4, 5 or 6 (default: 3).
-        frequency (str): the frequency of the data. d m y or w (default: m)
-        start_date (str, optional): the start date of the data, as YYYY-MM-DD.
-        end_date (str, optional): the end date of the data, as YYYY-MM-DD.
+        `model (str | int)`: model to return. `3`, `4`, `5` or `6` (default: 3)
+        `frequency` (`str`): the frequency of the data. `d`, `m` `y` or `w`
+        (default: `m`). Note: Only the 3 factor model is available in weekly.
+        `start_date` (`str, optional`): the start date of the data, as 
+            YYYY-MM-DD.
+        `end_date` (`str, optional`): the end date of the data, as YYYY-MM-DD.
+        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
+            (default: `86400`).
 
-   NOTES (DEV): no output_file at the moment. Need Writer class to do it
+    Returns:
+        `pd.Dataframe`: time series of returned data.
+
+    References:
+    - E. F. Fama and K. R. French, ‘Common risk factors in the returns on stocks 
+    and bonds’, Journal of Financial Economics, vol. 33, no. 1, pp. 3–56, 1993.
+    - E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, Journal 
+    of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
+    - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of Financial 
+    Economics, vol. 128, no. 2, pp. 234–252, 2018.
+
+    NOTES (DEV): no `output_file` at the moment. Need Writer class to do it
     as the function aimed to do.
     """
     @property
@@ -100,16 +115,7 @@ class FamaFrenchFactors(FactorModel):
 
         return f"{base_url}/{file_name}"
 
-    #def download(self):
-    #    """Download the Fama French factor data."""
-    #    _data = self._download()
-    #    data = self.ff_read(_data)
-#
-    #    if data is None:
-    #        print("Error downloading")
-
-    #    return data
-    
+# ------------------------------------------------------------------------- #
     @staticmethod
     def _read_zip(_data, frequency):
         """Download and read CSV from zip file."""

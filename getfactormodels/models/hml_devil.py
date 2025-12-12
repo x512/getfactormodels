@@ -39,7 +39,11 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 
     Returns:
         pd.DataFrame: the HML Devil model data indexed by date.
-        """
+    
+    References:
+        C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio Management, vol. 39, pp. 49–68, 2013.
+    Data source: https//aqr.com
+    """
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]  # TODO: Check AQR's HML Devil frequencies again. 
@@ -54,16 +58,6 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 
         return f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-
-    #def download(self):
-    #    _data = self._download()
-    #    xls = pd.ExcelFile(BytesIO(_data))
-    #    data = self._aqr_process_data(xls)
-#
-    #    if data is None:
-    #        print("Error.")
-
-    #    return data
 # --------------------------------------------------------------------------------#
     def _read(self, data) -> pd.DataFrame:
         """Process the downloaded Excel file."""

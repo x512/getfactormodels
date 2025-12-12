@@ -55,15 +55,6 @@ class ICRFactors(FactorModel):
         url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
         return url
 
-    #def download(self):
-    #    """Download the Intermediary Capital Ratio factors of He, Kelly & Manela (2017)"""
-    #    _data = self._download()
-    #    data = self._read(_data)#
-
-    #    if data is None:
-    #        print("Error downloading")
-
-    #    return data
 
     def _read(self, data) -> pd.DataFrame:
         """Helper to remove TODO"""

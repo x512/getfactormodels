@@ -35,6 +35,7 @@ class MispricingFactors(FactorModel):
         output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
         classic (bool, optional): returns the classic 4-factor q-factor model. Default: False.
         cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
+    
     Returns:
         pd.DataFrame: timeseries of factor data.
 
@@ -56,13 +57,6 @@ class MispricingFactors(FactorModel):
         url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}"
 
         return url
-
-    #def download(self):
-    #    """Download Stambaugh-Yuan (2016) Mispricing factor data."""
-    #    _data = self._download() #in base_model
-    #    data = self._read(_data)
-
-    #    return data
 
     def _read(self, data):
         """Reads the Mispricing factors CSV."""

@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 from getfactormodels.utils.http_client import HttpClient
 import pandas as pd
 
@@ -38,9 +38,9 @@ class FactorModel(ABC):
         pass
 
     def __init__(self, frequency: str = 'm',
-                 start_date: Optional[str] = None,
-                 end_date: Optional[str] = None,
-                 output_file: Optional[str] = None,
+                 start_date: str | None  = None,
+                 end_date: str | None = None,
+                 output_file: str | None = None,
                  cache_ttl: int = 86400,
                  **kwargs: Any):
 
@@ -53,7 +53,7 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
 
-        self._data: Optional[pd.DataFrame] = None # Internal storage for processed data
+        self._data: pd.DataFrame | None = None # Internal storage for processed data
 
         # Validate input frequency
         if self.frequency not in self._frequencies:

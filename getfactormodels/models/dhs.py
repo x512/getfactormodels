@@ -32,17 +32,17 @@ class DHSFactors(FactorModel):
     Lin Sun (DHS). Data from 1972-07-01 until end of 2023.
 
     Args:
-        frequency (str): The frequency of the data. 'm' or 'd' (default: m)
-        start_date (str, optional): The start date of the data, YYYY-MM-DD.
-        end_date (str, optional): The end date of the data, YYYY-MM-DD.
-        output_file (str, optional): The filepath to save the output data.
+        `frequency` (`str`): The frequency of the data. `m` or `d` (default: `m`)
+        `start_date` (`str, optional`): The start date of the data, `YYYY-MM-DD`
+        `end_date` (`str, optional`): The end date of the data, `YYYY-MM-DD`
+        `output_file` (`str, optional`): The filepath to save the output data.
 
     References:
     - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
     Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
     1673-1736.
     
-    Data source: https://sites.google.com/view/linsunhome
+    Data source: https://sites.google.com/view/linsunhome/
     """
     @property
     def _frequencies(self) -> list[str]:
@@ -50,7 +50,6 @@ class DHSFactors(FactorModel):
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         super().__init__(frequency=frequency, **kwargs)
-
 
     def _get_url(self) -> str:
         """Construct the Google Sheet URL for monthly or daily."""
@@ -62,23 +61,17 @@ class DHSFactors(FactorModel):
         else:
             gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
 
-        return  f'{base_url}{gsheet_id}/export?format=xlsx'  # maybe export to csv...? But info tab. TODO.
-
-
-    #def download(self):
-    #    """Retrieve the DHS behavioural factors. Daily and monthly."""
-    #    _data = self._download() #in base_model
-    #    data = self._read(_data)
-
-    #   return data
-
+        return  f'{base_url}{gsheet_id}/export?format=xlsx'  
+        # maybe export to csv...? But info tab. TODO.
 
     def _read(self, data):
         _file = io.BytesIO(data)
         # PATTERN....
         data = pd.read_excel(_file, index_col="Date",
-                             usecols=['Date', 'FIN', 'PEAD'], engine='openpyxl', #if can export as not excel... can drop openpyxl for this model...
-                             header=0, parse_dates=False)
+                             usecols=['Date', 'FIN', 'PEAD'], 
+                             engine='openpyxl', #if can export as not excel... can drop openpyxl for this model...
+                             header=0, 
+                             parse_dates=False)
         data.index.name = "date"
          # PATTERN.....
         if self.frequency == "d":
@@ -88,7 +81,7 @@ class DHSFactors(FactorModel):
             data.index = data.index + pd.offsets.MonthEnd(0)
 
         data = data * 0.01    # TODO: Decimal types possibly
-        # Need Fama-French Factors
+        
         try:
             ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
                                        start_date=data.index[0], end_date=data.index[-1])

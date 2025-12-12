@@ -14,19 +14,27 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#import logging #todo
-from getfactormodels.utils.utils import _process
 from .fama_french import FamaFrenchFactors
-
 
 class CarhartFactors(FamaFrenchFactors): # inheritence ooo
     """Download the Carhart 4-Factor model.
+    
+    Args:
+        `frequency` (`str`): The data frequency. `d`, `m`, `y` (default: `m`).
+        `start_date` (`str, optional`): The start date `YYYY-MM-DD`
+        `end_date` (`str, optional`): The end date `YYYY-MM-DD`
+        `output_file` (`str, optional`): Optional file path to save to file.
+        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds
+            (default: `86400`).
 
-    References: 
+    Returns:
+        `pd.DataFrame`: timeseries of factors.
+
+    References:
     - M. Carhart, ‘On Persistence in Mutual Fund Performance’, Journal
     of Finance, vol. 52, no. 1, pp. 57–82, 1997.
 
-    Data source: k. french data lib
+    Data source: https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
     """
     @property
     def _frequencies(self) -> list[str]:
@@ -37,13 +45,3 @@ class CarhartFactors(FamaFrenchFactors): # inheritence ooo
         super().__init__(frequency=frequency, 
                          model=model,   # give it to ff 
                          **kwargs)
-
-    #def download(self):
-    #    """Downloads Carhart 4-factor data."""
-    #    # call the parent download logic.      
-    #    _data = super().download() 
-    #    
-    #    if _data.empty:
-    #        raise ValueError("ERR: returned data is empty.")#
-#
- #       return _process(_data, self.start_date, self.end_date, self.output_file)

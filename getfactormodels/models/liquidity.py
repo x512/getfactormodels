@@ -14,28 +14,32 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
-from typing import Any, Optional
+from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _process
 
 
 class LiquidityFactors(FactorModel):
-    """Download the Pastor-Stambaugh Liquidity factors from Robert F. Stambaugh's website.
+    """Download the Pastor-Stambaugh Liquidity Factors.
 
     * Only available in monthly data.
 
-    params:
-        frequency (str): The data frequency. 'm'
-        start_date (str, datetime):
-        end_date (str, datetime):
-        output_file
-        
-    Source:
+    Args:
+        frequency (str): The data frequency, 'm'.
+        start_date (str, optional): The start date YYYY-MM-DD.
+        end_date (str, optional): The end date YYYY-MM-DD.
+        output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
+        cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
+    
+    Returns:
+        pd.Dataframe: timeseries of factors.
+
+    References:
     - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock Returns’, 
       Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
-    - Data source: https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt
-
+    
+    Data source: https://finance.wharton.upenn.edu/~stambaug/
     """
     @property
     def _frequencies(self) -> list[str]:
@@ -48,12 +52,6 @@ class LiquidityFactors(FactorModel):
         #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
         return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
 
-   # def download(self):
-   #     """Get the Liquidity factors"""
-   #     _data = self._download() #in base_model
-   #     data = self._read_csv(_data)
-   # 
-   #     return data 
 
     # Still old func stuff below here. Need to move some to base, but when consistent across models. 
     def _read(self, data) -> pd.DataFrame:

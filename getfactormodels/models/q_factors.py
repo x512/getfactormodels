@@ -25,15 +25,16 @@ class QFactors(FactorModel):
     """Download q-factor data from global-q.org.
 
     Args:
-        frequency (str): The data frequency ('d', 'w', 'm', 'q', 'y', or 'w2w'). Default: 'm'.
-        start_date (str, optional): The start date YYYY-MM-DD.
-        end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
-        classic (bool, optional): returns the classic 4-factor q-factor model. Default: False.
-        cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
-
+        `frequency` (`str`): the frequency of the data. `d`, `m` `y` or `w`
+            (default: `m`).
+        `start_date` (`str, optional`): the start date of the data, `YYYY-MM-DD`
+        `end_date` (`str, optional`): the end date of the data, as `YYYY-MM-DD`
+        `classic` (`bool, optional`): returns the original 4-factor q-factor 
+            model. (Default: `False`).
+        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
+            (default: `86400`).
     Returns:
-        pd.DataFrame: timeseries of factors
+        `pd.DataFrame`: timeseries of factors
 
     References:
     - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented q-factor model
@@ -63,13 +64,6 @@ class QFactors(FactorModel):
         url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
         return url
 
-   # def download(self) -> pd.DataFrame:
-   #     _data = self._download()
-   #     data = self._read(_data)
-   #     df = self._parse_q_factors(data)
-#
- #       return df
-
     def _read(self, data) -> pd.DataFrame:
         _file = io.StringIO(data.decode('utf-8'))
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
@@ -78,6 +72,7 @@ class QFactors(FactorModel):
 
         return data
 
+    # ------------------------------------------------------------------ #
     def _parse_q_factors(self, data) -> pd.DataFrame:
         if self.frequency in ["m", "q"]: 
             data = data.reset_index()
