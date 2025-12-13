@@ -16,9 +16,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
-from getfactormodels.utils.http_client import HttpClient
+from typing import Any, List
 import pandas as pd
+from getfactormodels.utils.http_client import HttpClient
+
 
 class FactorModel(ABC):
     """base model used by all factor models."""
@@ -75,7 +76,7 @@ class FactorModel(ABC):
         return self.data
 
 
-    def extract(self, factor: str) -> pd.Series:
+    def extract(self, factor: str | List[str]) -> pd.Series | pd.DataFrame:
         """Retrieves a single factor (column) from the dataset."""
         data = self.download()
 
@@ -83,13 +84,17 @@ class FactorModel(ABC):
             self.log.error("DataFrame is empty.")
             raise RuntimeError("DataFrame empty: can not extract a factor.")
 
-        if factor not in data.columns:
-            self.log.error(f"Factor '{factor}' not found in model.")
-            raise ValueError(
-                f"Factor '{factor}' not available. Available: {list(data.columns)}")
+        if isinstance(factor, str):
+            if factor not in data.columns:
+                available = list(data.columns)
+                self.log.error(f"Factor '{factor}' not found in model. Available: {available}")
+                raise ValueError(f"Factor '{factor}' not available.")       
+            return data[factor]
 
-        return data[factor]   # Type hint TODO FIXME
-
+        elif isinstance(factor, list):
+            # just let pandas handle list to cols:
+            return data[factor]
+        
 
     # Making download concrete, and moved the abstractmethod to _read!
     def _download(self) -> pd.DataFrame:

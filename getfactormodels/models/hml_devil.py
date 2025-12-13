@@ -76,11 +76,9 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 
         for sheet_index, sheet_name in sheets.items():
             df = df_dict[sheet_name]
-            # Only take USA column for non-RF sheets   # TODO: countries
-            if sheet_index not in [8, 0]:  # 8 is RF, 0 is HML Devil
-                df = df[['USA']]
-            else:
-                df = df.iloc[:, 0:1]  # First column
+            # Only take USA column for non-RF sheets
+            # TODO: add country param.     
+            df = df[['USA']] if sheet_index not in [8, 0] else df.iloc[:, 0:1] #RUF, SIM108 fix
             df.columns = [sheet_name]
             dfs.append(df)
 

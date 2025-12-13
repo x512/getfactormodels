@@ -86,15 +86,16 @@ class BarillasShankenFactors(FactorModel):
         """Constructs the Barillas 6 factor model from other models"""
 
         print("  - Getting q factors...")
-        qdata = QFactors(frequency=self.frequency, classic=True).download()
-        q = qdata[['R_IA', 'R_ROE']]
-
+        _q = QFactors(frequency=self.frequency, 
+                      classic=True).extract(['R_IA', 'R_ROE']) 
+        # test: if this fails .extract is bad
+        
         print("  - Getting Fama-French factors...")
         ffdata = FamaFrenchFactors(model='6', frequency=self.frequency)
         ff = ffdata.download()[['Mkt-RF', 'SMB', 'UMD']]
 
         # Merge q and Fama-French factors
-        df = q.merge(ff, left_index=True,
+        df = _q.merge(ff, left_index=True,
                      right_index=True, how='inner')
 
         print("  - Getting HML_Devil factor (this can take a while,"
