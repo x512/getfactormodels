@@ -122,12 +122,14 @@ class DHSFactors(FactorModel):
 
 
             # pandas line --------------------------------------------------- #
-            df = table.to_pandas()
+            df = table.to_pandas()  # LOSS OF DATA/ROUNDING ERROR TODO (sheet has more than 4 decimals)
 
             df = df.set_index('date')
             df.index.name = 'date' # Set the index name
-
+            
             data = df * 0.01    # TODO: Decimal types possibly
+            data = data.round(8) 
+            # TODO: check every model, does it need decimalization?
 
             if self.frequency == "m":
                 data.index = data.index + pd.offsets.MonthEnd(0) 
@@ -138,8 +140,9 @@ class DHSFactors(FactorModel):
                 ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
                                            start_date=self.start_date, end_date=self.end_date)
                 ff = ffdata.download()
-                ff = ff.round(4)
+                #ff = ff.round(4)
                 data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
+                data = data.dropna(how="any")
 
             except NameError:
                 print("Warning: _get_ff_factors function not found. Skipping FF merge.")

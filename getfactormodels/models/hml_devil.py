@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # TODO: break this all up into models/*.py !
 # TODO: httpx, a client class, model classes... (done done and done)
-from io import BytesIO
+import io
 from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
@@ -35,7 +35,6 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
         start_date (str, optional): The start date of the data, YYYY-MM-DD.
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
         output_file (str, optional): The filepath to save the output data.
-
 
     Returns:
         pd.DataFrame: the HML Devil model data indexed by date.
@@ -60,41 +59,47 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 
 # --------------------------------------------------------------------------------#
     def _read(self, data) -> pd.DataFrame:
-        """Process the downloaded Excel file."""
+        """Processes the downloaded Excel file from AQR."""
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
-        dfs = []
         
         df_dict = pd.read_excel(
-            BytesIO(data),
+            io.BytesIO(data),
             sheet_name=list(sheets.values()),
             skiprows=18,
             header=0,
-            engine='calamine',  # Change
+            engine='calamine', # The right choice for speed
             index_col=0,
-            parse_dates=True
+            parse_dates=True,
         )
 
+        dfs = []
         for sheet_index, sheet_name in sheets.items():
             df = df_dict[sheet_name]
-            # Only take USA column for non-RF sheets
-            # TODO: add country param.     
-            df = df[['USA']] if sheet_index not in [8, 0] else df.iloc[:, 0:1] #RUF, SIM108 fix
-            df.columns = [sheet_name]
-            dfs.append(df)
+            
+            if sheet_index in [8, 0]:
+                # RF and HML Devil (iloc[:, 0:1])
+                df_slice = df.iloc[:, 0:1]
+            else:
+                # MKT, SMB, UMD (uses 'USA' column name)
+                if 'USA' in df.columns:
+                     df_slice = df[['USA']]
+            df_slice.columns = [sheet_name]
+            dfs.append(df_slice)
 
         data = pd.concat(dfs, axis=1)
-        data = data.dropna(subset=['RF', 'UMD'])
         data = data.astype(float)
 
-        # Rename columns to standard factor names
         data.rename(columns={
             'MKT': 'Mkt-RF',     # TODO: double check!! This could just be mkt.
-            'HML Devil': 'HML_Devil'
+            'HML Devil': 'HML_Devil',
+            'SMB': 'SMB_AQR', #
+            #'RF': to RF_AQR or RF_{countrycode} when added 
         }, inplace=True)
 
         # Drops all data where HML_Devil is NaN
-        data = data.dropna(subset=['HML_Devil'])
-
+        #data = data.dropna(subset=['HML_Devil'])
+        data = data.dropna(subset=['RF', 'UMD', 'HML_Devil'], how='any')
+        data = data.round(8)
         return _process(data, self.start_date, self.end_date, filepath=self.output_file)
         # From func - cache stuff -- OLD CACHE STUFF
         #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
