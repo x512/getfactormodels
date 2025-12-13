@@ -27,10 +27,10 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 ## Installation
 >[!IMPORTANT]
+>``getfactormodels`` is still pre-alpha (until version 0.1.0), don't rely on it for anything.
+>
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >
->``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
-Requires:
 
 **Requires:**
 
@@ -43,16 +43,12 @@ The easiest way to install (and update) `getfactormodels` is with pip:
 ```bash
 pip install -U getfactormodels
 ```
-
+You can also download the [latest release](https://github.com/x512/getfactormodels/releases/latest
+) and install using pip.
 <details>
 
-<summary>Install from source</summary>
+<summary>linux/macOS</summary>
 
-You can also install the [latest release](https://github.com/x512/getfactormodels/releases/latest
-) using pip.
-
-- Linux/macOS:
-  
 ```bash
  curl -LO https://github.com/x512/getfactormodels/archive/latest.tar.gz
  tar -xzf latest.tar.gz
@@ -105,12 +101,14 @@ icr = ICRFactors() # look! no params!
 # Use the download module to get the data
 df = icr.download()
 
+# extract a factor
+factor = icr.extract("IC_RATIO")
+
 # The 'q' models, and the 3-factor model of Fama-French have weekly data available
 df = QFactors(frequency='w',
             start_date='1992-05-22',
             end_date='2019-01-05').download() # chained! Wow!
 
-#print(df.tail(3))
 ```
 <!-- TODO: REDO IPYNB EXAMPLE -->
   - All model Classes: 
@@ -165,17 +163,17 @@ contains the shortest identifier for each model. These should all work in python
 
 | `id` | Factor Model         | Start      | D            | W            | M            | Q            | Y            | End        |
 |:--:|:--------------|:----------:|--------------|--------------|--------------|--------------|--------------|:----------:|
-|`3`| Fama-French 3 | 1926-07-01 | $\checkmark$ | $\checkmark$ | $\checkmark$ |              | $\checkmark$ |     -       |
-|`4`| Carhart 4      | 1926-11-03 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
-|`5`| Fama-French 5  | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |     -       |
-|`6`| Fama-French 6 | 1963-07-01 | $\checkmark$ |              | $\checkmark$ |              | $\checkmark$ |      -      |
-|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | $\checkmark$ |         | $\checkmark$ |              |              |-|
-|`dhs`| DHS          | 1972-07-03 | $\checkmark$ |            | $\checkmark$ |              |              | 2023-12-29 |
-|`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | $\checkmark$ ||$\checkmark$| $\checkmark$ | | 2025-06-27 |
-|`mis`| Mispricing    | 1963-01-02 | $\checkmark$ |            | $\checkmark$ |              |              | 2016-12-30 |
-|`liq`| Liquidity     | 1962-08-31 |              |            | $\checkmark$ |              |              | 2024-12-31 |
-|`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$ | $\checkmark$| 2022-12-30|
-|`bs`| Barillas-Shanken | 1967-01-03 | $\checkmark$ |           | $\checkmark$ |              |              | 2024-12-31 |
+|`3`| Fama-French 3 | 1926-07-01 | ✓ | ✓ | ✓ |              | ✓ |     -       |
+|`4`| Carhart 4      | 1926-11-03 | ✓ |              | ✓ |              | ✓ |     -       |
+|`5`| Fama-French 5  | 1963-07-01 | ✓ |              | ✓ |              | ✓ |     -       |
+|`6`| Fama-French 6 | 1963-07-01 | ✓ |              | ✓ |              | ✓ |      -      |
+|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | ✓ |         | ✓ |              |              |-|
+|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |              |              | 2023-12-29 |
+|`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | ✓ ||✓| ✓ | | 2025-06-27 |
+|`mis`| Mispricing    | 1963-01-02 | ✓ |            | ✓ |              |              | 2016-12-30 |
+|`liq`| Liquidity     | 1962-08-31 |              |            | ✓ |              |              | 2024-12-31 |
+|`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2022-12-30|
+|`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |              |              | 2024-12-31 |
 
 >[TODO]
 >Docs!
