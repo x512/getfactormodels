@@ -111,19 +111,55 @@ df = QFactors(frequency='w',
 
 ```
 <!-- TODO: REDO IPYNB EXAMPLE -->
-  - All model Classes: 
-      `HMLDevil`, `CarhartFactors`, `FamaFrenchFactors`, `QFactors`,
-      `LiquidityFactors`, `MispricingFactors`, `BarillasShankenFactors`, `ICRFactors`,
-      `DHSFactors`.
 
-**Parameters**
-- All model classes support:
-    - `frequency`: `d` `w` `m` `y`
-    - `start_date`: YYYY-[MM-DD] format
-    - `end_date`: YYYY-[MM-DD] format
-    - `output_file`: Export path
-* `FamaFrenchFactors` has a `model` param. Accepts `3` `4` `5` `6` or equivilent model name (`ff3`, `famafrench3`) (default: `3`).
-* `QFactors` has a `classic` boolean param (default: `false`) for returing the 4-factor q-factor model (2015).
+
+#### Parameters
+
+-  `getfactormodels.get_factors()`
+
+
+*All models share these base params:*
+ 
+ | Parameter | Description | Data Type | default |
+ | :--- | :--- | :--- | :--- |
+ |`model`|Model name, see id's above. |`str`|`None`|
+ | `frequency` | The time frequency of the data, accepted values: `d`, `m`, `w`, `q`, `y`. | `str` | `m` |
+ | `start_date` | The start date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
+ | `end_date` | The end date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
+ | `cache_ttl` | Time-to-live for cached data (how long to reuse downloaded data). | `int` | `86400` (1 day) |
+ | `output_file` | Filepath to save data to | `str` | `None` |
+
+
+##### Classes
+- `FamaFrenchFactors`
+- `CarhartFactors`
+- `QFactors`
+- `ICRFactors`
+- `DHSFactors`
+- `LiquidityFactors`
+- `MispricingFactors`
+- `HMLDevilFactors`
+- `BarillasShankenFactors`
+
+All classes share these params:
+
+   | Param | Description | Type | default |
+   | :--- | :--- | :--- | :--- |
+   | `frequency` | The time frequency of the data, accepted values: `d`, `m`, `w`, `q`, `y`. | `str` | `m` |
+   | `start_date` | The start date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
+   | `end_date` | The end date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
+   | `cache_ttl` | Time-to-live for cached data (how long to reuse downloaded data). | `int` | `86400` (1 day) |
+   | `output_file` | Filepath to save data to | `str` | `None` |
+<br>
+
+- Some models have extra parameters:
+
+    | Class | Param | Description | Type | default |
+    | :--- | :---: | :--- | :---: | :--- |
+    | ``FamaFrenchFactors`` | `model` | Fama-French Factors specific model |  ``str``, ``int`` | `3` |
+    | ``QFactors`` | `classic` | If true returns the classic q-factor model. | `bool`  | `False` |
+
+
 
 
 ### CLI
