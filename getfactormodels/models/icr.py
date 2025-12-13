@@ -89,12 +89,10 @@ class ICRFactors(FactorModel):
 
         df = df.set_index("date")
         
-        if self.frequency == 'd':
-            df = df.round(8) # lol FIXME TODO FIXME FIXME Rounding errors: 15 decimals in src, need Decimal
-
-        else:
-            df = df.round(4) #both m and q are 4 decimals
-
+        # TODO: daily returns 15 decimals; 
+        # Decimal type possibly to avoid rounding errors.
+        df = df.round(8) if self.frequency == 'd' else df.round(4) # RUF/SIM108
+        
         #TODO: check if decimalizing anything?
 
         return _process(df, self.start_date,
