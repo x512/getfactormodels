@@ -18,8 +18,9 @@ import io
 from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
-
+from getfactormodels.utils.utils import _process   # KILL THIS TODO
+import pyarrow as pa 
+import pyarrow.csv as pv
 
 # TODO: proper class docstr's.
 class MispricingFactors(FactorModel):
@@ -48,35 +49,100 @@ class MispricingFactors(FactorModel):
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
-
+    
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
     def _get_url(self) -> str:
-        _file_url = "M4d.csv" if self.frequency == "d" else "M4.csv"
-        url = f"https://finance.wharton.upenn.edu/~stambaug/{_file_url}"
+        base_url = "https://finance.wharton.upenn.edu/~stambaug"
+        file_name = "M4d" if self.frequency == "d" else "M4"
+        return f"{base_url}/{file_name}.csv"
 
-        return url
+    SCHEMA = pa.schema([
+        ('YYYYMM', pa.timestamp('ms')),
+        ('MKTRF', pa.float64()),
+        ('SMB', pa.float64()),
+        ('RMW', pa.float64()),
+        ('CMA', pa.float64()),
+        ('RF', pa.float64())
+    ])    
 
     def _read(self, data):
         """Reads the Mispricing factors CSV."""
-        _data = data.decode('utf-8')
-        data = pd.read_csv(io.StringIO(_data),
-                           index_col=0,
-                           parse_dates=False,
-                           date_format="%Y%m%d",
-                           engine="pyarrow")
+        try:
+            # TEST: reading CSV with PyArrow
+            # will be a CSV reader
+            read_opts = pv.ReadOptions(
+                skip_rows=1,
+                column_names=['YYYYMM', 'MKTRF', 'SMB', 'MGMT', 'PERF', 'RF']
+            )
 
-        data = data.rename(columns={"SMB": "SMB_SY",
-                                    "MKTRF": "Mkt-RF"}).rename_axis("date")
-        ## NOTICING A PATTERN....
-        if self.frequency == "d":
-            data.index = pd.to_datetime(data.index, format="%Y%m%d")
+            parse_opts = pv.ParseOptions(
+                delimiter=',',
+                ignore_empty_lines=True
+            )
 
-        elif self.frequency == "m":
-            data.index = pd.to_datetime(data.index, format="%Y%m")
-            data.index = data.index + pd.offsets.MonthEnd(0)
+            convert_opts = pv.ConvertOptions(
+                column_types=self.SCHEMA,
+                timestamp_parsers=["%Y%m%d", "%Y%m"]
+            )
 
-        # then into the mystical spaghetti _process still
-        return _process(data, self.start_date,
+            table = pv.read_csv(
+                io.BytesIO(data),
+                read_options=read_opts,
+                parse_options=parse_opts,
+                convert_options=convert_opts
+            )
+
+            table = table.rename_columns([
+                'date',     # YYYYMM -> date
+                'Mkt-RF',   # MKTRF -> Mkt-RF
+                'SMB_SY',   # SMB -> SMB_SY
+                'MGMT', 
+                'PERF',
+                'RF',
+            ])
+            
+            # Debug, testing
+            initial_rows = table.num_rows
+            table = table.drop_null()
+            final_rows = table.num_rows
+            rows_dropped = initial_rows - final_rows
+
+            if rows_dropped > 0:
+                self.log.debug(f"{rows_dropped} NaN rows dropped." # shouldnt be any
+                            f"({initial_rows} -> {final_rows}).")
+            else:
+                self.log.debug("No NaNs detected")
+                self.log.debug(f"data: {final_rows} rows.")
+
+            # pandas line --------------------------------------------------- #
+            df = table.to_pandas()
+
+            df = df.set_index('date')
+            df.index.name = 'date' # Set the index name
+            
+            # Strip whitespace and handle missing values
+            #df = df.replace([-99.99, -999], pd.NA).dropna()
+
+            if self.frequency == "m":
+            # PyArrow gives the 1st of the month, shift to end.
+                df.index = df.index + pd.offsets.MonthEnd(0)  # this is whats messing user input hmm
+                # will keep uncommented while every other model does this.
+
+            # TODO: If using end of month (which it is), then need to 
+            # parse user input dates, THEN shift to end of month. FIXME.
+            # TODO: replace _process...
+            return _process(df, self.start_date,
                         self.end_date, filepath=self.output_file)
+ 
+        # returns an empty dataframe that base class expects for this model.
+        # TODO: FIXIME: cleanup, handle errors properly everywhere...
+        except (pa.ArrowIOError, pa.ArrowInvalid) as e:
+            self.log.error(f"Reading or parsing failed for Mispricing factors: {e}")
+            column_names = ['Mkt-RF', 'SMB_SY', 'MGMT', 'PERF', 'RF']
+            empty_df = pd.DataFrame(columns=column_names, # type: ignore [reportArgumentType] 
+                                    index=pd.DatetimeIndex([], name='date')) 
+
+            return empty_df        
+
