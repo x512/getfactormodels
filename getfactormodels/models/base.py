@@ -19,7 +19,7 @@ from abc import ABC, abstractmethod
 from typing import Any, List
 import pandas as pd
 from getfactormodels.utils.http_client import HttpClient
-
+import pyarrow as pa
 
 class FactorModel(ABC):
     """base model used by all factor models."""
@@ -34,8 +34,8 @@ class FactorModel(ABC):
         pass
 
     @abstractmethod
-    def _read(self, data: bytes) -> pd.DataFrame:
-        """converts the bytes into a DataFrame."""
+    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
+        """convert bytes into a pd.DataFrame or pa.Table."""
         pass
 
     def __init__(self, frequency: str = 'm',
@@ -105,7 +105,10 @@ class FactorModel(ABC):
         raw_data = self._download_from_url()
         
         data = self._read(raw_data)
-        
+
+        if isinstance(data, pa.Table):
+            data = data.to_pandas()
+  
         # Storage
         self._data = data
 
@@ -121,8 +124,12 @@ class FactorModel(ABC):
     def _download_from_url(self) -> bytes:
         url = self._url
         self.log.info(f"Downloading data from: {url}")
-
-        with HttpClient(timeout=15.0) as client:
-            return client.download(url, self.cache_ttl)
+        try:
+            with HttpClient(timeout=15.0) as client:
+                return client.download(url, self.cache_ttl)
+        except Exception as e:
+            self.log.error(f"Failed to download from {url}: {e}")
+            # crash fast on download failure
+            raise RuntimeError(f"Download failed for {url}.") from e
 
 

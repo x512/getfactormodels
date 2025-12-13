@@ -138,6 +138,19 @@ def _validate_date(date_input):
     if date_input is None:
         return None
 
+    if isinstance(date_input, int):
+        # int should be in the format YYYYMMDD or YYYYMM.
+        date_str = str(date_input)
+        
+        if len(date_str) == 8: # YYYYMMDD
+            return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
+        
+        elif len(date_str) == 6:
+             return f"{date_str[:4]}-{date_str[4:]}-01"
+             
+        else:
+             raise ValueError(f"invalid length int: {date_str}")
+    
     # is a timestamp
     if isinstance(date_input, pd.Timestamp):
         return date_input.strftime("%Y-%m-%d")

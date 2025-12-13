@@ -19,8 +19,11 @@ from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.utils import _process
 from getfactormodels.utils.http_client import HttpClient
+from getfactormodels.utils.utils import _process
+import pyarrow as pa
+import pyarrow.csv as pv
+
 
 class DHSFactors(FactorModel):
     # roughing in infos, not approp for docstr but need TODO a reliable
@@ -48,53 +51,104 @@ class DHSFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ['d', 'm']
 
+    SCHEMA = pa.schema([
+        ('Date', pa.timestamp('ms')),
+        ('FIN', pa.float64()),
+        ('PEAD', pa.float64()),
+    ])
+
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
+        self.frequency = frequency
         super().__init__(frequency=frequency, **kwargs)
+
 
     def _get_url(self) -> str:
         """Construct the Google Sheet URL for monthly or daily."""
-        # TODO: get the ID's from the site, instead of hardcoded here.
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
             gsheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
-            #info_id = 
+            #info_id =
         else:
             gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
             #info_sheet_id = '#gid=96292754'
-        
 
-        return  f'{base_url}{gsheet_id}/export?format=csv'  
-       
+        return  f'{base_url}{gsheet_id}/export?format=csv'
+
+
     def _read(self, data):
-        _file = io.BytesIO(data)
-        # PATTERN....
-        data = pd.read_csv(_file, index_col="Date",
-                          #   usecols=['Date', 'FIN', 'PEAD'], 
-                             engine='pyarrow', 
-                             header=0, 
-                             parse_dates=False)
-        data.index.name = "date"
-         # PATTERN.....
-        if self.frequency == "d":
-            data.index = pd.to_datetime(data.index, format="%m/%d/%Y")
-        else:
-            data.index = pd.to_datetime(data.index, format="%Y%m")
-            data.index = data.index + pd.offsets.MonthEnd(0)
-
-        data = data * 0.01    # TODO: Decimal types possibly
-        
+        """Reads the Mispricing factors CSV."""
         try:
-            ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
-                                       start_date=data.index[0], end_date=data.index[-1])
-            ff = ffdata.download()
-            ff = ff.round(4)
-            data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
+            if self.frequency == 'd':
+                col_names = ['Date', 'Year', 'Month', 'Day', 'FIN', 'PEAD']
+            else:
+                col_names = ['Date', 'PEAD', 'FIN'] #note FIN PEAD swap in m and d 
+            # TEST: reading CSV with PyArrow
+            # will be a CSV reader
+            read_opts = pv.ReadOptions(skip_rows=1, 
+                                       column_names=col_names)
 
-        except NameError:
-            print("Warning: _get_ff_factors function not found. Skipping FF merge.")
+            parse_opts = pv.ParseOptions(delimiter=',',
+                                         ignore_empty_lines=True)
 
-        data.index.name = "date"
+            convert_opts = pv.ConvertOptions(
+                column_types=self.SCHEMA,
+                timestamp_parsers=["%m/%d/%Y", "%Y%m"],
+                include_columns=['Date', 'PEAD', 'FIN'], 
+            )
 
-        return _process(data, self.start_date,
-                        self.end_date, filepath=self.output_file)
+            table = pv.read_csv(
+                io.BytesIO(data),
+                read_options=read_opts,
+                parse_options=parse_opts,
+                convert_options=convert_opts
+            )
+
+            table = table.rename_columns(['date', 'PEAD', 'FIN'])
+
+            # for debug, testing 
+            initial_rows = table.num_rows
+            table = table.drop_null()
+
+            final_rows = table.num_rows
+            rows_dropped = initial_rows - final_rows
+
+            if rows_dropped > 0:
+                self.log.debug(f"{rows_dropped} NaN rows dropped." # check
+                    f"({initial_rows} -> {final_rows}).")
+            else:
+                self.log.debug("No NaNs detected")
+                self.log.debug(f"data: {final_rows} rows.")
+
+
+            # pandas line --------------------------------------------------- #
+            df = table.to_pandas()
+
+            df = df.set_index('date')
+            df.index.name = 'date' # Set the index name
+
+            data = df * 0.01    # TODO: Decimal types possibly
+
+            if self.frequency == "m":
+                data.index = data.index + pd.offsets.MonthEnd(0) 
+                # bad TODO, start of month, THEN get data THEN offset. TODO: After fama french
+
+            # Move this into a function
+            try:
+                ffdata = FamaFrenchFactors(model="3", frequency=self.frequency,
+                                           start_date=self.start_date, end_date=self.end_date)
+                ff = ffdata.download()
+                ff = ff.round(4)
+                data = pd.concat([ff["Mkt-RF"], data, ff["RF"]], axis=1)
+
+            except NameError:
+                print("Warning: _get_ff_factors function not found. Skipping FF merge.")
+
+            return _process(data, self.start_date,
+                            self.end_date, filepath=self.output_file)
+
+        except (pa.ArrowIOError, pa.ArrowInvalid) as e:
+            self.log.error(f"Reading or parsing failed: {e}")
+            empty_df = pd.DataFrame(columns=['Date', 'PEAD', 'FIN'], # type: ignore [reportArgumentType] 
+                                    index=pd.DatetimeIndex([], name='date'))
+            return empty_df
