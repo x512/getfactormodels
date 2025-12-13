@@ -29,10 +29,10 @@ requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.1.4",
     "pyarrow>=22.0.0",
-    "openpyxl>=3.0.3",
     "diskcache>=5.6.3",
     "httpx (>=0.28.1,<0.29.0)",
     "certifi (>=2025.11.12,<2026.0.0)",
+    "python-calamine (>=0.6.1,<0.7.0)",
 ]
 
 [tool.poetry.group.dev.dependencies]
@@ -44,7 +44,7 @@ pytest-randomly = ">=4.0.1"
 tox = "4.32.0"
 
 [project.scripts]
-getfactormodels = "getfactormodels.__main__:main"
+getfactormodels = "getfactormodels.main:main"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

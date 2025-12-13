@@ -52,10 +52,8 @@ class FactorModel(ABC):
         self.end_date = end_date
         self.output_file = output_file
         self.cache_ttl = cache_ttl
-
         self._data: pd.DataFrame | None = None # Internal storage for processed data
 
-        # Validate input frequency
         if self.frequency not in self._frequencies:
             raise ValueError(f"Invalid frequency {frequency}. Valid options: {self._frequencies}")
         super().__init__()
@@ -69,35 +67,41 @@ class FactorModel(ABC):
         # Download, not stored
         return self._download()
 
+
     def download(self) -> pd.DataFrame:
         """Public method to download and return the data. 
         Calls .data property to fetch and store
         """
         return self.data
 
+
     def extract(self, factor: str) -> pd.Series:
         """Retrieves a single factor (column) from the dataset."""
-        # Call download to ensure data is loaded
         data = self.download()
 
-        if factor not in data.columns:
-            self.log.error(f"Factor '{factor}' not in model.")
-            raise ValueError(f"Factor '{factor}' not available. Available: {list(data.columns)}")
+        if data.empty:
+            self.log.error("DataFrame is empty.")
+            raise RuntimeError("DataFrame empty: can not extract a factor.")
 
-        return data[factor]
+        if factor not in data.columns:
+            self.log.error(f"Factor '{factor}' not found in model.")
+            raise ValueError(
+                f"Factor '{factor}' not available. Available: {list(data.columns)}")
+
+        return data[factor]   # Type hint TODO FIXME
 
 
     # Making download concrete, and moved the abstractmethod to _read!
     def _download(self) -> pd.DataFrame:
-        """Private template method: called only when self._data is none
+        """Private template method: called by `data` property when self._data is none.
+        * Should not be called directly with subclasses.
         """
-        # Do not call directly in subclasses. Called by 'data' property only when
-        #   self._data is None (don't need to check for data here).
+        # Don't need to check for data here
         raw_data = self._download_from_url()
-
+        
         data = self._read(raw_data)
         
-        # Storing
+        # Storage
         self._data = data
 
         return data

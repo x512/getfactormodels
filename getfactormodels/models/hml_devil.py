@@ -61,16 +61,15 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 # --------------------------------------------------------------------------------#
     def _read(self, data) -> pd.DataFrame:
         """Process the downloaded Excel file."""
-        xls = pd.ExcelFile(BytesIO(data))
-
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
         dfs = []
         
         df_dict = pd.read_excel(
-            xls,
+            BytesIO(data),
             sheet_name=list(sheets.values()),
             skiprows=18,
             header=0,
+            engine='calamine',  # Change
             index_col=0,
             parse_dates=True
         )

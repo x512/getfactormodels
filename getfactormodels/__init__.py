@@ -19,7 +19,7 @@ import logging
 
 logging.getLogger('getfactormodels').setLevel(logging.DEBUG)
 
-from .__main__ import FactorExtractor, get_factors
+from .main import FactorExtractor, get_factors
 from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
                      FamaFrenchFactors, HMLDevilFactors, ICRFactors,
                      LiquidityFactors, MispricingFactors, QFactors)

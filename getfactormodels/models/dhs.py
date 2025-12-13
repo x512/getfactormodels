@@ -20,7 +20,7 @@ import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.utils import _process
-
+from getfactormodels.utils.http_client import HttpClient
 
 class DHSFactors(FactorModel):
     # roughing in infos, not approp for docstr but need TODO a reliable
@@ -58,18 +58,20 @@ class DHSFactors(FactorModel):
 
         if self.frequency == 'd':
             gsheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
+            #info_id = 
         else:
             gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
+            #info_sheet_id = '#gid=96292754'
+        
 
-        return  f'{base_url}{gsheet_id}/export?format=xlsx'  
-        # maybe export to csv...? But info tab. TODO.
-
+        return  f'{base_url}{gsheet_id}/export?format=csv'  
+       
     def _read(self, data):
         _file = io.BytesIO(data)
         # PATTERN....
-        data = pd.read_excel(_file, index_col="Date",
-                             usecols=['Date', 'FIN', 'PEAD'], 
-                             engine='openpyxl', #if can export as not excel... can drop openpyxl for this model...
+        data = pd.read_csv(_file, index_col="Date",
+                          #   usecols=['Date', 'FIN', 'PEAD'], 
+                             engine='pyarrow', 
                              header=0, 
                              parse_dates=False)
         data.index.name = "date"
