@@ -19,8 +19,8 @@ import logging  # TODO: FF logging! FIXME
 import zipfile
 from typing import Any
 import pandas as pd
-from getfactormodels.utils.http_client import HttpClient
 from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.http_client import HttpClient
 from getfactormodels.utils.utils import _slice_dates
 
 # TODO: yearly data isn't inclusive of end yr
@@ -75,7 +75,7 @@ class FamaFrenchFactors(FactorModel):
 
     def __init__(self, frequency: str = 'm', model: int|str = '3',  **kwargs: Any) -> None:
         self.frequency = frequency
-        self.model = model
+        self.model = str(model) #lost this somewhere...
         
         self._validate_ff_input()
 

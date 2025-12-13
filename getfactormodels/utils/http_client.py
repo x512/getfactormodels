@@ -16,21 +16,21 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import hashlib
 import logging
-from typing import Optional, Union
 import certifi
 import httpx
-from .cache import _Cache
 from platformdirs import user_cache_path
+from .cache import _Cache
 
 log = logging.getLogger(__name__)
-
-# TODO: clean up. Remove debug logs. 
+# TODO: errors
 
 class HttpClient:
     """Simple http client: wrapper around httpx.Client with caching."""
+    
     APP_NAME = "getfactormodels"  #platformdirs for xdg cache 
-    def __init__(self, timeout: Union[float, int] = 15.0,
-                 cache_dir: Union[str, None] = None, # None by default!
+
+    def __init__(self, timeout: float | int = 15.0,
+                 cache_dir: str | None = None, # None by default!
                  default_cache_ttl: int = 86400): # 1 day default
         self.timeout = timeout
         self.default_cache_ttl = default_cache_ttl
@@ -80,7 +80,7 @@ class HttpClient:
         """Generates a cache key/hash for the URL."""
         return hashlib.sha256(url.encode('utf-8')).hexdigest()
 
-    def download(self, url: str, cache_ttl: Optional[int] = None) -> bytes:
+    def download(self, url: str, cache_ttl: int | None = None) -> bytes:
         """Downloads content from a given URL.
            cache_ttl: int, secs
         """
@@ -145,18 +145,16 @@ class HttpClient:
             if response.is_success:
                 return True
 
-            msg = f"Couldn't establish connection."
+            msg = "Couldn't establish connection."
             log.info(msg)
-
-        except Exception:
+        
+        except httpx.RequestError: 
             return False
 
-    # TODO:
+        return False
+
+    # TODO: user needs to acces this. force, or clear cache?
     def _clear_cache(self) -> None:
-        """
-        Clears all cached files stored by this client. 
-        Delegates the call to the underlying cache object.
-        """
         self.cache.clear()
         log.debug("cache cleared by HttpClient")
 
