@@ -94,7 +94,15 @@ class FactorModel(ABC):
         elif isinstance(factor, list):
             # just let pandas handle list to cols:
             return data[factor]
-        
+
+    # TODO: Remove FactorExtractor
+    #def _drop_rf():
+        #if rf=0
+    #def _drop_mktrf(): 
+        #if mktrf = 0
+    # set flags.
+    #let utils handle it. (_pd_rearrange_cols, if no_rf = 1, then drop it)
+
 
     # Making download concrete, and moved the abstractmethod to _read!
     def _download(self) -> pd.DataFrame:
@@ -131,5 +139,4 @@ class FactorModel(ABC):
             self.log.error(f"Failed to download from {url}: {e}")
             # crash fast on download failure
             raise RuntimeError(f"Download failed for {url}.") from e
-
 

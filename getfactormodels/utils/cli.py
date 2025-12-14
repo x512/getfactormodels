@@ -18,6 +18,9 @@
 # Needs to be redone! TODO
 import argparse
 
+#Cache 
+
+# Emerging
 
 def parse_args() -> argparse.Namespace:
     """Argument parser, allowing for command line arguments.
@@ -45,4 +48,15 @@ def parse_args() -> argparse.Namespace:
                         help='Drop the RF column from the DataFrame.')
     parser.add_argument('--no_mkt', '--no-mkt', '--nomkt', action='store_true',
                         help='Drop the Mkt-RF column from the DataFrame.')
+    # Need to rework CLI. Emerging and factor extractor added:
+    parser.add_argument('--emerging', '--em', required=False, action='store_true', #no type=, if present is true
+                        help='Emerging markets (Fama French models only)')
+    parser.add_argument(
+        '--extractfactor', '--extract', '-x', required=False, nargs='+', 
+        help='Extract specified factor from a model.'
+            'getfactormodels -m ff3 -x SMB'
+            'getfactormodels -m ff3 -x SMB HML'
+    ) #type=str|list ?
+
+    
     return parser.parse_args()

@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging  # TODO logging
 from pathlib import Path
-from typing import Optional
+from typing import List
 import pandas as pd
 from dateutil import parser
 from getfactormodels.models import *
@@ -29,16 +29,17 @@ from getfactormodels.utils.utils import _get_model_key, _process
 # and base class and FactorExtractor done)
 # just getting get_factors to work!
 
-def get_factors(model: str|int = 3,
-                frequency: Optional[str] = "m",
-                start_date: Optional[str] = None,
-                end_date: Optional[str] = None,
-                output: Optional[str] = None):
-    """Get data for a specified factor model.
+def get_factors(model: str | int = 3,
+                frequency: str = "m",
+                start_date: str | None = None,
+                end_date: str | None = None,
+                output_file: str | None = None,
+                *,
+                emerging: bool = False,
+                ):
+    """Get data for a specific factor model.
 
-    Download a specified factor model's data. (Main public function)
-
-    NOTE: Parses input, assigns it to a factor model class, calls it, and returns the data.
+    Main public function.
 
     Args:
         model (str, float): the name of the factor model ('3', '4', '5', '6', 'carhart', 
@@ -49,6 +50,8 @@ def get_factors(model: str|int = 3,
         output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
 
     """
+    # NOTE: Parses input, assigns it to a factor model class, calls it, and returns the data.
+
     #
     # TODO: FIXME. kwargs. TODO: default outputs in CLI.
     #
@@ -58,15 +61,22 @@ def get_factors(model: str|int = 3,
     factor_instance = None
 
     if model_key in ["3", "4", "5", "6"]:
-        factor_instance = FamaFrenchFactors(model=model_key, frequency=frequency, 
+        factor_instance = FamaFrenchFactors(model=model_key,
+                                            frequency=frequency, 
                                             start_date=start_date,
-                                            end_date=end_date, output_file=output)
+                                            end_date=end_date,
+                                            output_file=output_file,
+                                            emerging=emerging)
 
     elif model_key == "Qclassic":
         factor_instance = QFactors(frequency=frequency, start_date=start_date, 
-                                   end_date=end_date, output_file=output, classic=True)
+                                   end_date=end_date, output_file=output_file, classic=True)
 
     else:
+        if emerging: # too harsh? Warn, continue? 
+            raise ValueError(
+                f"The `emerging=` param is only available for Fama-French models."
+            )
         # Class loading: tries CamelCaseFactors then UPPERCASEFactors
         class_name_camel = f"{model_key}Factors"
         class_name_upper = f"{model_key.upper()}Factors"
@@ -82,18 +92,13 @@ def get_factors(model: str|int = 3,
                                       start_date=start_date,
                                       end_date=end_date,
                                       cache_ttl=86400,
-                                      output_file=output)
+                                      output_file=output_file)
 
     return factor_instance.download()
 
 
-
-
-
 # CLI (TODO)
-
-### zzzzzzzzzzzzzz. Old mess. This will be repurposed for extracting factors,
-# ie, returns a combination of factors from models. For now, leaving it.
+### zzzzzzzzzzzzzz. Old mess. Being removed. TODO: (one day) extract factors into a composite model.
 class FactorExtractor:
     """
     Extracts factor data based on specified parameters.
@@ -109,13 +114,14 @@ class FactorExtractor:
         drop_rf: Drops the 'RF' column from the DataFrame.
         save_factors: Saves the factor data to a file.
     """
-
     def __init__(self,
                  model: str = '3',
-                 frequency: Optional[str] = 'M',
-                 start_date: Optional[str] = None,
-                 end_date: Optional[str] = None,
-                 output: Optional[str] = None):
+                 frequency: str = 'm',
+                 start_date: str | None = None,
+                 end_date: str | None = None,
+                 output: str | None = None,
+                 *,
+                 emerging: bool = False):
         self.model: str = model
         self.frequency: str = frequency
         self.start_date = self.validate_date_format(start_date) if start_date else None
@@ -124,20 +130,32 @@ class FactorExtractor:
         self._no_rf = False
         self._no_mkt = False
         self.df = None
+        self.emerging = emerging
 
     def no_rf(self) -> None:
-        """Sets the _no_rf flag to True."""
         self._no_rf = True
 
     def no_mkt(self) -> None:
-        """Sets the _no_mkt flag to True."""
         self._no_mkt = True
+
+    def extract(self, data, factor: str | List[str]) -> pd.Series | pd.DataFrame:
+        """Retrieves a single factor (column) from the dataset."""
+        #data = self.download()
+
+        if data.empty:
+            raise RuntimeError("DataFrame empty: can not extract a factor.")
+
+        if isinstance(factor, str):
+            if factor not in data.columns:
+                raise ValueError(f"Factor '{factor}' not available.")       
+            return data[factor]
+
+        elif isinstance(factor, list):
+            return data[factor]
 
     @staticmethod
     def validate_date_format(date_string: str) -> str:
-        """
-        Validate the date format.
-
+        """Validate the date format.
         Raises:
             ValueError: If the date format is incorrect.
         """
@@ -147,6 +165,7 @@ class FactorExtractor:
             error_message = "Incorrect date format, use YYYY-MM-DD."
             raise ValueError(error_message) from err
 
+    # Holy. TODO: Clean it up. Incorp into base 
     def get_factors(self) -> pd.DataFrame:
         """Fetch the factor data and store it in the class."""
         self.df = get_factors(
@@ -154,7 +173,8 @@ class FactorExtractor:
             frequency=self.frequency,
             start_date=self.start_date,
             end_date=self.end_date,
-            output=self.output)
+            output_file=self.output,  
+            emerging=self.emerging)
 
         if self._no_rf:
             self.df = self.drop_rf(self.df.copy())  # create a copy before drop
@@ -163,11 +183,8 @@ class FactorExtractor:
 
         return self.df
 
-    def drop_rf(self, df: pd.DataFrame = None) -> pd.DataFrame:
+    def drop_rf(self, df: pd.DataFrame) -> pd.DataFrame:
         """Drop the ``RF`` column from the DataFrame."""
-        # get_factors if not already done
-        if df is None:
-            df = self.get_factors()
 
         if "RF" in df.columns:
             df = df.drop(columns=["RF"])
@@ -176,10 +193,8 @@ class FactorExtractor:
 
         return df
 
-    def drop_mkt(self, df: pd.DataFrame = None) -> pd.DataFrame:
+    def drop_mkt(self, df: pd.DataFrame) -> pd.DataFrame:
         """Drop the ``MKT`` column from the DataFrame."""
-        if df is None:
-            df = self.get_factors()
 
         if "Mkt-RF" in df.columns:
             df = df.drop(columns=["Mkt-RF"])
@@ -205,8 +220,12 @@ class FactorExtractor:
 def main():
     args = parse_args()
 
-    extractor = FactorExtractor(model=args.model, frequency=args.freq,
-                                start_date=args.start, end_date=args.end)
+    extractor = FactorExtractor(model=args.model,
+                                frequency=args.freq,
+                                start_date=args.start,
+                                end_date=args.end,
+                                emerging=args.emerging
+                                )
     if args.no_rf:
         extractor.no_rf()
     if args.no_mkt:
@@ -214,21 +233,20 @@ def main():
 
     df = extractor.get_factors()
 
-    if args.output:
+    if args.extractfactor:
+        df = extractor.extract(df, args.extractfactor)
+
+    if args.output:     # TODO: cache
         output_path = Path(args.output)
-        extension = output_path.suffix
+        extension = output_path.suffix    
 
         if not extension:
             extension = '.csv'
- 
+        # TODO: real start and end dates. Proper writer in base, or a Writer class.
         _filename = f"{args.model}_{args.freq}_{args.start}_{args.end}{extension}"
         _output_path = output_path.parent / _filename
 
         extractor.to_file(_output_path)
-        #print(f'File saved to "{Path(args.output).resolve()}"')
-        # it's wrong, and it's printed correctly by _save_to_file anyway...
-        # fixes duplicate print
-        print("") # looks weird without a preview
         print(df)
 
     else:

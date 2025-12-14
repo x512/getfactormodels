@@ -156,10 +156,9 @@ All classes share these params:
 
     | Class | Param | Description | Type | default |
     | :--- | :---: | :--- | :---: | :--- |
-    | ``FamaFrenchFactors`` | `model` | Fama-French Factors specific model |  ``str``, ``int`` | `3` |
+    | ``FamaFrenchFactors`` | `model` | The specific Fama-French Factor model. For example, `5`, or `ff5` |  ``str``, ``int`` | `3` |
+    | ``FamaFrenchFactors`` | `emerging` | Returns Emerging Markets factors (monthly only). | ``bool`` | ``False``|
     | ``QFactors`` | `classic` | If true returns the classic q-factor model. | `bool`  | `False` |
-
-
 
 
 ### CLI

@@ -15,7 +15,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #from __future__ import annotations
 import io
-import logging  # TODO: FF logging! FIXME
 import zipfile
 from typing import Any
 import pandas as pd
@@ -33,6 +32,7 @@ from getfactormodels.utils.utils import _slice_dates
 # Warn the returned data includes the full year, or not the last year because they specifed date...
 #  just read YYYY?
 
+
 class FamaFrenchFactors(FactorModel):
     # will do proper docstr later, this from this func
     # Class is an implementation of the function, a little less spaghetti.
@@ -48,12 +48,14 @@ class FamaFrenchFactors(FactorModel):
     Args:
         `model (str | int)`: model to return. `3`, `4`, `5` or `6` (default: 3)
         `frequency` (`str`): the frequency of the data. `d`, `m` `y` or `w`
-        (default: `m`). Note: Only the 3 factor model is available in weekly.
+        (default: `m`). Only the 3-Factor model is available for weekly freq.
         `start_date` (`str, optional`): the start date of the data, as 
             YYYY-MM-DD.
         `end_date` (`str, optional`): the end date of the data, as YYYY-MM-DD.
         `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
             (default: `86400`).
+        `emerging` (`bool, optional`): if true, returns the emerging market 
+        dataset for the model. Only available for monthly frquency.
 
     Returns:
         `pd.Dataframe`: time series of returned data.
@@ -65,17 +67,15 @@ class FamaFrenchFactors(FactorModel):
     of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
     - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of Financial 
     Economics, vol. 128, no. 2, pp. 234–252, 2018.
-
-    NOTES (DEV): no `output_file` at the moment. Need Writer class to do it
-    as the function aimed to do.
     """
     @property
     def _frequencies(self) -> list[str]:
-        return ["d", "w", "m", "y"]
+        return ['d', 'w', 'm', 'y']
 
-    def __init__(self, frequency: str = 'm', model: int|str = '3',  **kwargs: Any) -> None:
+    def __init__(self, frequency: str = 'm', model: int|str = '3', emerging: bool = False,  **kwargs: Any) -> None:
         self.frequency = frequency
         self.model = str(model) #lost this somewhere...
+        self.emerging = emerging
         
         self._validate_ff_input()
 
@@ -93,31 +93,39 @@ class FamaFrenchFactors(FactorModel):
                 "Weekly data is only available for Fama-French 3 and 4 factor (Carhart) models"
             )
 
+        if self.frequency != 'm' and self.emerging is True:
+            raise ValueError(
+                "Emerging Markets data is only available in monthly frequency."
+            )
+
+
     def _get_url(self) -> str:
         """Construct the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+
+        if self.emerging == True:  # 2 EM files (5 factor and a MOM series)
+            basefilename = 'Emerging_5_Factors_CSV.zip'
+            return f"{base_url}/{basefilename}"
 
         if self.model in {"3", "4"}:
             basefilename = "F-F_Research_Data_Factors"
         elif self.model in {"5", "6"}:
             basefilename = "F-F_Research_Data_5_Factors_2x3"
         else:
-            basefilename = "F-F_Research_Data_Factors"  # Default fallback
-
-        _freq = "" #daily, weekly file name suffixes
-
+            basefilename = "F-F_Research_Data_Factors"
+    
+        _freq = ""
         if self.frequency == 'd':
             _freq = "_daily"
         elif self.frequency == 'w':
             _freq = "_weekly"
-
+    
         file_name = f"{basefilename}{_freq}_CSV.zip"
-
         return f"{base_url}/{file_name}"
 
 # ------------------------------------------------------------------------- #
     @staticmethod
-    def _read_zip(_data, frequency):
+    def _read_zip(_data, frequency, emerging: bool = False):
         """Download and read CSV from zip file."""
         # old function stuff....
         try:
@@ -129,12 +137,15 @@ class FamaFrenchFactors(FactorModel):
 
                 skip_rows = 12 if 'momentum' in filename.lower() else 4
 
+                if emerging == True:
+                    skip_rows = 6
+
                 # Monthly files contain the annual data, under this line
                 annual_marker = " Annual Factors: January-December"
                 marker_pos = content.find(annual_marker)
 
                 # fix: wasn't reading annual headers. Default header:
-                header_row = 0
+                #header_row = 0
 
                 if frequency in ['y', 'm'] and marker_pos != -1:
                     if frequency == 'm':
@@ -150,19 +161,19 @@ class FamaFrenchFactors(FactorModel):
                             # Join lines starting from the Header Line
                             content = '\n'.join(all_lines[1:])
                             skip_rows = 0
-                            header_row = 0
 
                 df = pd.read_csv(
                     io.StringIO(content),
                     skiprows=skip_rows,
                     index_col=[0],
-                    header=header_row,
+                    header=0,
                     parse_dates=False,
                     skipfooter=1,
                     engine="python",
-                    na_filter=False,
-                    on_bad_lines='error')                # note verbose=True (deprecation warning) was showing "1 NA
-                # filled" preventing conversion to float, until na_filter=False.
+                    na_values=[-99.99, '-99.99'], 
+                    na_filter=True, # Allow Pandas to detect NaNs
+                    on_bad_lines='error')                # note when verbose=True (deprecation warning) was showing "1 NA
+                # filled" preventing conversion to float, until na_filter=False was added.
 
             df.index = df.index.astype(str)
             df.index = df.index.str.strip()
@@ -174,9 +185,9 @@ class FamaFrenchFactors(FactorModel):
             print(f"Error parsing zip file: {e}")
             return pd.DataFrame()
 
-
+    ### TODO: FIXME: break this up
     @classmethod
-    def _download_mom_data(cls, frequency: str, model: str) -> pd.DataFrame:
+    def _download_mom_data(cls, frequency: str, model: str, emerging: bool = False) -> pd.DataFrame:
         """Download and process momentum factor data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
         file = "F-F_Momentum_Factor_CSV.zip"
@@ -184,16 +195,27 @@ class FamaFrenchFactors(FactorModel):
         if frequency.lower() == "d":
             file = "F-F_Momentum_Factor_daily_CSV.zip"
 
+        if emerging is True:
+            file = "Emerging_MOM_Factor_CSV.zip"
+
         url = f"{base_url}/{file}"
 
         try:
-            # TODO: FIXME: 
             with HttpClient(timeout=10.0) as client:
                 _zip = client.download(url)
 
             df = cls._read_zip(_zip, frequency)
 
-            col_name = "UMD" if model == "6" else "MOM"
+            if emerging is True:
+                col_name = "WML"  # winner minus loser in the EM data
+            elif model == "6":    # 6 factor call it Up Minus Down
+                col_name = "UMD"
+            elif model == "4":   # and MOM in 4-factor (TODO: name MOM for just MOM?)
+                col_name = "MOM"
+
+            else:
+                col_name = "MOM"
+                print(f"debug:mom:Fallback renaming for mom for '{model}'. Shouldn't happen!")
 
             df.columns = [col_name]
             return df
@@ -235,7 +257,7 @@ class FamaFrenchFactors(FactorModel):
     def _momentum_factor(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add momentum factor to the DataFrame if required by model."""
         if self.model in {"4", "6"}:
-            mom_data = self._download_mom_data(self.frequency, self.model)
+            mom_data = self._download_mom_data(self.frequency, self.model, self.emerging)
 
             if not mom_data.empty:
                 mom_data = self._parse_dates(mom_data)
@@ -245,9 +267,9 @@ class FamaFrenchFactors(FactorModel):
 
         return df
 
-    def _read(self, _data) -> pd.DataFrame:
+    def _read(self, data) -> pd.DataFrame:
         try:
-            df = self._read_zip(_data, self.frequency)
+            df = self._read_zip(data, self.frequency)
 
             if df.empty:
                 print("Warning: No data downloaded")
@@ -260,6 +282,16 @@ class FamaFrenchFactors(FactorModel):
 
             # Sort by date
             df = df.sort_index()
+
+            # Just for now until rewrite... later.
+            if self.emerging == True:
+                if self.model == '3':
+                    df = df[["Mkt-RF", "SMB", "HML", "RF"]]
+                if self.model == '4':
+                    df = df[["Mkt-RF", "SMB", "HML", "WML", "RF"]]
+                if self.model == '5':
+                    df = df[["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF"]]
+                #if 6 it's all here...
 
             # TODO: drop nans/nulls, after adding MOM, and for barillas shanken,
             # and for aqr...: hmld will go back to 1926 full of nans, momentum
