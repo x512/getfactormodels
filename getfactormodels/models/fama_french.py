@@ -13,7 +13,6 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-#from __future__ import annotations
 import io
 import zipfile
 from typing import Any
@@ -24,7 +23,6 @@ from getfactormodels.utils.utils import _slice_dates
 
 # TODO: yearly data isn't inclusive of end yr
 #  but start_date includes partial start year/month !!
-#
 # eg start_date=1968-12-25, end_date=1970-01-01 with frequency='y' 
 ## will return yearly data for all of 1968 and none of 1970.
 #
@@ -76,7 +74,7 @@ class FamaFrenchFactors(FactorModel):
         self.frequency = frequency
         self.model = str(model) #lost this somewhere...
         self.emerging = emerging
-        
+
         self._validate_ff_input()
 
         super().__init__(frequency=frequency, model=model, **kwargs)
@@ -98,7 +96,7 @@ class FamaFrenchFactors(FactorModel):
                 "Emerging Markets data is only available in monthly frequency."
             )
 
-
+    
     def _get_url(self) -> str:
         """Construct the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
@@ -113,17 +111,32 @@ class FamaFrenchFactors(FactorModel):
             basefilename = "F-F_Research_Data_5_Factors_2x3"
         else:
             basefilename = "F-F_Research_Data_Factors"
-    
+
         _freq = ""
         if self.frequency == 'd':
             _freq = "_daily"
         elif self.frequency == 'w':
             _freq = "_weekly"
-    
+
         file_name = f"{basefilename}{_freq}_CSV.zip"
         return f"{base_url}/{file_name}"
 
-# ------------------------------------------------------------------------- #
+
+    def _get_mom_url(self, frequency, emerging):
+        """Constructs the URL for momentum factors."""
+        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+
+        if emerging == False and frequency == 'd':
+            file = "F-F_Momentum_Factor_daily_CSV.zip"
+        elif emerging is True:
+            file = "Emerging_MOM_Factor_CSV.zip"
+        else:
+            file = "F-F_Momentum_Factor_CSV.zip"
+
+        return f"{base_url}/{file}"
+
+
+    # ------------------------------------------------------------------------- #
     @staticmethod
     def _read_zip(_data, frequency, emerging: bool = False):
         """Download and read CSV from zip file."""
@@ -143,9 +156,6 @@ class FamaFrenchFactors(FactorModel):
                 # Monthly files contain the annual data, under this line
                 annual_marker = " Annual Factors: January-December"
                 marker_pos = content.find(annual_marker)
-
-                # fix: wasn't reading annual headers. Default header:
-                #header_row = 0
 
                 if frequency in ['y', 'm'] and marker_pos != -1:
                     if frequency == 'm':
@@ -170,10 +180,9 @@ class FamaFrenchFactors(FactorModel):
                     parse_dates=False,
                     skipfooter=1,
                     engine="python",
-                    na_values=[-99.99, '-99.99'], 
-                    na_filter=True, # Allow Pandas to detect NaNs
-                    on_bad_lines='error')                # note when verbose=True (deprecation warning) was showing "1 NA
-                # filled" preventing conversion to float, until na_filter=False was added.
+                    na_values=[-99.99, '-99.99'],  #stated in emerging, momentum; every model? 
+                    na_filter=True,
+                    on_bad_lines='error')
 
             df.index = df.index.astype(str)
             df.index = df.index.str.strip()
@@ -185,46 +194,8 @@ class FamaFrenchFactors(FactorModel):
             print(f"Error parsing zip file: {e}")
             return pd.DataFrame()
 
-    ### TODO: FIXME: break this up
-    @classmethod
-    def _download_mom_data(cls, frequency: str, model: str, emerging: bool = False) -> pd.DataFrame:
-        """Download and process momentum factor data."""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        file = "F-F_Momentum_Factor_CSV.zip"
-
-        if frequency.lower() == "d":
-            file = "F-F_Momentum_Factor_daily_CSV.zip"
-
-        if emerging is True:
-            file = "Emerging_MOM_Factor_CSV.zip"
-
-        url = f"{base_url}/{file}"
-
-        try:
-            with HttpClient(timeout=10.0) as client:
-                _zip = client.download(url)
-
-            df = cls._read_zip(_zip, frequency)
-
-            if emerging is True:
-                col_name = "WML"  # winner minus loser in the EM data
-            elif model == "6":    # 6 factor call it Up Minus Down
-                col_name = "UMD"
-            elif model == "4":   # and MOM in 4-factor (TODO: name MOM for just MOM?)
-                col_name = "MOM"
-
-            else:
-                col_name = "MOM"
-                print(f"debug:mom:Fallback renaming for mom for '{model}'. Shouldn't happen!")
-
-            df.columns = [col_name]
-            return df
-        except Exception as e:
-            print(f"Warning: Could not download momentum data: {e}")
-            return pd.DataFrame()
-
-    # parse_date=True prob handles this now.
-    # keeping for now.
+   
+    # parse_date=True prob handles this now: keeping for now.
     def _parse_dates(self, df): #TODO: types everywhere.
         """Parse the date index based on frequency."""
         if df.empty:
@@ -254,18 +225,54 @@ class FamaFrenchFactors(FactorModel):
         return df
 
 
-    def _momentum_factor(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Add momentum factor to the DataFrame if required by model."""
-        if self.model in {"4", "6"}:
-            mom_data = self._download_mom_data(self.frequency, self.model, self.emerging)
+    def _download_mom_data(self, frequency, emerging):
+        url = self._get_mom_url(frequency, emerging)
+        try:
+            with HttpClient(timeout=10.0) as client:
+                _zip = client.download(url)
+            return self._read_zip(_zip, frequency)
+        except Exception as e: #todo exception
+            raise RuntimeError(f"Failed to download momentum data from {url}.") from e
 
-            if not mom_data.empty:
-                mom_data = self._parse_dates(mom_data)
-                # align indices, and join
-                mom_data = mom_data.reindex(df.index)
-                df = df.join(mom_data)
 
-        return df
+    def _add_momentum_factor(self, df):
+        if self.model not in {"4", "6"}:
+            return df 
+        
+        try:
+            mom_data = self._download_mom_data(self.frequency, self.emerging)
+        
+        except RuntimeError as e:
+            self.log.warning(f"Momentum factor download failure: {e}")
+            return df
+        
+        if mom_data.empty:
+            print("Empty df.")
+            return df
+        
+        mom_data = self._parse_dates(mom_data)
+
+        if self.emerging is True:
+            mom_name = "WML"  # winner minus loser in the EM data
+        elif self.model == "6":    # 6 factor call it Up Minus Down
+            mom_name = "UMD"
+        elif self.model == "4":   # and MOM in 4-factor (TODO: name MOM for just MOM?)
+            mom_name = "MOM"
+ 
+        if len(mom_data.columns) > 0:    
+            mom_series = (
+                mom_data.iloc[:, 0]  # Extracts first col,
+                .rename(mom_name) # Renames it
+                .reindex(df.index)
+            )
+
+            df = df.join(mom_series)
+            self.log.info(f"Added momentum factor: {mom_name}")
+            
+        else:        
+            self.log.warning("Mom data contained no columns after parsing...")
+        return df 
+
 
     def _read(self, data) -> pd.DataFrame:
         try:
@@ -277,33 +284,27 @@ class FamaFrenchFactors(FactorModel):
 
             # Parse dates and add momentum if needed
             df = self._parse_dates(df)
-            df = self._momentum_factor(df)
+            df = self._add_momentum_factor(df)
             df = _slice_dates(df, self.start_date, self.end_date)
-
-            # Sort by date
             df = df.sort_index()
-
             # Just for now until rewrite... later.
             if self.emerging == True:
                 if self.model == '3':
-                    df = df[["Mkt-RF", "SMB", "HML", "RF"]]
+                    df = df.get(["Mkt-RF", "SMB", "HML", "RF"], df)
                 if self.model == '4':
-                    df = df[["Mkt-RF", "SMB", "HML", "WML", "RF"]]
+                    df = df.get(["Mkt-RF", "SMB", "HML", "WML", "RF"], df)
                 if self.model == '5':
-                    df = df[["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF"]]
-                #if 6 it's all here...
-
-            # TODO: drop nans/nulls, after adding MOM, and for barillas shanken,
-            # and for aqr...: hmld will go back to 1926 full of nans, momentum
-            # fills with nans til 1926 with the carhart 4, etc. atm. TODO.
+                    df = df.get(["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF"], df)
+                #if 6 then it's all here...
 
             # Decimalize. Keep here for now. Finicky.
             df = df.astype(float)
             df = df * 0.01
-
+            # TODO: drop nans/nulls, after adding MOM, and for barillas shanken, etc.
             return df
 
         except Exception as e:
             print(f"Error downloading Fama-French data: {e}")
             raise
+
 # Welllll its using the base class at least... TODO FIXME FIXME 
