@@ -23,7 +23,7 @@ from getfactormodels.models import *
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.models.q_factors import QFactors
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _process
+from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
 
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
 # and base class and FactorExtractor done)
@@ -35,7 +35,7 @@ def get_factors(model: str | int = 3,
                 end_date: str | None = None,
                 output_file: str | None = None,
                 *,
-                emerging: bool = False,
+                region: str = "US",
                 ):
     """Get data for a specific factor model.
 
@@ -56,27 +56,29 @@ def get_factors(model: str | int = 3,
     # TODO: FIXME. kwargs. TODO: default outputs in CLI.
     #
     frequency = frequency.lower()
-    model_key = _get_model_key(model)
+    region = region.lower()
+    model_key = "5" if region == 'Emerging' else _get_model_key(model)
 
     factor_instance = None
-
+    if region != "us" and model_key not in ['3', '4', '5', '6']:
+        default_region_model = _get_model_key(model) # Get the original model key
+        raise ValueError(
+            f"Region '{region.upper()}' is not supported for the '{default_region_model}' factor model. "
+            "Region filtering is only available for Fama-French models (3, 4, 5, 6)."
+        )
     if model_key in ["3", "4", "5", "6"]:
         factor_instance = FamaFrenchFactors(model=model_key,
-                                            frequency=frequency, 
+                                            frequency=frequency,
                                             start_date=start_date,
                                             end_date=end_date,
                                             output_file=output_file,
-                                            emerging=emerging)
+                                            region=region)
 
     elif model_key == "Qclassic":
-        factor_instance = QFactors(frequency=frequency, start_date=start_date, 
+        factor_instance = QFactors(frequency=frequency, start_date=start_date,
                                    end_date=end_date, output_file=output_file, classic=True)
 
     else:
-        if emerging: # too harsh? Warn, continue? 
-            raise ValueError(
-                f"The `emerging=` param is only available for Fama-French models."
-            )
         # Class loading: tries CamelCaseFactors then UPPERCASEFactors
         class_name_camel = f"{model_key}Factors"
         class_name_upper = f"{model_key.upper()}Factors"
@@ -86,7 +88,7 @@ def get_factors(model: str | int = 3,
 
         if not FactorClass:
             raise ValueError(f"Invalid model: '{model_key}'. "
-                f"Tried:'{class_name_camel}','{class_name_upper}'.")
+                             f"Tried:'{class_name_camel}','{class_name_upper}'.")
 
         factor_instance = FactorClass(frequency=frequency,
                                       start_date=start_date,
@@ -95,7 +97,6 @@ def get_factors(model: str | int = 3,
                                       output_file=output_file)
 
     return factor_instance.download()
-
 
 # CLI (TODO)
 ### zzzzzzzzzzzzzz. Old mess. Being removed. TODO: (one day) extract factors into a composite model.
@@ -121,7 +122,7 @@ class FactorExtractor:
                  end_date: str | None = None,
                  output: str | None = None,
                  *,
-                 emerging: bool = False):
+                 region: str = "US"):
         self.model: str = model
         self.frequency: str = frequency
         self.start_date = self.validate_date_format(start_date) if start_date else None
@@ -130,7 +131,7 @@ class FactorExtractor:
         self._no_rf = False
         self._no_mkt = False
         self.df = None
-        self.emerging = emerging
+        self.region: str = region
 
     def no_rf(self) -> None:
         self._no_rf = True
@@ -174,7 +175,7 @@ class FactorExtractor:
             start_date=self.start_date,
             end_date=self.end_date,
             output_file=self.output,  
-            emerging=self.emerging)
+            region=self.region)
 
         if self._no_rf:
             self.df = self.drop_rf(self.df.copy())  # create a copy before drop
@@ -224,8 +225,7 @@ def main():
                                 frequency=args.freq,
                                 start_date=args.start,
                                 end_date=args.end,
-                                emerging=args.emerging
-                                )
+                                region=args.region,)
     if args.no_rf:
         extractor.no_rf()
     if args.no_mkt:
@@ -235,22 +235,34 @@ def main():
 
     if args.extractfactor:
         df = extractor.extract(df, args.extractfactor)
+    if args.output:
+        output_path = Path(args.output).expanduser()
 
-    if args.output:     # TODO: cache
-        output_path = Path(args.output)
-        extension = output_path.suffix    
+        if args.output:     # TODO: cache
+            output_path = Path(args.output)
+            min_date = df.index.min() 
+            max_date = df.index.max()
 
-        if not extension:
-            extension = '.csv'
-        # TODO: real start and end dates. Proper writer in base, or a Writer class.
-        _filename = f"{args.model}_{args.freq}_{args.start}_{args.end}{extension}"
-        _output_path = output_path.parent / _filename
+            actual_start = min_date.strftime('%Y%m%d')
+            actual_end = max_date.strftime('%Y%m%d')
+            # if NaT, might be outside available data... to do warn/catch 
 
-        extractor.to_file(_output_path)
-        print(df)
+            _filename = f"{args.model}_{args.freq.upper()}_{actual_start}-{actual_end}"
+            _ext = '.csv'
 
-    else:
-        print(df)
+            user_path = Path(args.output).expanduser()
+            output_path = None
+
+            if user_path.is_dir():
+                output_path = user_path / (_filename + _ext)
+            elif user_path.suffix:
+                output_path = user_path
+            else: #add ext to user provided 'file' or 'dir/file'
+                output_path = user_path.parent / (user_path.name + _ext)
+
+            if output_path:
+                _save_to_file(df, output_path)
+    print(df)
 
 if __name__ == "__main__":
     main()

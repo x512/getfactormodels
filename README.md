@@ -157,7 +157,7 @@ All classes share these params:
     | Class | Param | Description | Type | default |
     | :--- | :---: | :--- | :---: | :--- |
     | ``FamaFrenchFactors`` | `model` | The specific Fama-French Factor model. For example, `5`, or `ff5` |  ``str``, ``int`` | `3` |
-    | ``FamaFrenchFactors`` | `emerging` | Returns Emerging Markets factors (monthly only). | ``bool`` | ``False``|
+    | ``FamaFrenchFactors`` | `region` | ``us`` (this is the default behaviour, retreives data for the US factors only), `developed`, `developed ex us`, `europe`, `japan`, `asia pacific ex japan`, `north america` | ``str`` | ``us`` |
     | ``QFactors`` | `classic` | If true returns the classic q-factor model. | `bool`  | `False` |
 
 
@@ -189,7 +189,31 @@ __This is old but should still work until redo.__
 
   ```shell
   $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf --nomkt -o ~/some_dir/filename.xlsx
+  ````
+
+  ```shell
+  # 3 factor model for developed markets
+  $ getfactormodels -m 3 --region developed
+
+  # 4 factor model for emerging markets, and extract the SMB factor
+  $ getfactormodels -m 4 --region emerging --extract SMB
+
+  # an annual 5 factor ff model for emerging markets since 2000
+  $ getfactormodels -m 5 -f y -r emerging -s 2000-01-01 --output "~/FF5-annual-emerging" #will be csv 
+
+  # Get the daily Japan WML (the MOM factor) series and save to file:
+  $ getfactormodels -m 5 -f d -r japan --extract WML -o yes.csv 
+
+  # extract the daily WML factor for 2008-2009 for 'Asia Pacific ex Japan'
+  $ getfactormodels -m ff6 -f d -s 2008-01-01 -e 2009-12-31 --region 'asia pacific ex japan' --extract WML -o "yes.csv"
+
+  # Get the monthly European HML, SMB and momentum (WML) factors for the 2000s and save as .pkl:
+  $ getfactormodels -m ff6 -f m -s 2000-01-01 -e 2010-12-31 -r europe -x HML SMB WML -o euro_factors.pkl
+  
+  # Asia Pacific ex-Japan WML to pkl
+  $ getfactormodels -m4 -fy -r "asia pacific ex japan" -x WML -o ap-ex-japan.pkl
   ```
+
 
 ## Data Availability
 
@@ -209,6 +233,7 @@ contains the shortest identifier for each model. These should all work in python
 |`liq`| Liquidity     | 1962-08-31 |              |            | ✓ |              |              | 2024-12-31 |
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2022-12-30|
 |`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |              |              | 2024-12-31 |
+
 
 >[TODO]
 >Docs!
@@ -253,9 +278,11 @@ contains the shortest identifier for each model. These should all work in python
 
 #### Todo
 - [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
+- [ ] Refactor: FF models.
 - [ ] Docs
 - [ ] Every model should have an about and author/copyright info, and general disclaimer
 - [ ] This README
-  - [ ] Examples
+  - [ ] Example ipynb
 - [ ] Tests
-- [ ] Error handling
+- [ ] Error handling!
+- [ ] Types

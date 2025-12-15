@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import hashlib
 import logging
+import ssl
 import certifi
 import httpx
 from platformdirs import user_cache_path
@@ -53,14 +54,16 @@ class HttpClient:
 
     def __enter__(self):
         if self._client is None:
-            self._client = httpx.Client( # initialization moved
-                verify=certifi.where(),
+            # fix: tox depre warning: create SSL context
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            self._client = httpx.Client(
+                verify=ssl_context,
                 timeout=self.timeout,
                 follow_redirects=True,
                 max_redirects=3,
             )
-        return self
- 
+
+        return self 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         msg = f"closed: {self._client.__class__.__name__}"
@@ -71,6 +74,7 @@ class HttpClient:
             msg = f'closing {self._client.__class__.__name__}'
             log.debug(msg)  # No print in log messages, ruff
             self._client.close()
+            self._client = None
 
         msg =f'closing {self.cache.__class__.__name__}'
         log.debug(msg)
