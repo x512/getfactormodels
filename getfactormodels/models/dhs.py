@@ -17,12 +17,12 @@
 import io
 from typing import Any
 import pandas as pd
+import pyarrow as pa
+import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.http_client import HttpClient
 from getfactormodels.utils.utils import _process
-import pyarrow as pa
-import pyarrow.csv as pv
 
 
 class DHSFactors(FactorModel):

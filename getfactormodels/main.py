@@ -35,7 +35,7 @@ def get_factors(model: str | int = 3,
                 end_date: str | None = None,
                 output_file: str | None = None,
                 *,
-                region: str = "US",
+                region: str | None = None,
                 ):
     """Get data for a specific factor model.
 
@@ -56,15 +56,15 @@ def get_factors(model: str | int = 3,
     # TODO: FIXME. kwargs. TODO: default outputs in CLI.
     #
     frequency = frequency.lower()
-    region = region.lower()
-    model_key = "5" if region == 'Emerging' else _get_model_key(model)
+    region = region
+    model_key = _get_model_key(model)
 
     factor_instance = None
-    if region != "us" and model_key not in ['3', '4', '5', '6']:
-        default_region_model = _get_model_key(model) # Get the original model key
+    if region != None and model_key not in ['3', '4', '5', '6']:
+        _model = _get_model_key(model)
         raise ValueError(
-            f"Region '{region.upper()}' is not supported for the '{default_region_model}' factor model. "
-            "Region filtering is only available for Fama-French models (3, 4, 5, 6)."
+            f"Region '{region}' is not supported for the '{_model}'. "
+            "The region parameter is only available for Fama-French models (3, 4, 5, 6)."
         )
     if model_key in ["3", "4", "5", "6"]:
         factor_instance = FamaFrenchFactors(model=model_key,
@@ -122,7 +122,7 @@ class FactorExtractor:
                  end_date: str | None = None,
                  output: str | None = None,
                  *,
-                 region: str = "US"):
+                 region: str | None = None):
         self.model: str = model
         self.frequency: str = frequency
         self.start_date = self.validate_date_format(start_date) if start_date else None
@@ -131,7 +131,7 @@ class FactorExtractor:
         self._no_rf = False
         self._no_mkt = False
         self.df = None
-        self.region: str = region
+        self.region = region
 
     def no_rf(self) -> None:
         self._no_rf = True
@@ -226,9 +226,9 @@ def main():
                                 start_date=args.start,
                                 end_date=args.end,
                                 region=args.region,)
-    if args.no_rf:
+    if args.norf:
         extractor.no_rf()
-    if args.no_mkt:
+    if args.nomkt:
         extractor.no_mkt()
 
     df = extractor.get_factors()

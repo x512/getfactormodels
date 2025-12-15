@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from .fama_french import FamaFrenchFactors
 
+
 class CarhartFactors(FamaFrenchFactors): # inheritence ooo
     """Download the Carhart 4-Factor model.
     

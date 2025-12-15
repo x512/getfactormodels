@@ -32,10 +32,8 @@ from getfactormodels.utils.utils import _slice_dates
 
 
 class FamaFrenchFactors(FactorModel):
-    # will do proper docstr later, this from this func
-    # Class is an implementation of the function, a little less spaghetti.
-    # utils and getting every model with pyarrow and pushing pandas to
-    # boundaries to pretty print will help.
+    # will do proper docstr later. TODO: utils and getting every model with pyarrow and pushing pandas to
+    # boundaries.
     """Download Fama-French (and Carhart) factor models.
 
     Downloads the 3-factor (1993), 5-factor (2015), or 6-factor (2018)
@@ -82,20 +80,20 @@ class FamaFrenchFactors(FactorModel):
         'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
         'north_america': 'North_America',
         'na': 'North_America',
-    }
+    } # TODO: Clean this up, and region map usage throughout (after factorextractor gets removed)
 
     def __init__(self,
                  frequency: str = 'm',
                  model: int|str = '3',
-                 region: str = "US",
+                 region: str | None = 'us',
                  **kwargs: Any) -> None:
         self.frequency = frequency.lower()
-        self.model = str(model) #lost this somewhere...
-        self.region = self.FF_REGION_MAP.get(region.lower(), None)  #region incorporates emerging.
+        self.model = str(model)
+        # eg: japan -> Japan [FIXME, lower everywhere]
+        self.region = None if region is None else self.FF_REGION_MAP.get(region.lower(), None)
         self._validate_ff_input()
 
         super().__init__(frequency=frequency, model=model, **kwargs)
-
 
     def _validate_ff_input(self):
         if self.model not in ["3", "4", "5", "6"]:
@@ -108,14 +106,18 @@ class FamaFrenchFactors(FactorModel):
                 "Weekly data is only available for Fama-French 3 and 4 factor (Carhart) models"
             )
 
-        if self.frequency != 'm' and self.region == "emerging":
+        if self.frequency != 'm' and self.region == "Emerging":
             raise ValueError(
                 "Emerging Markets data is only available in monthly frequency."
             )
-        if self.region is None:
+        
+        # self.region is None if invalid region, or it is mapped! (e.g., 'Japan', 'us').
+        valid_mapped_regions = set(self.FF_REGION_MAP.values()) | {None}
+        
+        if self.region not in valid_mapped_regions:
             valid_region_keys = ', '.join(f'`{k}`' for k in self.FF_REGION_MAP.keys())
             raise ValueError(
-                f"Invalid region '{self.region}'. Must be one of the following: {valid_region_keys}"
+                f"Invalid region. Must be one of: {valid_region_keys}"
             )
 
 
@@ -129,7 +131,7 @@ class FamaFrenchFactors(FactorModel):
         file_name = None
         basefilename = None # Initialize basefilename here for clarity
 
-        if region == 'us':
+        if region in ['us', None]:
             if model in {"3", "4"}:
                 basefilename = "F-F_Research_Data_Factors"
             elif model in {"5", "6"}:
@@ -159,7 +161,7 @@ class FamaFrenchFactors(FactorModel):
 
         if region == 'Emerging' and frequency == 'm':
             file_name = f'Emerging_5_Factors_CSV.zip'
-        else:
+        elif region != None:
             file_name = f'{region}_{base_ff_model}_Factors{freq_suffix}_CSV.zip'
 
         return f'{base_url}/{file_name}'
@@ -168,14 +170,14 @@ class FamaFrenchFactors(FactorModel):
         """Constructs the URL for momentum factors."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
-        if region not in ["us", "Emerging"]: # Note: region is mapped 'Emerging', not 'emerging'
+        if region not in ["us", None]: # Note: region is mapped 'Emerging', not 'emerging'
             if self.model in ['4', '6']:
                 freq_suffix = "_Daily" if frequency == 'd' else ""
                 file_name = f'{region}_Mom_Factor{freq_suffix}_CSV.zip' 
                 return f"{base_url}/{file_name}"
 
-        if region == 'emerging':
-            file = "Emerging_MOM_Factor_TXT.zip" #only m
+       # if region == 'Emerging':
+       #     file = "Emerging_MOM_Factor_TXT.zip" #only m; forgot why TXT 
 
         elif frequency == 'd':
             file = "F-F_Momentum_Factor_daily_CSV.zip"
@@ -198,7 +200,7 @@ class FamaFrenchFactors(FactorModel):
 
                 with zip_file.open(filename) as file:
                     content = file.read().decode('utf-8')
-                if region == 'emerging':
+                if region == 'Emerging':
                     skip_rows = 6
                 else:
                     skip_rows = 12 if 'momentum' in filename.lower() else 4
@@ -297,7 +299,7 @@ class FamaFrenchFactors(FactorModel):
         
         mom_data = self._parse_dates(mom_data)
 
-        if self.region not in ['us', 'emerging', None]:
+        if self.region not in ['us', None]:
             mom_name = "WML"  # winner minus loser in the EM data
         elif self.model == "6":    # 6 factor call it Up Minus Down
             mom_name = "UMD"
@@ -313,7 +315,7 @@ class FamaFrenchFactors(FactorModel):
 
             df = df.join(mom_series)
             self.log.info(f"Added momentum factor: {mom_name}")
-            
+
             if self.region == 'us':
                 df = df.dropna(how='any')  # Drop NaNs after MOM added; trims models to MOM size 
             else:

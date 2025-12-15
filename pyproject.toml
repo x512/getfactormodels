@@ -60,7 +60,9 @@ line-length = 79
 target-version = "py312"
 indent-width = 4
 respect-gitignore = true
-
+exclude = [
+      "*.ipynb"
+]
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

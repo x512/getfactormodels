@@ -17,10 +17,11 @@
 import io
 from typing import Any
 import pandas as pd
-from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process   # KILL THIS TODO
-import pyarrow as pa 
+import pyarrow as pa
 import pyarrow.csv as pv
+from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _process  # KILL THIS TODO
+
 
 # TODO: proper class docstr's.
 class MispricingFactors(FactorModel):

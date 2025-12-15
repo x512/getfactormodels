@@ -18,8 +18,9 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, List
 import pandas as pd
-from getfactormodels.utils.http_client import HttpClient
 import pyarrow as pa
+from getfactormodels.utils.http_client import HttpClient
+
 
 class FactorModel(ABC):
     """base model used by all factor models."""

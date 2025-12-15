@@ -62,20 +62,20 @@ def _get_model_key(model):
 # TODO: Will redo as a Writer class with use pyarrow
 # changing: no longer uses filename, output_dir, just filepath. Always returns Path 
 def _prepare_filepath(filepath=None) -> Path:
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     if filepath is None:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filepath = Path.cwd() / f"data_{timestamp}.csv"
-        print(f"No filepath provided, creating: {filepath.name}")
-        return filepath
-    
-    filepath = Path(filepath).expanduser()
-    
-    if filepath.is_dir():
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filepath = filepath / f"data_{timestamp}.csv"
-        print(f"Directory provided, creating: {filepath.name}")
-    
-    return filepath
+        final_path = Path.cwd() / f"data_{timestamp}.csv"
+        return final_path
+
+    user_path = Path(filepath).expanduser()
+
+    if user_path.is_dir():
+        final_path = user_path / f"data_{timestamp}.csv"
+    else:
+        user_path.parent.mkdir(parents=True, exist_ok=True)
+        final_path = user_path
+
+    return final_path
 
 
 def _save_to_file(data, filepath=None):
@@ -96,16 +96,11 @@ def _save_to_file(data, filepath=None):
             data.to_csv(str(full_path), sep='\t')
         elif extension == '.csv':
             data.to_csv(str(full_path))
-        elif extension == '.xlsx':
-            data.to_excel(str(full_path))
         elif extension == '.pkl':
             data.to_pickle(str(full_path))
-       # elif extension == '.md':
-       #    #.md removed for now 
         else:
-            supported = ['.txt', '.csv', '.xlsx', '.pkl']
+            supported = ['.txt', '.csv', '.pkl']  # to add: feather, parquet, json
             raise ValueError(f'Unsupported file extension: {extension}. Must be one of: {supported}')
-
         print(f"File saved to: {full_path}")
     except Exception as e:
         raise IOError(f"Failed to save file to {full_path}: {str(e)}")

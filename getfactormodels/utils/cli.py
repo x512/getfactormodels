@@ -14,47 +14,42 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-
-# Needs to be redone! TODO
 import argparse
 
-#Cache 
 
 def parse_args() -> argparse.Namespace:
     """Argument parser, allowing for command line arguments.
     This is the function used in pyproject.toml to run the CLI."""
     parser = argparse.ArgumentParser(
-        description='Retrieve and structure data for factor models.',
+        description='Download datasets for various factor models.',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''Example usage:
-        python main.py -m 3 -f M -s 1961-01-01 -e 1990-12-31
-        python main.py --model icr --frequency M --end 1990-12-31 --no_rf -o '~/icr.csv' '''  # noqa
+            getfactormodels --model ff3 --frequency m
+            getfactormodels --model liquidity --frequency m --start 2000-01-01 --end 2009-12-31
+            getfactormodels -m ff5 -f m -e 2009-12-31 --extract SMB RF -o '~/file.csv'
+            getfactormodels -m Carhart -f d -s 2000-01-01 -e 2009-12-31 -x MOM -o file 
+            '''
     )
-    parser.add_argument('-m', '--model', type=str, required=True,
-                        help='The model to use.')
-    parser.add_argument('-f', '--freq', '--frequency', type=str,
-                        required=False, default='m', help='The frequency of\
-                        the data. Valid options are D, W, M, Q, A.')
-    parser.add_argument('-s', '--start', type=str, required=False,
+    parser.add_argument('-m', '--model', type=str, required=True, metavar="MODEL_ID",
+                        help='the model to use.')
+    parser.add_argument('-f', '--frequency', type=str,
+                        required=False, default='m', choices=['d', 'w', 'm', 'q', 'y'],
+                        help='the frequency of the data.')
+    parser.add_argument('-s', '--start', type=str, required=False, metavar="YYYY-MM-DD",
                         help='The start date for the data.')
-    parser.add_argument('-e', '--end', type=str, required=False,
+    parser.add_argument('-e', '--end', type=str, required=False, metavar="YYYY-MM-DD",
                         help='The end date for the data.')
-    parser.add_argument('-o', '--output', type=str, required=False,
-                        default=None,
+    parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="FILEPATH",
                         help='The file to save the data to.')
-    parser.add_argument('--no_rf', '--no-rf', '--norf', action='store_true',
-                        help='Drop the RF column from the DataFrame.')
-    parser.add_argument('--no_mkt', '--no-mkt', '--nomkt', action='store_true',
-                        help='Drop the Mkt-RF column from the DataFrame.')
-    parser.add_argument(
-        '--extractfactor', '--extract', '-x', required=False, nargs='+', 
-        help='Extract specified factor from a model.'
-            'getfactormodels -m ff3 -x SMB'
-            'getfactormodels -m ff3 -x SMB HML'
-    )
-    parser.add_argument('--region', '-r', type=str, required=False, 
-                        choices=['us', 'developed', 'developed ex us', 'europe', 'japan', 
+    parser.add_argument('-x', '--extract', required=False, nargs='+', metavar="FACTOR",
+                        help='Extract specific factor(s) from a model.')
+    parser.add_argument('-r', '--region', type=str, required=False, #metavar="REGION_ID",
+                        choices=['us', 'developed', 'developed ex us', 'europe', 'japan',  # TODO: nicer descript 
                                  'asia pacific ex japan', 'north america', 'emerging'],
-                        help='Developed markets region (Fama French models only).'
-                        ) 
+                        help='Developed/International and Emeriging markets regions (Fama French models only).')
+    parser.add_argument('-R', '--norf', action='store_true',
+                        help='Don\'t include the risk-free rate column (RF).')
+    parser.add_argument('-M', '--nomktrf', action='store_true',
+                        help='Drop the Mkt-RF column.')
+
     return parser.parse_args()
