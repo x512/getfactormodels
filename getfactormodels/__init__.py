@@ -14,16 +14,15 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-__version__ = "0.0.8"
+from .main import get_factors #, FactorExtractor
+from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
+    FamaFrenchFactors, HMLDevilFactors, ICRFactors,
+    LiquidityFactors, MispricingFactors, QFactors)
 import logging
 
 logging.getLogger('getfactormodels').setLevel(logging.ERROR)
 
-from .main import FactorExtractor, get_factors
-from .models import (BarillasShankenFactors, CarhartFactors, DHSFactors,
-                     FamaFrenchFactors, HMLDevilFactors, ICRFactors,
-                     LiquidityFactors, MispricingFactors, QFactors)
-
+__version__ = "0.0.8"
 __all__ = [ "MispricingFactors",
            "DHSFactors",
            "ICRFactors",
@@ -33,7 +32,7 @@ __all__ = [ "MispricingFactors",
            "HMLDevilFactors",
            "FamaFrenchFactors",
            "BarillasShankenFactors",
-           "FactorExtractor",
+           #"FactorExtractor",
            "get_factors",
            ]
 

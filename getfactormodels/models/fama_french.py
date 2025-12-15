@@ -151,17 +151,14 @@ class FamaFrenchFactors(FactorModel):
             return f"{base_url}/{file_name}"
 
         if model in ['3', '4', '5', '6']:
-            if model in ['3', '4']:
-                base_ff_model = '3'
-            else: # Must be 5 or 6
-                base_ff_model = '5' 
+            base_ff_model = '3' if model in ['3', '4'] else '5'
         else:
             raise ValueError(f"Invalid model '{model}' for regional factors in region '{region}'.")
         freq_suffix = '_Daily' if frequency == 'd' else ''
 
         if region == 'Emerging' and frequency == 'm':
-            file_name = f'Emerging_5_Factors_CSV.zip'
-        elif region != None:
+            file_name = 'Emerging_5_Factors_CSV.zip'
+        elif region is not None:
             file_name = f'{region}_{base_ff_model}_Factors{freq_suffix}_CSV.zip'
 
         return f'{base_url}/{file_name}'

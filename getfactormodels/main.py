@@ -14,21 +14,18 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import logging  # TODO logging
-from pathlib import Path
+from getfactormodels.utils.cli import parse_args
+from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
+from getfactormodels.models import (FamaFrenchFactors, QFactors)
 from typing import List
 import pandas as pd
 from dateutil import parser
-from getfactormodels.models import *
-from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.models.q_factors import QFactors
-from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
+from pathlib import Path
+
 
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
 # and base class and FactorExtractor done)
 # just getting get_factors to work!
-
 def get_factors(model: str | int = 3,
                 frequency: str = "m",
                 start_date: str | None = None,
@@ -51,7 +48,6 @@ def get_factors(model: str | int = 3,
 
     """
     # NOTE: Parses input, assigns it to a factor model class, calls it, and returns the data.
-
     #
     # TODO: FIXME. kwargs. TODO: default outputs in CLI.
     #
@@ -60,7 +56,7 @@ def get_factors(model: str | int = 3,
     model_key = _get_model_key(model)
 
     factor_instance = None
-    if region != None and model_key not in ['3', '4', '5', '6']:
+    if region is not None and model_key not in ['3', '4', '5', '6']:
         _model = _get_model_key(model)
         raise ValueError(
             f"Region '{region}' is not supported for the '{_model}'. "
@@ -101,20 +97,6 @@ def get_factors(model: str | int = 3,
 # CLI (TODO)
 ### zzzzzzzzzzzzzz. Old mess. Being removed. TODO: (one day) extract factors into a composite model.
 class FactorExtractor:
-    """
-    Extracts factor data based on specified parameters.
-
-    Args:
-        model : str
-            The factor model to use. Defaults to '3'.
-        frequency (str, optional): The frequency of the data. Defaults to 'M'.
-        start_date (str, optional): The start date of the data.
-        end_date (str, optional): The end date of the data.
-
-    Methods:
-        drop_rf: Drops the 'RF' column from the DataFrame.
-        save_factors: Saves the factor data to a file.
-    """
     def __init__(self,
                  model: str = '3',
                  frequency: str = 'm',

@@ -23,7 +23,7 @@ class _Cache:
     def directory(self) -> str:
         return self.cache.directory
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> Optional[bytes]: #type err as bytes|None TODO FXME
         """Retrieves data from cache if valid, otherwise returns None."""
         data = self.cache.get(key)
         msg = f"key: {key}"
@@ -34,7 +34,7 @@ class _Cache:
             log.debug("miss")
         return data
 
-    def set(self, key: str, data: bytes, expire_secs: Optional[int] = None):
+    def set(self, key: str, data: bytes, expire_secs: int | None = None):
         """Save data to the cache expiration time."""
         timeout = expire_secs if expire_secs is not None else self.default_timeout
         try:
