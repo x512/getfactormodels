@@ -112,8 +112,7 @@ df = QFactors(frequency='w',
 
 - For more examples see the notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
 
-
-### CLI
+## CLI
 
 You can use getfactormodels from the command line. Just call `getfactormodels` with the `--model` `-m` flag.
 
@@ -171,8 +170,6 @@ getfactormodels -m 4 --region emerging --extract SMB MOM
 [![Open in nbviewer](https://raw.githubusercontent.com/jupyter/design/main/logos/Badges/nbviewer_badge.svg)](https://nbviewer.org/github/x512/getfactormodels/blob/dev/example.ipynb)
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/x512/getfactormodels/blob/dev/example.ipynb)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 #### Classes
 
 A list of model classes available:
@@ -190,6 +187,7 @@ A list of model classes available:
 
 *For a list of parameters, see the [example notebook](https://github.com/x512/getfactormodels/blob/main/example.ipynb). (Docs are coming)*
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Data Availability
 
@@ -210,9 +208,6 @@ contains the shortest identifier for each model. These should all work in python
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2022-12-30|
 |`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |      |       | 2024-12-31 |
 
-
->[TODO]
->Docs!
 
 ## References
 
