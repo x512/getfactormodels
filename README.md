@@ -1,12 +1,14 @@
 <a name="readme-top"></a>
 
 # getfactormodels
+
 [![Python](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fx512%2Fgetfactormodels%2Frefs%2Fheads%2Fmain%2Fpyproject.toml&query=project.requires-python&label=python&logo=python&logoColor=ffde57&style=flat-square)]([https://python.org](https://www.python.org/downloads/))
 ![PyPI - Version](https://img.shields.io/pypi/v/getfactormodels?style=flat-square&label=PyPI)
 ![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square&labelColor=%23313131)
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
 Reliably retrieve data for various multi-factor asset pricing models.
+
 
 ## Models
 
@@ -26,11 +28,13 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 
 ## Installation
+
 >[!IMPORTANT]
->``getfactormodels`` is still pre-alpha (until version 0.1.0), don't rely on it for anything.
+>``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 >
 >![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >
+>*But a huge thanks to anyone who has tried it!*
 
 **Requires:**
 
@@ -43,8 +47,8 @@ The easiest way to install (and update) `getfactormodels` is with pip:
 ```bash
 pip install -U getfactormodels
 ```
-You can also download the [latest release](https://github.com/x512/getfactormodels/releases/latest
-) and install using pip.
+
+You can also download the [latest release](https://github.com/x512/getfactormodels/releases/latest) and install using pip.
 <details>
 
 <summary>linux/macOS</summary>
@@ -73,64 +77,106 @@ You can also download the [latest release](https://github.com/x512/getfactormode
 - All other parameters are optional. By default monthly data is returned.
 
 ```py
-import getfactormodels as gfm
+# monthly Fama-French 3-factors since start_date
+df = getfactormodels.get_factors(model='ff3', start_date='2006-01-01')
 
-# Download Fama-French 3-factor daily data since start_date:
-df = gfm.get_factors(model='ff3', frequency='d', start_date='2006-01-01')
-
-# Monthly DHS factors until end_date:
-dhs = gfm.get_models(model='dhs', end_date='2010-12-31'
-
-# Mispricing factors (monthly) with date range and export:
-df = gfm.get_factors(
+# Daily Mispricing factors saved to file:
+df = getfactormodels.get_factors(
     model='mispricing',
     start_date='1970-01-01',
     end_date='1999-12-31',
-    output='mispricing_factors.csv'  #.csv, .txt, .pkl
+    output='~/mispricing_factors.csv'  #.csv, .pkl, .parquet, .txt
 )
 ```
 
-- You can import only the models you need. For example, the *ICR* and *q-factor* models:
+- Using the model classes, you can import only the models you want: 
 
 ```python
 from getfactormodels import ICRFactors, QFactors
-
-# Passing a model class without params defaults to monthly data.
-icr = ICRFactors() # look! no params!
-
-# Use the download module to get the data
-df = icr.download()
-
-# extract a factor
-factor = icr.extract("IC_RATIO")
-
-# The 'q' models, and the 3-factor model of Fama-French have weekly data available
-df = QFactors(frequency='w',
-            start_date='1992-05-22',
-            end_date='2019-01-05').download() # chained! Wow!
-
 ```
-<!-- TODO: REDO IPYNB EXAMPLE -->
+```python
+model = ICRFactors(frequency='m', start_date='2000-01-01')
+
+# use the download module to get the data
+df = model.download()
+
+# use the extract module to get a factor
+factor = icr.extract("IC_RATIO")
+```
+- Fama-French 3-Factors and the q-factors have weekly data available:
+```python
+df = QFactors(frequency='w',
+              start_date='1992-05-22',
+              end_date='2019-01-05').download() # chained! Wow!
+```
+
+- For more examples see the notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
 
 
-#### Parameters
+### CLI
 
--  `getfactormodels.get_factors()`
+You can use getfactormodels from the command line. Just call `getfactormodels` with the `--model` `-m` flag.
 
-
-*All models share these base params:*
- 
- | Parameter | Description | Data Type | default |
- | :--- | :--- | :--- | :--- |
- |`model`|Model name, see id's above. |`str`|`None`|
- | `frequency` | The time frequency of the data, accepted values: `d`, `m`, `w`, `q`, `y`. | `str` | `m` |
- | `start_date` | The start date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
- | `end_date` | The end date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
- | `cache_ttl` | Time-to-live for cached data (how long to reuse downloaded data). | `int` | `86400` (1 day) |
- | `output_file` | Filepath to save data to | `str` | `None` |
+- Frequency `-f` defaults to monthly and all other parameters are optional:
 
 
-##### Classes
+```bash
+#monthly Fama-French 3 factor model
+getfactormodels --model ff3
+
+# daily mispricing factors since start
+getfactormodels -m mis --frequency d --start 2000-01-01
+```
+>Note: all data is cached for 1 day, re-running commands isn't wasteful.
+
+
+- Save data to a file with `--output` `-o`:
+
+```bash 
+#save annual Fama-French 5-Factors to file:
+getfactormodels -m 5 - f y --output "~/dir/filename.csv" # can be csv, pkl, parquet, txt.
+
+getfactormodels -m liq -f m -o somefile # will be a csv, will be in users current directory.
+```
+>Note: Fama French models can be a string ("ff3") or int (3, 4, 5, 6, where 4 = carhart).
+
+
+- Extract a factor from a model with the `--extract` `-x` flag:
+
+```bash 
+getfactormodels -m carhart -f m --extract MOM
+# extract multiple factors to a file 
+getfactormodels -m ff3 -f m -x SMB HML -o "dir/filename.pkl"
+```
+
+
+- Access Fama-French Emerging and Developed/International markets using the `--region` -r` flag:
+
+```bash
+
+# 3 factor model for developed markets
+getfactormodels -m ff3 --region developed
+
+# 5-Factor model for Europe saved to file 
+getfactormodels -m 5 -r europe -o euro_factors
+
+# extract the SMB and MOM factors from the carhart model
+getfactormodels -m 4 --region emerging --extract SMB MOM
+```
+
+- See more in the example notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
+
+*Or try it for yourself:*
+
+[![Open in nbviewer](https://raw.githubusercontent.com/jupyter/design/main/logos/Badges/nbviewer_badge.svg)](https://nbviewer.org/github/x512/getfactormodels/blob/dev/example.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/x512/getfactormodels/blob/dev/example.ipynb)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+#### Classes
+
+A list of model classes available:
+
 - `FamaFrenchFactors`
 - `CarhartFactors`
 - `QFactors`
@@ -141,78 +187,8 @@ df = QFactors(frequency='w',
 - `HMLDevilFactors`
 - `BarillasShankenFactors`
 
-All classes share these params:
 
-   | Param | Description | Type | default |
-   | :--- | :--- | :--- | :--- |
-   | `frequency` | The time frequency of the data, accepted values: `d`, `m`, `w`, `q`, `y`. | `str` | `m` |
-   | `start_date` | The start date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
-   | `end_date` | The end date for the data retrieval. `YYYY-MM-DD` | `str`, `datetime` | `None` |
-   | `cache_ttl` | Time-to-live for cached data (how long to reuse downloaded data). | `int` | `86400` (1 day) |
-   | `output_file` | Filepath to save data to | `str` | `None` |
-<br>
-
-- Some models have extra parameters:
-
-    | Class | Param | Description | Type | default |
-    | :--- | :---: | :--- | :---: | :--- |
-    | ``FamaFrenchFactors`` | `model` | The specific Fama-French Factor model. For example, `5`, or `ff5` |  ``str``, ``int`` | `3` |
-    | ``FamaFrenchFactors`` | `region` | ``us`` (this is the default behaviour, retreives data for the US factors only), `developed`, `developed ex us`, `europe`, `japan`, `asia pacific ex japan`, `north america` | ``str`` | ``us`` |
-    | ``QFactors`` | `classic` | If true returns the classic q-factor model. | `bool`  | `False` |
-
-
-### CLI
-Requires: ``bash >=4.2``
-
-__This is old but should still work until redo.__
-
-* You can also use getfactormodels from the command line. It's very basic at the moment, here's the `--help`:
-
-  ```shell
-  $ getfactormodels -h
-
-  usage: getfactormodels [-h] -m MODEL [-f FREQ] [-s START] [-e END] [-o OUTPUT] [--no_rf] [--no_mkt]
-  ```
-
-* An example of how to use the CLI to retrieve the Fama-French 3-factor model data:
-
-  ```shell
-  $ getfactormodels --model ff3 --frequency M --start-date 1960-01-01 --end-date 2020-12-31 --output .csv
-  ```
-
-* Here's another example that retrieves the annual 5-factor data of Fama-French, without the RF column (using ``--no[_]rf``)
-
-  ```shell
-  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf -o ~/some_dir/filename.xlsx
-  ```
-* To return the factors without the risk-free rate `RF`, or the excess market return `Mkt-RF`, columns:
-
-  ```shell
-  $ getfactormodels -m ff5 -f Y -s 1960-01-01 -e 2020-12-31 --norf --nomkt -o ~/some_dir/filename.xlsx
-  ````
-
-  ```shell
-  # 3 factor model for developed markets
-  $ getfactormodels -m 3 --region developed
-
-  # 4 factor model for emerging markets, and extract the SMB factor
-  $ getfactormodels -m 4 --region emerging --extract SMB
-
-  # an annual 5 factor ff model for emerging markets since 2000
-  $ getfactormodels -m 5 -f y -r emerging -s 2000-01-01 --output "~/FF5-annual-emerging" #will be csv 
-
-  # Get the daily Japan WML (the MOM factor) series and save to file:
-  $ getfactormodels -m 5 -f d -r japan --extract WML -o yes.csv 
-
-  # extract the daily WML factor for 2008-2009 for 'Asia Pacific ex Japan'
-  $ getfactormodels -m ff6 -f d -s 2008-01-01 -e 2009-12-31 --region 'asia pacific ex japan' --extract WML -o "yes.csv"
-
-  # Get the monthly European HML, SMB and momentum (WML) factors for the 2000s and save as .pkl:
-  $ getfactormodels -m ff6 -f m -s 2000-01-01 -e 2010-12-31 -r europe -x HML SMB WML -o euro_factors.pkl
-  
-  # Asia Pacific ex-Japan WML to pkl
-  $ getfactormodels -m4 -fy -r "asia pacific ex japan" -x WML -o ap-ex-japan.pkl
-  ```
+*For a list of parameters, see the [example notebook](https://github.com/x512/getfactormodels/blob/main/example.ipynb). (Docs are coming)*
 
 
 ## Data Availability
@@ -220,19 +196,19 @@ __This is old but should still work until redo.__
 _This table shows each model's start date, available frequencies, and the latest datapoint if not current. The ``id`` column 
 contains the shortest identifier for each model. These should all work in python and the CLI._
 
-| `id` | Factor Model         | Start      | D            | W            | M            | Q            | Y            | End        |
+| `id` | Factor Model| Start  | D       | W     | M     | Q     | Y      | End  |
 |:--:|:--------------|:----------:|--------------|--------------|--------------|--------------|--------------|:----------:|
-|`3`| Fama-French 3 | 1926-07-01 | ✓ | ✓ | ✓ |              | ✓ |     -       |
-|`4`| Carhart 4      | 1926-11-03 | ✓ |              | ✓ |              | ✓ |     -       |
-|`5`| Fama-French 5  | 1963-07-01 | ✓ |              | ✓ |              | ✓ |     -       |
-|`6`| Fama-French 6 | 1963-07-01 | ✓ |              | ✓ |              | ✓ |      -      |
-|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | ✓ |         | ✓ |              |              |-|
-|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |              |              | 2023-12-29 |
+|`3`| Fama-French 3 | 1926-07-01 | ✓            | ✓   | ✓         |      | ✓ |     -  |
+|`4`| Carhart 4      | 1926-11-03 | ✓ |              | ✓ |     | ✓ |     -    |
+|`5`| Fama-French 5  | 1963-07-01 | ✓ |              | ✓ |    | ✓ |     -     |
+|`6`| Fama-French 6 | 1963-07-01 | ✓ |              | ✓ |       | ✓ |      -  |
+|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | ✓ |         | ✓ |        |       |-|
+|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |     |      | 2023-12-29 |
 |`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | ✓ ||✓| ✓ | | 2025-06-27 |
 |`mis`| Mispricing    | 1963-01-02 | ✓ |            | ✓ |              |              | 2016-12-30 |
-|`liq`| Liquidity     | 1962-08-31 |              |            | ✓ |              |              | 2024-12-31 |
+|`liq`| Liquidity     | 1962-08-31 |   |      | ✓ |      |    | 2024-12-31 |
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2022-12-30|
-|`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |              |              | 2024-12-31 |
+|`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |      |       | 2024-12-31 |
 
 
 >[TODO]

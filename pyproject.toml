@@ -53,6 +53,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.isort]
 lines_between_sections = false
+#profile = "black"
+line_length = 79
+py_version=310
 
 [tool.ruff]
 # see: docs.astral.sh/ruff/configuration/

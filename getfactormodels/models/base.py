@@ -16,7 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, List
+from typing import Any
 import pandas as pd
 import pyarrow as pa
 from getfactormodels.utils.http_client import HttpClient
@@ -77,7 +77,7 @@ class FactorModel(ABC):
         return self.data
 
 
-    def extract(self, factor: str | List[str]) -> pd.Series | pd.DataFrame:
+    def extract(self, factor: str | list[str]) -> pd.Series | pd.DataFrame:
         """Retrieves a single factor (column) from the dataset."""
         data = self.download()
 
@@ -93,8 +93,8 @@ class FactorModel(ABC):
             return data[factor]
 
         elif isinstance(factor, list):
-            # just let pandas handle list to cols:
-            return data[factor]
+            return data[factor] 
+
 
     # TODO: Remove FactorExtractor
     #def _drop_rf():
@@ -126,13 +126,16 @@ class FactorModel(ABC):
 
     @property
     def _url(self) -> str:
-        """Internal property: data source URL"""
+        """Internal property: data source URL.
+        Fama French returns the underlying model url (4 factor (3+MOM) returns the 3 factor url)
+        """
         # subclasses implement _get_url which this uses.
         return self._get_url()
 
     def _download_from_url(self) -> bytes:
         url = self._url
-        self.log.info(f"Downloading data from: {url}")
+        log_msg = f"Downloading data from: {url}"
+        self.log.info(log_msg)
         try:
             with HttpClient(timeout=15.0) as client:
                 return client.download(url, self.cache_ttl)

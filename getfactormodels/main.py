@@ -14,13 +14,14 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
-from getfactormodels.models import (FamaFrenchFactors, QFactors)
-from typing import List
+from pathlib import Path
 import pandas as pd
 from dateutil import parser
-from pathlib import Path
+from getfactormodels.utils.cli import parse_args
+from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
+from .models import (  # todo: dont import all models, just QFactor and FamaFrench (function needs changing)
+    BarillasShankenFactors, CarhartFactors, DHSFactors, FamaFrenchFactors,
+    HMLDevilFactors, ICRFactors, LiquidityFactors, MispricingFactors, QFactors)
 
 
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
@@ -60,7 +61,7 @@ def get_factors(model: str | int = 3,
         _model = _get_model_key(model)
         raise ValueError(
             f"Region '{region}' is not supported for the '{_model}'. "
-            "The region parameter is only available for Fama-French models (3, 4, 5, 6)."
+            "The region parameter is only available for Fama-French models (3, 4, 5, 6).",
         )
     if model_key in ["3", "4", "5", "6"]:
         factor_instance = FamaFrenchFactors(model=model_key,
@@ -121,7 +122,7 @@ class FactorExtractor:
     def no_mkt(self) -> None:
         self._no_mkt = True
 
-    def extract(self, data, factor: str | List[str]) -> pd.Series | pd.DataFrame:
+    def extract(self, data, factor: str | list[str]) -> pd.Series | pd.DataFrame:
         """Retrieves a single factor (column) from the dataset."""
         #data = self.download()
 
@@ -204,19 +205,19 @@ def main():
     args = parse_args()
 
     extractor = FactorExtractor(model=args.model,
-                                frequency=args.freq,
+                                frequency=args.frequency,
                                 start_date=args.start,
                                 end_date=args.end,
                                 region=args.region,)
     if args.norf:
         extractor.no_rf()
-    if args.nomkt:
+    if args.nomktrf:
         extractor.no_mkt()
 
     df = extractor.get_factors()
 
-    if args.extractfactor:
-        df = extractor.extract(df, args.extractfactor)
+    if args.extract:
+        df = extractor.extract(df, args.extract)
     if args.output:
         output_path = Path(args.output).expanduser()
 
@@ -229,7 +230,7 @@ def main():
             actual_end = max_date.strftime('%Y%m%d')
             # if NaT, might be outside available data... to do warn/catch 
 
-            _filename = f"{args.model}_{args.freq.upper()}_{actual_start}-{actual_end}"
+            _filename = f"{args.model}_{args.frequency.upper()}_{actual_start}-{actual_end}"
             _ext = '.csv'
 
             user_path = Path(args.output).expanduser()

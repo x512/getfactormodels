@@ -98,26 +98,26 @@ class FamaFrenchFactors(FactorModel):
     def _validate_ff_input(self):
         if self.model not in ["3", "4", "5", "6"]:
             raise ValueError(
-                f"Invalid model '{self.model}': must be '3' '4' '5' or '6'"
+                f"Invalid model '{self.model}': must be '3' '4' '5' or '6'",
             )
-
-        if self.frequency == 'w' and self.model not in {"3", "4"}:
-            raise ValueError(
-                "Weekly data is only available for Fama-French 3 and 4 factor (Carhart) models"
-            )
+        if self.frequency == 'w' and self.model not in {"3"}: #no 4 weekly mom
+            raise ValueError(f"Fama French weekly data is only available for the 3 Factor model ({self.model})")
 
         if self.frequency != 'm' and self.region == "Emerging":
             raise ValueError(
-                "Emerging Markets data is only available in monthly frequency."
+                "Emerging Markets data is only available in monthly frequency.",
             )
-        
+        if self.frequency not in ['d', 'm', 'y'] and self.region not in ['US', 'us', None]:
+            raise ValueError(
+                "Region data is only available in daily, monthly and yearly frequency.",
+            )       
         # self.region is None if invalid region, or it is mapped! (e.g., 'Japan', 'us').
         valid_mapped_regions = set(self.FF_REGION_MAP.values()) | {None}
-        
+
         if self.region not in valid_mapped_regions:
-            valid_region_keys = ', '.join(f'`{k}`' for k in self.FF_REGION_MAP.keys())
+            valid_region_keys = ', '.join(f'`{k}`' for k in self.FF_REGION_MAP)
             raise ValueError(
-                f"Invalid region. Must be one of: {valid_region_keys}"
+                f"Invalid region. Must be one of: {valid_region_keys}",
             )
 
 
@@ -239,7 +239,7 @@ class FamaFrenchFactors(FactorModel):
             return pd.DataFrame()
 
    
-    # parse_date=True prob handles this now: keeping for now.
+    # parse_date=True prob handles this now: keeping for now.   #TODO: remove
     def _parse_dates(self, df): #TODO: types everywhere.
         """Parse the date index based on frequency."""
         if df.empty:
@@ -297,7 +297,7 @@ class FamaFrenchFactors(FactorModel):
         mom_data = self._parse_dates(mom_data)
 
         if self.region not in ['us', None]:
-            mom_name = "WML"  # winner minus loser in the EM data
+            mom_name = "WML"  # winner minus loser in the EM and intl data
         elif self.model == "6":    # 6 factor call it Up Minus Down
             mom_name = "UMD"
         elif self.model == "4":   # and MOM in 4-factor (TODO: name MOM for just MOM?)
@@ -316,10 +316,6 @@ class FamaFrenchFactors(FactorModel):
             if self.region == 'us':
                 df = df.dropna(how='any')  # Drop NaNs after MOM added; trims models to MOM size 
             else:
-                # dev/intl/emerging markets contain NaNs.
-                # Dropping all rows with starting WML (momentum in intl/em/dev) NaNs (trims model to WML length)
-                # but keeping all other NaNs present.
-                # In non-momentum intl/emerging/dev, models 3 and 5, drop all
                 # eg, emerging RMW/CMA begins with NaNs -- keepin
                 # eg, asia pacific ex japan starts with 4 months of NaNs in WML (4 in monthly) -- droppin
                 # but all factors go back to 1990-07-02. 
@@ -358,9 +354,8 @@ class FamaFrenchFactors(FactorModel):
 
             # Decimalize. Keep here for now. Finicky.
             df = df.astype(float)
-            df = df * 0.01
+            return df * 0.01
             # TODO: drop nans/nulls, after adding MOM, and for barillas shanken, etc.
-            return df
 
         except Exception as e:
             print(f"Error downloading Fama-French data: {e}")

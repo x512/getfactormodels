@@ -48,7 +48,7 @@ class QFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"] # test
 
-    def __init__(self, classic: bool = False, **kwargs: Any) -> None:
+    def __init__(self, *, classic: bool = False, **kwargs: Any) -> None:
         self.classic = classic 
         super().__init__(classic=classic, **kwargs)
 
@@ -58,7 +58,8 @@ class QFactors(FactorModel):
                 "q": "quarterly", 
                 "w": "weekly",
                 "w2w": "weekly_w2w",
-                "y": "annual", }.get(self.frequency)
+                "y": "annual"
+                }.get(self.frequency)
 
         url = 'https://global-q.org/uploads/1/2/2/6/122679606'
         url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
@@ -68,9 +69,9 @@ class QFactors(FactorModel):
         _file = io.StringIO(data.decode('utf-8'))
         index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
         data = pd.read_csv(_file, parse_dates=False, index_col=index_cols, float_precision="high")
-        data = self._parse_q_factors(data)
 
-        return data
+        return self._parse_q_factors(data)
+
 
     # ------------------------------------------------------------------ #
     def _parse_q_factors(self, data) -> pd.DataFrame:
@@ -84,7 +85,7 @@ class QFactors(FactorModel):
             # Combines year, period cols into a PeriodIndex to Timestamp
             data["date"] = pd.PeriodIndex(
                 data["year"].astype(str) + char + data[col].astype(str),
-                freq=self.frequency.upper()  #fix:FutureWarning 'm' is deprecated, use 'M'
+                freq=self.frequency.upper(),  #fix:FutureWarning 'm' is deprecated, use 'M'
             ).to_timestamp(how="end")
 
             data["date"] = data["date"].dt.normalize()

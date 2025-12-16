@@ -101,7 +101,7 @@ class DHSFactors(FactorModel):
                 io.BytesIO(data),
                 read_options=read_opts,
                 parse_options=parse_opts,
-                convert_options=convert_opts
+                convert_options=convert_opts,
             )
 
             table = table.rename_columns(['date', 'PEAD', 'FIN'])
@@ -114,11 +114,12 @@ class DHSFactors(FactorModel):
             rows_dropped = initial_rows - final_rows
 
             if rows_dropped > 0:
-                self.log.debug(f"{rows_dropped} NaN rows dropped." # check
-                    f"({initial_rows} -> {final_rows}).")
+                msg = ("{rows_dropped} NaN rows dropped." # check
+                    f"{initial_rows} -> {final_rows}).")
+                self.log.debug(msg)
             else:
-                self.log.debug("No NaNs detected")
-                self.log.debug(f"data: {final_rows} rows.")
+                msg = f"No NaNs detected, {final_rows} rows."
+                self.log.debug(msg)
 
 
             # pandas line --------------------------------------------------- #
@@ -151,7 +152,7 @@ class DHSFactors(FactorModel):
                             self.end_date, filepath=self.output_file)
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            self.log.error(f"Reading or parsing failed: {e}")
+            self.log.error("Reading or parsing failed: %s", e)
             empty_df = pd.DataFrame(columns=['Date', 'PEAD', 'FIN'], # type: ignore [reportArgumentType] 
                                     index=pd.DatetimeIndex([], name='date'))
             return empty_df

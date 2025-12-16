@@ -52,8 +52,7 @@ class ICRFactors(FactorModel):
         _file = {"d": "daily", 
                  "m": "monthly", 
                  "q": "quarterly"}.get(self.frequency)
-        url = f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
-        return url
+        return f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
 
 
     def _read(self, data) -> pd.DataFrame:

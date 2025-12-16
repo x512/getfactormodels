@@ -64,8 +64,13 @@ class LiquidityFactors(FactorModel):
 
         # Fix: was losing first line of data
         data.seek(0)
-        data = pd.read_csv(data, sep='\\s+', names=headers, 
-                           comment='%', index_col=0)
+        data = pd.read_csv(data, sep='\\s+',
+                           names=headers, 
+                           comment='%',
+                           index_col=0, 
+                           na_filter=True, 
+                           na_values=[-99, '-99.000000'], # we returning NaNs now!  #TODO: test to check the first x values 
+                           )
 
         data.index.name = 'date'  # Should make it all DATE
         data.index = data.index.astype(str)
@@ -73,10 +78,6 @@ class LiquidityFactors(FactorModel):
         data = data.rename(columns={'Agg Liq.': 'AGG_LIQ',
                                     'Innov Liq (eq8)': 'INNOV_LIQ',
                                     'Traded Liq (LIQ_V)': 'TRADED_LIQ'})
-
-        # -99.000... floats to NaN? Return the source data -99? (consistent with ff?)
-        data['TRADED_LIQ'] = data['TRADED_LIQ'].replace(-99.000000, -999)
-        #numpy for NaN handling?
 
         data.index = pd.to_datetime(data.index, 
                                     format='%Y%m') + pd.offsets.MonthEnd(0)  

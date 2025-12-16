@@ -21,7 +21,6 @@ from pathlib import Path
 from types import MappingProxyType
 import pandas as pd
 
-logging.basicConfig(level=logging.ERROR) #default
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
 __model_input_map = MappingProxyType({
@@ -36,7 +35,7 @@ __model_input_map = MappingProxyType({
     "ICR": r"\bicr|hkm\b",
     "DHS": r"^(\bdhs\b|behav.*)$",
     "HMLDevil": r"\bhml(_)?d(evil)?|hmld\b",
-    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b", })
+    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b" })
 
 
 def _get_model_key(model):
@@ -64,8 +63,7 @@ def _get_model_key(model):
 def _prepare_filepath(filepath=None) -> Path:
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     if filepath is None:
-        final_path = Path.cwd() / f"data_{timestamp}.csv"
-        return final_path
+        return Path.cwd() / f"data_{timestamp}.csv"
 
     user_path = Path(filepath).expanduser()
 
@@ -103,7 +101,9 @@ def _save_to_file(data, filepath=None):
             raise ValueError(f'Unsupported file extension: {extension}. Must be one of: {supported}')
         print(f"File saved to: {full_path}")
     except Exception as e:
-        raise IOError(f"Failed to save file to {full_path}: {str(e)}")
+        # Fix UP024: Use OSError instead of IOError
+        # Fix B904: Use from e to chain the exception
+        raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
 
 
 # TODO: check if ICR model has no RF or Mkt Excess return column

@@ -41,7 +41,8 @@ class _Cache:
             self.cache.set(key, data, expire=timeout)
             log.debug(f"data written to cache ({key[:8]}...): expiry: {timeout}s")
         except Exception as e:
-            log.error(f"Failed to write to cache: {key}:\n{e}")
+            msg = f"Failed to write to cache: {key}:\n{e}"
+            log.error(msg)
 
     def close(self):
         self.cache.close()

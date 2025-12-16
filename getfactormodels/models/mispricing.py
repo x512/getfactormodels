@@ -20,7 +20,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process  # KILL THIS TODO
+from getfactormodels.utils.utils import (_pd_rearrange_cols, _save_to_file,
+                                         _slice_dates)
 
 
 # TODO: proper class docstr's.
@@ -65,7 +66,7 @@ class MispricingFactors(FactorModel):
         ('SMB', pa.float64()),
         ('RMW', pa.float64()),
         ('CMA', pa.float64()),
-        ('RF', pa.float64())
+        ('RF', pa.float64()),
     ])    
 
     def _read(self, data):
@@ -75,24 +76,24 @@ class MispricingFactors(FactorModel):
             # will be a CSV reader
             read_opts = pv.ReadOptions(
                 skip_rows=1,
-                column_names=['YYYYMM', 'MKTRF', 'SMB', 'MGMT', 'PERF', 'RF']
+                column_names=['YYYYMM', 'MKTRF', 'SMB', 'MGMT', 'PERF', 'RF'],
             )
 
             parse_opts = pv.ParseOptions(
                 delimiter=',',
-                ignore_empty_lines=True
+                ignore_empty_lines=True,
             )
 
             convert_opts = pv.ConvertOptions(
                 column_types=self.SCHEMA,
-                timestamp_parsers=["%Y%m%d", "%Y%m"]
+                timestamp_parsers=["%Y%m%d", "%Y%m"],
             )
 
             table = pv.read_csv(
                 io.BytesIO(data),
                 read_options=read_opts,
                 parse_options=parse_opts,
-                convert_options=convert_opts
+                convert_options=convert_opts,
             )
 
             table = table.rename_columns([
@@ -103,7 +104,7 @@ class MispricingFactors(FactorModel):
                 'PERF',
                 'RF',
             ])
-            
+
             # Debug, testing
             initial_rows = table.num_rows
             table = table.drop_null()
@@ -111,39 +112,42 @@ class MispricingFactors(FactorModel):
             rows_dropped = initial_rows - final_rows
 
             if rows_dropped > 0:
-                self.log.debug(f"{rows_dropped} NaN rows dropped." # shouldnt be any
-                            f"({initial_rows} -> {final_rows}).")
+                msg = (f"{rows_dropped} NaN rows dropped."
+                      f"({initial_rows} -> {final_rows}).")
+                self.log.debug(msg)
             else:
-                self.log.debug("No NaNs detected")
-                self.log.debug(f"data: {final_rows} rows.")
+                msg = f"No NaNs in {final_rows} rows."
+                self.log.debug(msg)
 
             # pandas line --------------------------------------------------- #
             df = table.to_pandas()
 
             df = df.set_index('date')
-            df.index.name = 'date' # Set the index name
-            
-            # Strip whitespace and handle missing values
+            df.index.name = 'date'
+
             #df = df.replace([-99.99, -999], pd.NA).dropna()
 
             if self.frequency == "m":
-            # PyArrow gives the 1st of the month, shift to end.
+                # PyArrow gives the 1st of the month, shift to end.
                 df.index = df.index + pd.offsets.MonthEnd(0)  # this is whats messing user input hmm
                 # will keep uncommented while every other model does this.
-
             # TODO: If using end of month (which it is), then need to 
             # parse user input dates, THEN shift to end of month. FIXME.
-            # TODO: replace _process...
-            return _process(df, self.start_date,
-                        self.end_date, filepath=self.output_file)
+            df = _pd_rearrange_cols(df)
+            
+            df = _slice_dates(df, self.start_date, self.end_date)
+
+            if self.output_file:
+                _save_to_file(df, filepath=self.output_file)
+
+            return df
  
         # returns an empty dataframe that base class expects for this model.
         # TODO: FIXIME: cleanup, handle errors properly everywhere...
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            self.log.error(f"Reading or parsing failed for Mispricing factors: {e}")
+            err_msg = f"Reading or parsing failed for Mispricing factors: {e}"
+            self.log.error(err_msg)
             column_names = ['Mkt-RF', 'SMB_SY', 'MGMT', 'PERF', 'RF']
-            empty_df = pd.DataFrame(columns=column_names, # type: ignore [reportArgumentType] 
-                                    index=pd.DatetimeIndex([], name='date')) 
 
-            return empty_df        
-
+            return pd.DataFrame(columns=column_names, # type: ignore [reportArgumentType] 
+                                index=pd.DatetimeIndex([], name='date'))

@@ -91,7 +91,7 @@ class HttpClient:
         # To prevent non-context manager usage?
         if self._client is None:
             raise ClientNotOpenError(
-                "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block."
+                "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block.",
             )
 
         cache_key = self._generate_cache_key(url)
@@ -117,11 +117,11 @@ class HttpClient:
         except httpx.HTTPStatusError as e:
             err = f"HTTP error {e.response.status_code} for {url}"
             log.error(err)
-            raise ConnectionError(f"HTTP error: {e.response.status_code}")
+            raise ConnectionError(f"HTTP error: {e.response.status_code}") from e
         except httpx.RequestError as e:
             err = f"Network error for {url}: {e}"
             log.error(err)
-            raise ConnectionError(f"Request error: {e}")
+            raise ConnectionError(f"Request error: {e}") from e
 
     def check_connection(self, url: str):
         """Simple url ping. Boolean."""
