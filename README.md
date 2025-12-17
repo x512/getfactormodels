@@ -149,7 +149,7 @@ getfactormodels -m ff3 -f m -x SMB HML -o "dir/filename.pkl"
 ```
 
 
-- Access Fama-French Emerging and Developed/International markets using the `--region` -r` flag:
+- Access Fama-French Emerging and Developed/International markets using the `--region` `-r` flag:
 
 ```bash
 
@@ -159,8 +159,8 @@ getfactormodels -m ff3 --region developed
 # 5-Factor model for Europe saved to file 
 getfactormodels -m 5 -r europe -o euro_factors
 
-# extract the SMB and MOM factors from the carhart model
-getfactormodels -m 4 --region emerging --extract SMB MOM
+# extract the SMB and WML factors from the 4 Factor model
+getfactormodels -m 4 --region emerging --extract SMB WML
 ```
 
 - See more in the example notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
