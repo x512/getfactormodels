@@ -101,7 +101,7 @@ model = ICRFactors(frequency='m', start_date='2000-01-01')
 df = model.download()
 
 # use the extract module to get a factor
-factor = icr.extract("IC_RATIO")
+factor = model.extract("IC_RATIO")
 ```
 - Fama-French 3-Factors and the q-factors have weekly data available:
 ```python
