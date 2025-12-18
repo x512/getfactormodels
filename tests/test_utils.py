@@ -17,8 +17,12 @@
 from datetime import datetime
 import pandas as pd
 import pytest
-from getfactormodels.utils.utils import (_get_model_key, _pd_rearrange_cols,
-                                         _slice_dates, _validate_date)
+from getfactormodels.utils.utils import (
+    _get_model_key,
+    _pd_rearrange_cols,
+    _slice_dates,
+    _validate_date,
+)
 
 
 # Test date input

@@ -39,7 +39,7 @@ def sample_model():
         'date': pd.to_datetime(['2019-03-22', '2019-03-29']),
         'FACTOR_A': [-1.23, -4.5],
         'FACTOR_B': [67.8, 9.01],
-        'FACTOR_C': [-12.3, 5.6]
+        'FACTOR_C': [-12.3, 5.6],
     }
     df = pd.DataFrame(data).set_index('date')
     

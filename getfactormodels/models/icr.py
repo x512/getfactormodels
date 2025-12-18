@@ -17,12 +17,11 @@
 import io
 from typing import Any
 import pandas as pd
-from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
-
-import pyarrow.csv as pv
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.csv as pv
+from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _process
 
 
 class ICRFactors(FactorModel):
@@ -50,7 +49,7 @@ class ICRFactors(FactorModel):
         return ["d", "m", "q"]
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        self.frequency = frequency
+        #self.frequency = frequency   already set in base class
         super().__init__(frequency=frequency, **kwargs)
 
     def _get_url(self) -> str:
@@ -78,17 +77,21 @@ class ICRFactors(FactorModel):
             ('intermediary_value_weighted_investment_return', pa.float64()),
             ('intermediary_leverage_ratio_squared', pa.float64()),
         ])
-
-        table = pv.read_csv(
-            io.BytesIO(data),
-            #readopts?
-            convert_options=pv.ConvertOptions(
-                column_types=SCHEMA, 
-                #timestamp_parsers= can't use with Qtr
-                check_utf8=True,  # extra validation
+        try:
+            table = pv.read_csv(
+                io.BytesIO(data),
+                #readopts?
+                convert_options=pv.ConvertOptions(
+                    column_types=SCHEMA, 
+                    #timestamp_parsers= can't use with Qtr
+                    include_columns=SCHEMA.names, # fix: forces strict header check (test was passing when eg only one col returned)
+                    check_utf8=True,  # extra validation
+                ),
             )
-        )
-        
+        except (pa.ArrowInvalid, KeyError) as e:
+            raise ValueError(f"Error reading csv for {self.__class__.__name__}. "
+                f"Check if source headers changed: {e}") from e
+
         #if _date_col not in table.schema.names:
         #    raise KeyError(f"Column {_date_col} not found")
         #date_array: pa.array = table[_date_col]   pa Array?
@@ -98,10 +101,10 @@ class ICRFactors(FactorModel):
 
         if self.frequency == "q":
             # replace Q with MM-DD, e.g., replaces 20251 with 2025-03-31
-            date_array = pc.replace_substring_regex(date_array, pattern="1$", replacement="-03-31")
-            date_array = pc.replace_substring_regex(date_array, pattern="2$", replacement="-06-30")
-            date_array = pc.replace_substring_regex(date_array, pattern="3$", replacement="-09-30")
-            date_array = pc.replace_substring_regex(date_array, pattern="4$", replacement="-12-31")
+            date_array = pc.replace_substring_regex(date_array, pattern="1$", replacement="-03-31") # type: ignore[reportAttributeAccessIssue] 
+            date_array = pc.replace_substring_regex(date_array, pattern="2$", replacement="-06-30") # type: ignore
+            date_array = pc.replace_substring_regex(date_array, pattern="3$", replacement="-09-30") # type: ignore
+            date_array = pc.replace_substring_regex(date_array, pattern="4$", replacement="-12-31") # type: ignore
 
             # now parses
             parsed_dates = pc.strptime(date_array, format="%Y-%m-%d", unit='ms')

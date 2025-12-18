@@ -52,53 +52,47 @@ requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.isort]
-lines_between_sections = false
-#profile = "black"
 line_length = 79
-py_version=310
+py_version = 312
+multi_line_output = 3
+include_trailing_comma = true
+lines_between_sections = false
 
 [tool.ruff]
-# see: docs.astral.sh/ruff/configuration/
 line-length = 79
 target-version = "py312"
 indent-width = 4
 respect-gitignore = true
-exclude = [ "*.ipynb" ]
-
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-skip-magic-trailing-comma = false
-line-ending = "auto"
-preview = true
+exclude = ["*.ipynb", ".git", ".git-rewrite", "build", "dist"]
 
 [tool.ruff.lint]
-exclude = [".git", ".git-rewrite"]
-ignore = ["E501", "ANN", "F401", "W293"]
-
-select = [ "E", "F", "B", "G", "N", "A", "S",
-    "PTH110", "PTH107", "SIM", "C901", "COM",
-    "UP", "DTZ901", "FIX001", "FIX002", "C4",
-    "UP007", "PT", "LOG", "DTZ", "RET", "ICN",
-    "TID", "FBT", "BLE", "ISC",
+select = [ 
+    "E", "F", "B", "G", "N", "A", "S", "SIM", "C901", "COM", 
+    "UP", "C4", "PT", "LOG", "DTZ", "RET", "ICN", "TID", 
+    "FBT", "BLE", "ISC"
 ]
-
-fixable = ["W29", "W5", "E241", "E261"]
+ignore = ["I", "E501", "ANN", "F401", "W293"]
 unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
 "__main__.py" = ["F401"]
-"**/tests" = ["F401", "S101"]
+"tests/**/*.py" = ["F401", "S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+preview = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests/*.py"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
 
 [tool.coverage.run]
-source = ['getfactormodels']
+source = ["getfactormodels"]
 omit = [
-    '*.ipynb',
-    'tests/*.py',
-    '*/__pycache__/*',
-    '*/setup.py',
+    "*.ipynb",
+    "tests/*",
+    "*/__pycache__/*",
+    "setup.py",
 ]

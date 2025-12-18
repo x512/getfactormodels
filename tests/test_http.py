@@ -46,7 +46,7 @@ def open_http_client(http_client):
     http_client.__exit__(None, None, None)    
 
 def test_cache_dir_default():
-    with patch(f'getfactormodels.utils.http_client.user_cache_path') as mock_path:
+    with patch('getfactormodels.utils.http_client.user_cache_path') as mock_path:
         mock_path.return_value.resolve.return_value = "~/some/dir"
         
         client = HttpClient()
