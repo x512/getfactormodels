@@ -15,7 +15,15 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
+#from getfactormodels import __version__
+from importlib.metadata import version, PackageNotFoundError
 
+#Avoids importing __init__ for the ver 
+def _get_version():
+    try:
+        return version("getfactormodels")
+    except PackageNotFoundError:
+        return "unknown"
 
 def parse_args() -> argparse.Namespace:
     """Argument parser, allowing for command line arguments.
@@ -28,8 +36,7 @@ def parse_args() -> argparse.Namespace:
             getfactormodels --model liquidity --frequency m --start 2000-01-01 --end 2009-12-31
             getfactormodels -m 5 -f m -e 2009-12-31 --extract SMB RF -o '~/file.csv'
             getfactormodels -m Carhart -f d -s 2000-01-01 -e 2009-12-31 -x MOM -o file 
-
-            '''
+            ''', 
     )
     parser.add_argument('-m', '--model', type=str, required=True, metavar="MODEL_ID",
                         help="the model to use. eg, 'ff3', 'liquidity', 'dhs', 'q', etc. "
@@ -43,6 +50,8 @@ def parse_args() -> argparse.Namespace:
                         help='The end date for the data.')
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="FILEPATH",
                         help='The file to save the data to.')
+    parser.add_argument('-d', '--drop', required=False,  nargs='+', metavar='FACTOR_NAME', 
+                        help="Drop specified factor(s) from a model.")
     parser.add_argument('-x', '--extract', required=False, nargs='+', metavar="FACTOR_NAME",
                         help='Extract specific factor(s) from a model, e.g., "SMB".')
     parser.add_argument('-r', '--region', type=str, required=False, metavar="REGION_ID",
@@ -51,8 +60,6 @@ def parse_args() -> argparse.Namespace:
                         help="Fama-French models only: get data for devleoped and emerging markets. "
                         "One of: 'us', 'developed', 'developed ex us', 'europe', 'japan',"
                         " 'asia pacific ex japan', 'north america', 'emerging'.")
-    # Being removed, adding a drop functionality:
-    parser.add_argument('-R', '--norf', action='store_true', help='Don\'t include the risk-free rate column (RF).')
-    parser.add_argument('-M', '--nomktrf', action='store_true', help='Drop the Mkt-RF column.')
-
+    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress console output.')
+    parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
     return parser.parse_args()

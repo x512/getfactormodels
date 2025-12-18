@@ -20,8 +20,11 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import (_pd_rearrange_cols, _save_to_file,
-                                         _slice_dates)
+from getfactormodels.utils.utils import (
+    _pd_rearrange_cols,
+    _save_to_file,
+    _slice_dates,
+)
 
 
 # TODO: proper class docstr's.

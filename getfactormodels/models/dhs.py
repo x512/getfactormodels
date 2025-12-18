@@ -21,7 +21,6 @@ import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.http_client import HttpClient
 from getfactormodels.utils.utils import _process
 
 
@@ -58,7 +57,7 @@ class DHSFactors(FactorModel):
     ])
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        self.frequency = frequency
+        #self.frequency = frequency
         super().__init__(frequency=frequency, **kwargs)
 
 

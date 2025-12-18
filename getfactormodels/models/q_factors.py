@@ -17,6 +17,13 @@
 import io
 from typing import Any
 import pandas as pd
+import pyarrow as pa
+import pyarrow.csv as pv
+from pyarrow.compute import (  # type: ignore[reportAttributeAccessIssue]
+    binary_join_element_wise,
+    replace_substring_regex,
+    strptime,
+)
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _process
 
@@ -25,17 +32,14 @@ class QFactors(FactorModel):
     """Download q-factor data from global-q.org.
 
     Args:
-        `frequency` (`str`): the frequency of the data. `d`, `m` `y` or `w`
-            (default: `m`).
-        `start_date` (`str, optional`): the start date of the data, `YYYY-MM-DD`
-        `end_date` (`str, optional`): the end date of the data, as `YYYY-MM-DD`
-        `classic` (`bool, optional`): returns the original 4-factor q-factor 
-            model. (Default: `False`).
-        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
-            (default: `86400`).
-    Returns:
-        `pd.DataFrame`: timeseries of factors
+        frequency (str): the frequency of the data. d, m, y, q, w, w2w.
+        start_date (str, optional): start date, YYYY-MM-DD.
+        end_date (str, optional): end date, YYYY-MM-DD.
+        classic (bool, optional): returns original 4-factor model.
+        cache_ttl (int, optional): cache TTL in seconds.
 
+    Returns:
+        pd.DataFrame: timeseries of factors.
     References:
     - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented q-factor model
     with expected growth, Review of Finance 25 (1), 1-41. (q5 model)
@@ -46,7 +50,29 @@ class QFactors(FactorModel):
     """
     @property
     def _frequencies(self) -> list[str]:
-        return ["d", "w", "w2w", "m", "q", "y"] # test
+        return ["d", "w", "w2w", "m", "q", "y"]
+
+    @property
+    def schema(self) -> pa.Schema:  # testing dynamic schema -- nice
+        """Returns model schema with normalised names."""  
+        factors = [  # TODO: lowercase previous pyarrow models, add property
+                   ("r_f", pa.float64()),
+                   ("r_mkt", pa.float64()),
+                   ("r_me", pa.float64()),
+                   ("r_ia", pa.float64()),
+                   ("r_roe", pa.float64()),
+                   ("r_eg", pa.float64()),
+            ]
+
+        if self.frequency in ["m", "q"]:
+            period_col = "month" if self.frequency == "m" else "quarter"
+            time_cols = [("year", pa.int64()), (period_col, pa.int64())]
+        elif self.frequency == "y":
+            time_cols = [("year", pa.int64())]
+        else:
+            time_cols = [("date", pa.int64())]  # 'w'/'w2w' = "date", 'd' = "DATE"
+
+        return pa.schema(time_cols + factors)
 
     def __init__(self, *, classic: bool = False, **kwargs: Any) -> None:
         self.classic = classic 
@@ -58,57 +84,75 @@ class QFactors(FactorModel):
                 "q": "quarterly", 
                 "w": "weekly",
                 "w2w": "weekly_w2w",
-                "y": "annual"
+                "y": "annual",
                 }.get(self.frequency)
 
         url = 'https://global-q.org/uploads/1/2/2/6/122679606'
         url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
         return url
 
-    def _read(self, data) -> pd.DataFrame:
-        _file = io.StringIO(data.decode('utf-8'))
-        index_cols = [0, 1] if self.frequency in ["m", "q"] else [0]
-        data = pd.read_csv(_file, parse_dates=False, index_col=index_cols, float_precision="high")
 
-        return self._parse_q_factors(data)
+    def _read(self, data: bytes) -> pd.DataFrame:
+        # Normalizing headers
+        _header_raw = data.splitlines()[0].decode("utf-8")
+        header_line = _header_raw.lower().split(",")
 
+        try:
+            table = pv.read_csv(
+                io.BytesIO(data),
+                read_options=pv.ReadOptions(column_names=header_line, skip_rows=1),
+                convert_options=pv.ConvertOptions(
+                    column_types=self.schema,
+                    include_columns=self.schema.names,
+                ),
+            )
+        except Exception as e:
+            raise ValueError(f"error reading csv: {self.frequency}: {e}") from e
 
-    # ------------------------------------------------------------------ #
-    def _parse_q_factors(self, data) -> pd.DataFrame:
-        if self.frequency in ["m", "q"]: 
-            data = data.reset_index()
+        if self.frequency in ["m", "q"]:
+            _year = table.column(0).cast(pa.string())
+            _period = table.column(1).cast(pa.string())
 
-            # Need to insert "-" or "Q" into date monthly/quarterly str.
-            col = "quarter" if self.frequency == "q" else "month"
-            char = "q" if self.frequency == "q" else "-"
+            period_str = replace_substring_regex(_period, r"^(\d)$", r"0\1")
 
-            # Combines year, period cols into a PeriodIndex to Timestamp
-            data["date"] = pd.PeriodIndex(
-                data["year"].astype(str) + char + data[col].astype(str),
-                freq=self.frequency.upper(),  #fix:FutureWarning 'm' is deprecated, use 'M'
-            ).to_timestamp(how="end")
+            if self.frequency == "q":
+                _p = replace_substring_regex(period_str, "^01$", "0331")
+                _p = replace_substring_regex(_p, "^02$", "0630") # chains, so _p to _p
+                _p = replace_substring_regex(_p, "^03$", "0930")
+                _p = replace_substring_regex(_p, "^04$", "1231") #fix: was returning 093031, ^ makes it exactly match.
+            else:
+                _p = binary_join_element_wise(period_str, "01", "")
+            # str = year + period
+            date_str = binary_join_element_wise(_year, _p, "")
 
-            data["date"] = data["date"].dt.normalize()
+        else:
+            date_str = table.column(0).cast(pa.string())
+            
+            if self.frequency == "y":
+                date_str = binary_join_element_wise(date_str, "1231", "")
 
-            data = data.drop(["year", col], axis=1).set_index("date")
+        dates = strptime(date_str, format="%Y%m%d", unit="ns")
+        table = table.append_column("date", dates)
 
-        elif self.frequency == "y":
-            data.index = pd.to_datetime(data.index.astype(str)) + pd.offsets.YearEnd(0)
+        # drop cols: m/q have 2 columns at start (Year, Period), others have 1
+        if self.frequency in ["m", "q"]:
+            # Year is at 0, Month/Quarter is at 1. can clear 0 twice:
+            table = table.remove_column(0).remove_column(0)
+        else: #drop date or year col
+            table = table.remove_column(0)
 
-        else: # daily, weekly
-            data.index = pd.to_datetime(data.index.astype(str))
+        if self.classic and "r_eg" in table.column_names:
+            table = table.drop(["r_eg"])
 
-        data.columns = data.columns.str.upper()
-        data.index.name = "date"
+        columns = [n.upper() for n in table.column_names]
+        columns = ["MKT-RF" if n == "R_MKT" else "RF" if n == "R_F" else n 
+            for n in columns]
+        table = table.rename_columns(columns)
 
-        if self.classic:
-            data = data.drop(columns=["R_EG"])
-
-        # TODO: check: its market, not mkt-rf!
-        data = data.rename(columns={"R_MKT": "Mkt-RF", "R_F": "RF"})
-
-        data = data * 0.01
-
-        #TODO: slicing, saving, validating date to base model? util? Use here.
-        return _process(data, self.start_date, self.end_date,
-                        filepath=self.output_file)
+        # ------------------------------------------------------------------ #
+        data = table.to_pandas().set_index("DATE")
+        if self.frequency == "m":
+            data.index = data.index + pd.offsets.MonthEnd(0)
+        #decimalizing here. Kill _process.
+        return _process(data * 0.01, self.start_date, self.end_date, 
+                        filepath=self.output_file) 

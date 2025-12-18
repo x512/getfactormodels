@@ -20,7 +20,7 @@ from typing import Any
 import pandas as pd
 import pyarrow as pa
 from getfactormodels.utils.http_client import HttpClient
-
+from pathlib import Path
 
 class FactorModel(ABC):
     """base model used by all factor models."""
@@ -39,7 +39,7 @@ class FactorModel(ABC):
         """convert bytes into a pd.DataFrame or pa.Table."""
         pass
 
-    def __init__(self, frequency: str = 'm',
+    def __init__(self, frequency: str | None = 'm',
                  start_date: str | None  = None,
                  end_date: str | None = None,
                  output_file: str | None = None,
@@ -48,91 +48,160 @@ class FactorModel(ABC):
 
         logger_name = f"{self.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(logger_name)
-
-        self.frequency = frequency.lower()
-        self.start_date = start_date
+        
+        # Init to None... 
+        self._data: pd.DataFrame | None = None # Internal storage for processed data 
+        self._start_date = None
+        self._end_date = None
+        self._frequency = None
+        
+        # ...use setters
+        self.frequency = frequency 
+        self.start_date = start_date 
         self.end_date = end_date
+        
         self.output_file = output_file
         self.cache_ttl = cache_ttl
-        self._data: pd.DataFrame | None = None # Internal storage for processed data
 
-        if self.frequency not in self._frequencies:
-            raise ValueError(f"Invalid frequency {frequency}. Valid options: {self._frequencies}")
         super().__init__()
+    
+    @property
+    def frequency(self) -> str | None: #added none for typehint TODO check
+        return self._frequency
+
+    @frequency.setter
+    def frequency(self, value: str | None):
+        if value is None:
+            self._frequency = None
+            return
+
+        val = value.lower()
+        if val not in self._frequencies:
+            raise ValueError(f"Invalid frequency '{val}'. Options: {self._frequencies}") 
+        
+        # now handles the initial set AND subsequent changes
+        if val != self._frequency:
+            if self._frequency is not None:
+                self.log.info(f"Frequency changed from {self._frequency} to {val}.")
+            self._frequency = val
+            self._data = None 
+
+    @property
+    def start_date(self) -> str | None:
+        return self._start_date
+
+    @start_date.setter
+    def start_date(self, value: str | None):
+        if getattr(self, "_start_date", None) != value:
+            self._data = None
+            self._start_date = value
+
+
+    @property
+    def end_date(self) -> str | None:
+        return self._end_date
+
+    @end_date.setter
+    def end_date(self, value: str | None):
+        if getattr(self, "_end_date", None) != value:
+            self._data = None
+            self._end_date = value
+
 
     @property
     def data(self) -> pd.DataFrame:
         """public: access the data. Checks for data, calls download()."""
-        # Check if data is stored
+        # return if cached
         if self._data is not None:
             return self._data 
-        # Download, not stored
-        return self._download()
 
+        file = self._download() 
+        df = self._read(file)
+        
+        if isinstance(df, pa.Table):
+            df = df.to_pandas(date_as_object=False)
+            
+        self._data = self._slice_to_range(df)
+        return self._data
 
+        
     def download(self) -> pd.DataFrame:
         """Public method to download and return the data. 
         Calls .data property to fetch and store
         """
-        return self.data
+        df = self.data
+    
+        # if path exists, savin
+        if self.output_file:
+            self._export(df, self.output_file)
+
+        return df
 
 
     def extract(self, factor: str | list[str]) -> pd.Series | pd.DataFrame:
-        """Retrieves a single factor (column) from the dataset."""
-        data = self.download()
-
-        if data.empty:
-            self.log.error("DataFrame is empty.")
-            raise RuntimeError("DataFrame empty: can not extract a factor.")
-
-        if isinstance(factor, str):
-            if factor not in data.columns:
-                available = list(data.columns)
-                self.log.error(f"Factor '{factor}' not found in model. Available: {available}")
-                raise ValueError(f"Factor '{factor}' not available.")       
-            return data[factor]
-
-        elif isinstance(factor, list):
-            return data[factor] 
+        """Return only the specified factors."""
+        data = self.data #was download()!
+        _factors = self._check_for_factors(data, factor)
+        return data[_factors] # if not _factors else data[factor]
 
 
-    # TODO: Remove FactorExtractor
-    #def _drop_rf():
-        #if rf=0
-    #def _drop_mktrf(): 
-        #if mktrf = 0
-    # set flags.
-    #let utils handle it. (_pd_rearrange_cols, if no_rf = 1, then drop it)
+    def drop(self, factor: str | list[str]) -> pd.Series | pd.DataFrame | list[str]: #will seperate vlidation when blocked in
+        """Drop the specified factors. Case-sensitive."""
+        data = self.data
+        _factors = self._check_for_factors(data, factor)
 
-
-    # Making download concrete, and moved the abstractmethod to _read!
-    def _download(self) -> pd.DataFrame:
-        """Private template method: called by `data` property when self._data is none.
-        * Should not be called directly with subclasses.
-        """
-        # Don't need to check for data here
-        raw_data = self._download_from_url()
+        if len(set(_factors)) >= len(data.columns):
+            self.log.error(f"Attempted to drop all columns: {_factors}")
+            raise ValueError("Can't drop all columns from a model.")        
         
-        data = self._read(raw_data)
+        return data.drop(columns=factor) #errors=raise
 
-        if isinstance(data, pa.Table):
-            data = data.to_pandas()
-  
-        # Storage
-        self._data = data
-
-        return data
-
+    # TODO: a) user can't extract the index: good. Empty str? Not a col, that's good.
+    #       b) user can drop every column, leaving the index with an empty df: that's bad. [FIXED - check len]
+    #       c) user can't drop the index: that's good...
+    #       d) user can pass duplicates though: drop(["HML", "HML"]); doesn't cause a problem though.  [FIXED - use set]
+    #       e) user can pass through empties... [] None "", drop([]) drop([None, "", ""])    [FIXED]
+ 
 
     @property
     def _url(self) -> str:
-        """Internal property: data source URL.
-        Fama French returns the underlying model url (4 factor (3+MOM) returns the 3 factor url)
+        """Internal property: data source URL. 
+        - Note: for Fama-French this is the "base" model: "3" for 3 and 4-factor models, 
+          "5" for the 5 and 6-factor models.)
         """
-        # subclasses implement _get_url which this uses.
         return self._get_url()
 
-    def _download_from_url(self) -> bytes:
+
+    def _slice_to_range(self, df: pd.DataFrame) -> pd.DataFrame:
+        """The one method to rule them all."""
+        # Ensure index is sorted (crucial for slicing)
+        if not df.index.is_monotonic_increasing:
+            df = df.sort_index()
+        # TODO: pa.Tables need to do this soon 
+        return df.loc[self.start_date : self.end_date]
+
+
+    # added data param = single point of access for drop/extract. But data should be safe to call anyway.
+    def _check_for_factors(self, data: pd.DataFrame, factors: Any) -> list[str]:
+        """private helper: check a df for cols existing"""
+        if data.empty:
+            raise RuntimeError("DataFrame empty: no factors.")
+        if not factors:
+            self.log.info("method called with empty factor list.")
+            return []   #returns indexed empty.df
+
+        _factors = [factors] if isinstance(factors, str) else list(factors)
+
+        missing = [f for f in _factors if f not in data.columns]
+
+        if missing:
+            self.log.error(f"{missing} not in model.")
+            raise ValueError(f"Factors not in model: {missing}.")
+        return _factors
+
+
+    #renamed _download from _download_from_url, removed old _download into data
+    def _download(self) -> bytes:
         url = self._url
         log_msg = f"Downloading data from: {url}"
         self.log.info(log_msg)
@@ -144,3 +213,52 @@ class FactorModel(ABC):
             # crash fast on download failure
             raise RuntimeError(f"Download failed for {url}.") from e
 
+
+  # TODO: Remove FactorExtractor
+    #def _drop_rf():
+    #if rf=0
+    #def _drop_mktrf(): 
+    #if mktrf = 0
+    # set flags.
+    #let utils handle it. (_pd_rearrange_cols, if no_rf = 1, then drop it)
+
+    # Making download concrete, and moved the abstractmethod to _read!
+    #def _download(self) -> pd.DataFrame:
+    #    """Private template method: called by `data` property when self._data is none.
+    #    * Should not be called directly with subclasses.
+    #    """
+    #    # Don't need to check for data here
+    #    raw_data = self._download_from_url()
+    #    data = self._read(raw_data)
+#
+ #       if isinstance(data, pa.Table):
+  #          data = data.to_pandas()
+   #     
+    #    # Storage
+     #   self._data = data
+#
+ #       return data
+
+
+    def to_file(self, filepath: str | Path | None = None) -> None:
+        """ save to file 
+        Usage: m.to_file() or m.to_file('custom_name.csv')
+        """
+        if self.data is None or self.data.empty:
+            self.log.warning("Nothing to save. Did you run download()?")
+            return
+
+        # If the user passes a filepath here, we temporarily use it.
+        # Otherwise, we use whatever is already stored in self.output_file.
+        target = filepath if filepath else self.output_file
+        
+        # Now call the internal worker
+        self._export(self.data, target)
+
+    def _export(self, df: pd.DataFrame, target_path: str | Path | None) -> None:
+        if not self.output_file:
+            return
+        from getfactormodels.utils.utils import _save_to_file
+        _save_to_file(df, target_path, model_instance=self)
+        
+        self.log.info(f"Data saved: {self.output_file}")

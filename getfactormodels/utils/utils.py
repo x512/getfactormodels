@@ -59,37 +59,68 @@ def _get_model_key(model):
 
 
 # TODO: Will redo as a Writer class with use pyarrow
-# changing: no longer uses filename, output_dir, just filepath. Always returns Path 
-def _prepare_filepath(filepath=None) -> Path:
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+# changing: no longer uses filename, output_dir, just filepath. Always returns Path
+# change: now uses filepath and a generated filename. base model uses this! (timestamped files not helpful)
+def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
     if filepath is None:
-        return Path.cwd() / f"data_{timestamp}.csv"
+        return Path.cwd() / filename
 
     user_path = Path(filepath).expanduser()
 
     if user_path.is_dir():
-        final_path = user_path / f"data_{timestamp}.csv"
+        # directory, append filename
+        final_path = user_path / filename
     else:
+        # file path
+        # add ext if missing, default .csv 
+        if not user_path.suffix:
+            user_path = user_path.with_suffix(".csv")
+        
         user_path.parent.mkdir(parents=True, exist_ok=True)
         final_path = user_path
 
     return final_path
 
 
-def _save_to_file(data, filepath=None):
-    if not isinstance(data, (pd.DataFrame, pd.Series)):
-            raise ValueError('Data is not a pandas DataFrame or Series')
-    full_path = _prepare_filepath(filepath)
+def _generate_filename(model: 'FactorModel') -> str: # TODO typehint err 
+    """creates a default filename using metadata from the model instance."""
+    # TODO: one day add a name property to models...
+    _name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
     
-    if full_path is None:
-        raise ValueError("Failed to prepare filepath")
+    # 3 to "ff3", FF models only ones that accept int. TODO: make 4 "carhart" if no region?
+    model_name = f"ff{_name}" if str(_name).isdigit() else _name
     
-    extension = full_path.suffix.lower()
- 
-    if full_path.is_file():
-        print(f'File exists: {full_path.name} - overwriting...')
+    freq = getattr(model, 'frequency', 'd').lower()
+    _ff_region = getattr(model, 'region', None)
+    
+    if hasattr(model, 'data') and not model.data.empty:
+        # get actual start/end dates (ValueError if data empty)
+        start = model.data.index.min().strftime('%Y%m%d')
+        end = model.data.index.max().strftime('%Y%m%d')
+        
+        date_str = f"{start}-{end}"
+    else:
+        # something might be messed up, or data is empty
+        from datetime import datetime
+        log.warning("No data. Used timestamp for filename.")
+        date_str = f"no_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
+    # filter out the Nones...
+    parts = [model_name, freq, _ff_region]
+    #join it together...
+    base = "_".join(str(p).lower() for p in parts if p)
+    #what a beautiful filename!!
+    return f"{base}_{date_str}.csv"
+
+
+
+def _save_to_file(data, filepath, model_instance=None):
+    _name = _generate_filename(model_instance) if model_instance else "factors.csv"
+    full_path = _prepare_filepath(filepath, _name)
+    print(f"DEBUG: Attempting to save to: {full_path.absolute()}")
     try:
+        extension = full_path.suffix.lower()
+        
         if extension == '.txt':
             data.to_csv(str(full_path), sep='\t')
         elif extension == '.csv':
@@ -107,6 +138,7 @@ def _save_to_file(data, filepath=None):
 
 
 # TODO: check if ICR model has no RF or Mkt Excess return column
+# Base will do this
 def _pd_rearrange_cols(data):
     """Rearranges columns of a df to put 'Mkt-RF' first and 'RF' last."""
     if isinstance(data, pd.Series):
@@ -140,11 +172,10 @@ def _validate_date(date_input):
         if len(date_str) == 8: # YYYYMMDD
             return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
         
-        elif len(date_str) == 6:
+        if len(date_str) == 6:
              return f"{date_str[:4]}-{date_str[4:]}-01"
              
-        else:
-             raise ValueError(f"invalid length int: {date_str}")
+        raise ValueError(f"invalid length int: {date_str}")
     
     # is a timestamp
     if isinstance(date_input, pd.Timestamp):
@@ -163,7 +194,7 @@ def _validate_date(date_input):
     except AttributeError:
         raise TypeError(f"Unsupported date type: {type(date_input)}")
 
-
+### HANDLED BY BASE MODEL NOW!
 def _slice_dates(data, start_date=None, end_date=None):
     """Slice the dataframe to the specified date range."""
     if start_date is None and end_date is None:
@@ -185,6 +216,8 @@ def _slice_dates(data, start_date=None, end_date=None):
     
     return data.loc[start:end]
 
+
+# TODO: KILLING THIS
 # Change: moved filepath stuff to a _prepare_filepath helper for now...
 def _process(data, start_date=None, end_date=None, filepath=None):
     if not isinstance(data, (pd.DataFrame, pd.Series)):
