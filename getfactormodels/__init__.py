@@ -30,7 +30,7 @@ from .models import (
 
 logging.getLogger('getfactormodels').setLevel(logging.ERROR)
 
-__version__ = "0.0.9"
+__version__ = "0.0.10"
 __all__ = [ "MispricingFactors",
            "DHSFactors",
            "ICRFactors",
