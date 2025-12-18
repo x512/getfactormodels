@@ -14,14 +14,19 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from pathlib import Path
-import pandas as pd
-from dateutil import parser
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _process, _save_to_file
+from getfactormodels.utils.utils import _get_model_key 
 from .models import (  # todo: dont import all models, just QFactor and FamaFrench (function needs changing)
-    BarillasShankenFactors, CarhartFactors, DHSFactors, FamaFrenchFactors,
-    HMLDevilFactors, ICRFactors, LiquidityFactors, MispricingFactors, QFactors)
+    BarillasShankenFactors,
+    CarhartFactors,
+    DHSFactors,
+    FamaFrenchFactors,
+    HMLDevilFactors,
+    ICRFactors,
+    LiquidityFactors,
+    MispricingFactors,
+    QFactors,
+)
 
 
 # TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
@@ -93,159 +98,31 @@ def get_factors(model: str | int = 3,
                                       cache_ttl=86400,
                                       output_file=output_file)
 
-    return factor_instance.download()
+    return factor_instance
 
-# CLI (TODO)
-### zzzzzzzzzzzzzz. Old mess. Being removed. TODO: (one day) extract factors into a composite model.
-class FactorExtractor:
-    def __init__(self,
-                 model: str = '3',
-                 frequency: str = 'm',
-                 start_date: str | None = None,
-                 end_date: str | None = None,
-                 output: str | None = None,
-                 *,
-                 region: str | None = None):
-        self.model: str = model
-        self.frequency: str = frequency
-        self.start_date = self.validate_date_format(start_date) if start_date else None
-        self.end_date = self.validate_date_format(end_date) if end_date else None
-        self.output = output
-        self._no_rf = False
-        self._no_mkt = False
-        self.df = None
-        self.region = region
-
-    def no_rf(self) -> None:
-        self._no_rf = True
-
-    def no_mkt(self) -> None:
-        self._no_mkt = True
-
-    def extract(self, data, factor: str | list[str]) -> pd.Series | pd.DataFrame:
-        """Retrieves a single factor (column) from the dataset."""
-        #data = self.download()
-
-        if data.empty:
-            raise RuntimeError("DataFrame empty: can not extract a factor.")
-
-        if isinstance(factor, str):
-            if factor not in data.columns:
-                raise ValueError(f"Factor '{factor}' not available.")       
-            return data[factor]
-
-        elif isinstance(factor, list):
-            return data[factor]
-
-    @staticmethod
-    def validate_date_format(date_string: str) -> str:
-        """Validate the date format.
-        Raises:
-            ValueError: If the date format is incorrect.
-        """
-        try:
-            return parser.parse(date_string).strftime("%Y-%m-%d")
-        except ValueError as err:
-            error_message = "Incorrect date format, use YYYY-MM-DD."
-            raise ValueError(error_message) from err
-
-    # Holy. TODO: Clean it up. Incorp into base 
-    def get_factors(self) -> pd.DataFrame:
-        """Fetch the factor data and store it in the class."""
-        self.df = get_factors(
-            model=self.model,
-            frequency=self.frequency,
-            start_date=self.start_date,
-            end_date=self.end_date,
-            output_file=self.output,  
-            region=self.region)
-
-        if self._no_rf:
-            self.df = self.drop_rf(self.df.copy())  # create a copy before drop
-        if self._no_mkt:
-            self.df = self.drop_mkt(self.df.copy())
-
-        return self.df
-
-    def drop_rf(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Drop the ``RF`` column from the DataFrame."""
-
-        if "RF" in df.columns:
-            df = df.drop(columns=["RF"])
-        else:
-            print("`drop_rf` was called but no RF column was found.")
-
-        return df
-
-    def drop_mkt(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Drop the ``MKT`` column from the DataFrame."""
-
-        if "Mkt-RF" in df.columns:
-            df = df.drop(columns=["Mkt-RF"])
-        else:
-            print("`drop_mkt` was called but no MKT column was found.")
-
-        return df
-
-    def to_file(self, filename: str):
-        """
-        Save the factor data to a file.
-
-        Args:
-            filename (str): The name of the file to save the data to.
-        """
-        if self.df is None:
-            raise ValueError("No data to save. Fetch factors first.")
-
-        # TODO: could call _save_to_file directly
-        _process(self.df, filepath=filename)  #lol FIXME
-
-
+ 
 def main():
     args = parse_args()
-
-    extractor = FactorExtractor(model=args.model,
-                                frequency=args.frequency,
-                                start_date=args.start,
-                                end_date=args.end,
-                                region=args.region,)
-    if args.norf:
-        extractor.no_rf()
-    if args.nomktrf:
-        extractor.no_mkt()
-
-    df = extractor.get_factors()
+    
+    model_obj = get_factors(
+        model=args.model,
+        frequency=args.frequency,
+        start_date=args.start,
+        end_date=args.end,
+        region=args.region,
+        output_file=args.output  # base handles output
+    )
 
     if args.extract:
-        df = extractor.extract(df, args.extract)
+        data = model_obj.extract(args.extract)
+    elif args.drop:
+        data = model_obj.drop(args.drop)
+    else:
+        data = model_obj.data
+    
     if args.output:
-        output_path = Path(args.output).expanduser()
-
-        if args.output:     # TODO: cache
-            output_path = Path(args.output)
-            min_date = df.index.min() 
-            max_date = df.index.max()
-
-            actual_start = min_date.strftime('%Y%m%d')
-            actual_end = max_date.strftime('%Y%m%d')
-            # if NaT, might be outside available data... to do warn/catch 
-
-            _filename = f"{args.model}_{args.frequency.upper()}_{actual_start}-{actual_end}"
-            _ext = '.csv'
-
-            user_path = Path(args.output).expanduser()
-            output_path = None
-
-            if user_path.is_dir():
-                output_path = user_path / (_filename + _ext)
-            elif user_path.suffix:
-                output_path = user_path
-            else: #add ext to user provided 'file' or 'dir/file'
-                output_path = user_path.parent / (user_path.name + _ext)
-
-            if output_path:
-                _save_to_file(df, output_path)
-    print(df)
-
-if __name__ == "__main__":
-    main()
+        model_obj.to_file(args.output)
+    
+    else:
+        if not args.quiet: 
+            print(data)

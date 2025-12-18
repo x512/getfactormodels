@@ -87,14 +87,13 @@ class FamaFrenchFactors(FactorModel):
                  model: int|str = '3',
                  region: str | None = 'us',
                  **kwargs: Any) -> None:
-        self.frequency = frequency.lower()
         self.model = str(model)
         # eg: japan -> Japan [FIXME, lower everywhere]
         self.region = None if region is None else self.FF_REGION_MAP.get(region.lower(), None)
-        self._validate_ff_input()
 
         super().__init__(frequency=frequency, model=model, **kwargs)
 
+        self._validate_ff_input()
     def _validate_ff_input(self):
         if self.model not in ["3", "4", "5", "6"]:
             raise ValueError(
