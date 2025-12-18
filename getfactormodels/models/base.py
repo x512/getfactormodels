@@ -49,16 +49,36 @@ class FactorModel(ABC):
         logger_name = f"{self.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(logger_name)
 
-        self.frequency = frequency.lower()
+        #self.frequency = frequency.lower()  #
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
         self.cache_ttl = cache_ttl
         self._data: pd.DataFrame | None = None # Internal storage for processed data
 
+        self.frequency = frequency #setter below
+
         if self.frequency not in self._frequencies:
             raise ValueError(f"Invalid frequency {frequency}. Valid options: {self._frequencies}")
         super().__init__()
+
+    @property
+    def frequency(self) -> str:
+        """The user-facing chosen frequency."""
+        return self._set_frequency
+
+    @frequency.setter
+    def frequency(self, value: str):
+        val = value.lower()
+        # check subclasses _frequencies
+        if val not in self._frequencies:
+            raise ValueError(f"Invalid frequency '{val}'. Options: {self._frequencies}") 
+        # if a change, set it
+        if hasattr(self, '_set_frequency') and val != self._set_frequency:
+            self.log.info(f"Frequency changed to {val}.")
+            self._data = None
+            
+        self._set_frequency = val
 
     @property
     def data(self) -> pd.DataFrame:
@@ -78,32 +98,55 @@ class FactorModel(ABC):
 
 
     def extract(self, factor: str | list[str]) -> pd.Series | pd.DataFrame:
-        """Retrieves a single factor (column) from the dataset."""
-        data = self.download()
+        """Return only the specified factors."""
+        data = self.data #was download()!
+        _factors = self._check_for_factors(data, factor)
+        return data[_factors] # if not _factors else data[factor]
 
+
+    def drop(self, factor: str | list[str]) -> pd.Series | pd.DataFrame | list[str]: #will seperate vlidation when blocked in
+        """Drop the specified factors. Case-sensitive."""
+        data = self.data
+        _factors = self._check_for_factors(data, factor)
+
+        if len(set(_factors)) >= len(data.columns):
+            self.log.error(f"Attempted to drop all columns: {_factors}")
+            raise ValueError("Can't drop all columns from a model.")        
+        
+        return data.drop(columns=factor) #errors=raise
+
+    # TODO: a) user can't extract the index: good. Empty str? Not a col, that's good.
+    #       b) user can drop every column, leaving the index with an empty df: that's bad. [FIXED - check len]
+    #       c) user can't drop the index: that's good...
+    #       d) user can pass duplicates though: drop(["HML", "HML"]); doesn't cause a problem though.  [FIXED - use set]
+    #       e) user can pass through empties... [] None "", drop([]) drop([None, "", ""])    [FIXED]
+ 
+    # added data param = single point of access for drop/extract. But data should be safe to call anyway.
+    def _check_for_factors(self, data: pd.DataFrame, factors: Any) -> list[str]:
+        """private helper: check a df for cols existing"""
         if data.empty:
-            self.log.error("DataFrame is empty.")
-            raise RuntimeError("DataFrame empty: can not extract a factor.")
+            raise RuntimeError(f"DataFrame empty: no factors.")
+        if not factors:
+            self.log.info("method called with empty factor list.")
+            return []   #returns indexed empty.df
 
-        if isinstance(factor, str):
-            if factor not in data.columns:
-                available = list(data.columns)
-                self.log.error(f"Factor '{factor}' not found in model. Available: {available}")
-                raise ValueError(f"Factor '{factor}' not available.")       
-            return data[factor]
+        _factors = [factors] if isinstance(factors, str) else list(factors)
 
-        elif isinstance(factor, list):
-            return data[factor] 
-
+        missing = [f for f in _factors if f not in self.data.columns]
+        
+        if missing:
+            self.log.error(f"{missing} not in model.")
+            raise ValueError(f"Factors not in model: {missing}.")
+        else:
+            return _factors
 
     # TODO: Remove FactorExtractor
     #def _drop_rf():
-        #if rf=0
+    #if rf=0
     #def _drop_mktrf(): 
-        #if mktrf = 0
+    #if mktrf = 0
     # set flags.
     #let utils handle it. (_pd_rearrange_cols, if no_rf = 1, then drop it)
-
 
     # Making download concrete, and moved the abstractmethod to _read!
     def _download(self) -> pd.DataFrame:
@@ -112,12 +155,11 @@ class FactorModel(ABC):
         """
         # Don't need to check for data here
         raw_data = self._download_from_url()
-        
         data = self._read(raw_data)
 
         if isinstance(data, pa.Table):
             data = data.to_pandas()
-  
+        
         # Storage
         self._data = data
 

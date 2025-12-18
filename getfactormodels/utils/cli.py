@@ -43,6 +43,8 @@ def parse_args() -> argparse.Namespace:
                         help='The end date for the data.')
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="FILEPATH",
                         help='The file to save the data to.')
+    #parser.add_argument('-d', '--drop', required=False,  nargs='+', metavar="FACTOR_NAME", 
+    #                    help="Drop specified factor(s) from a model."),
     parser.add_argument('-x', '--extract', required=False, nargs='+', metavar="FACTOR_NAME",
                         help='Extract specific factor(s) from a model, e.g., "SMB".')
     parser.add_argument('-r', '--region', type=str, required=False, metavar="REGION_ID",
