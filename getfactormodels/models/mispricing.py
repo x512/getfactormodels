@@ -17,14 +17,11 @@
 import io
 from typing import Any
 import pandas as pd
+#import pyarrow.compute as pc
+from pyarrow.compute import (subtract, ceil_temporal)
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import (
-    _pd_rearrange_cols,
-    _save_to_file,
-    _slice_dates,
-)
 
 
 # TODO: proper class docstr's.
@@ -62,15 +59,17 @@ class MispricingFactors(FactorModel):
         base_url = "https://finance.wharton.upenn.edu/~stambaug"
         file_name = "M4d" if self.frequency == "d" else "M4"
         return f"{base_url}/{file_name}.csv"
-
-    SCHEMA = pa.schema([
-        ('YYYYMM', pa.timestamp('ms')),
-        ('MKTRF', pa.float64()),
-        ('SMB', pa.float64()),
-        ('RMW', pa.float64()),
-        ('CMA', pa.float64()),
-        ('RF', pa.float64()),
-    ])    
+    
+    @property
+    def schema(self):
+        return pa.schema([
+            ('YYYYMM', pa.timestamp('ms')),
+            ('MKTRF',  pa.float64()),
+            ('SMB',    pa.float64()),
+            ('MGMT',   pa.float64()),
+            ('PERF',   pa.float64()),
+            ('RF',     pa.float64()),
+        ])
 
     def _read(self, data):
         """Reads the Mispricing factors CSV."""
@@ -88,7 +87,7 @@ class MispricingFactors(FactorModel):
             )
 
             convert_opts = pv.ConvertOptions(
-                column_types=self.SCHEMA,
+                column_types=self.schema,
                 timestamp_parsers=["%Y%m%d", "%Y%m"],
             )
 
@@ -99,6 +98,22 @@ class MispricingFactors(FactorModel):
                 convert_options=convert_opts,
             )
 
+            if self.frequency == 'm':
+                dates = table.column('YYYYMM') 
+                 
+                # ceil to the first day of the NEXT month
+                # 'unit' is str not temporal
+                next_month = ceil_temporal(dates, 1, unit='month')
+                
+                # subtract a day in ms
+                one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
+                
+                snapped_dates = subtract(next_month, one_day_ms)
+                
+                # replace the column
+                date_idx = table.schema.get_field_index('YYYYMM')
+                table = table.set_column(date_idx, 'YYYYMM', snapped_dates)
+            
             table = table.rename_columns([
                 'date',     # YYYYMM -> date
                 'Mkt-RF',   # MKTRF -> Mkt-RF
@@ -111,16 +126,8 @@ class MispricingFactors(FactorModel):
             # Debug, testing
             initial_rows = table.num_rows
             table = table.drop_null()
-            final_rows = table.num_rows
-            rows_dropped = initial_rows - final_rows
+            self.log.debug(f"Read {table.num_rows} rows (dropped {initial_rows - table.num_rows} NaNs)")
 
-            if rows_dropped > 0:
-                msg = (f"{rows_dropped} NaN rows dropped."
-                      f"({initial_rows} -> {final_rows}).")
-                self.log.debug(msg)
-            else:
-                msg = f"No NaNs in {final_rows} rows."
-                self.log.debug(msg)
 
             # pandas line --------------------------------------------------- #
             df = table.to_pandas()
@@ -128,29 +135,16 @@ class MispricingFactors(FactorModel):
             df = df.set_index('date')
             df.index.name = 'date'
 
-            #df = df.replace([-99.99, -999], pd.NA).dropna()
-
-            if self.frequency == "m":
-                # PyArrow gives the 1st of the month, shift to end.
-                df.index = df.index + pd.offsets.MonthEnd(0)  # this is whats messing user input hmm
-                # will keep uncommented while every other model does this.
-            # TODO: If using end of month (which it is), then need to 
-            # parse user input dates, THEN shift to end of month. FIXME.
-            df = _pd_rearrange_cols(df)
-            
-            df = _slice_dates(df, self.start_date, self.end_date)
-
-            if self.output_file:
-                _save_to_file(df, filepath=self.output_file)
-
+            #df = df.replace([-99.99, -999], pd.NA).dropna()               
             return df
- 
-        # returns an empty dataframe that base class expects for this model.
-        # TODO: FIXIME: cleanup, handle errors properly everywhere...
+
+            # returns an empty dataframe that base class expects for this model.
+            # TODO: FIXIME: cleanup, handle errors properly everywhere...
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            err_msg = f"Reading or parsing failed for Mispricing factors: {e}"
-            self.log.error(err_msg)
+            self.log.error(f"Reading or parsing failed for Mispricing factors: {e}")
             column_names = ['Mkt-RF', 'SMB_SY', 'MGMT', 'PERF', 'RF']
 
-            return pd.DataFrame(columns=column_names, # type: ignore [reportArgumentType] 
-                                index=pd.DatetimeIndex([], name='date'))
+            return pd.DataFrame(
+                columns=pd.Index(column_names),   # fixes typehint err erportArgumentType.
+                index=pd.DatetimeIndex([], name='date')
+            ).astype(float)
