@@ -16,13 +16,17 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 import re
+import calendar
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-import pandas as pd
+from dateutil import parser
+
+# pyright: reportUnusedFunction=false
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
+# TODO: redo this ....
 __model_input_map = MappingProxyType({
     "3": r"\b((f?)f)?3\b|(ff)?1993",
     "5": r"\b(ff)?5|ff2015\b",
@@ -58,8 +62,6 @@ def _get_model_key(model):
     raise ValueError(f'Invalid model: {model}')
 
 
-# TODO: Will redo as a Writer class with use pyarrow
-# changing: no longer uses filename, output_dir, just filepath. Always returns Path
 # change: now uses filepath and a generated filename. base model uses this! (timestamped files not helpful)
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
     if filepath is None:
@@ -75,29 +77,29 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
         # add ext if missing, default .csv 
         if not user_path.suffix:
             user_path = user_path.with_suffix(".csv")
-        
+
         user_path.parent.mkdir(parents=True, exist_ok=True)
         final_path = user_path
 
     return final_path
 
 
-def _generate_filename(model: 'FactorModel') -> str: # TODO typehint err 
+def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndefinedVariable]   TODO: FIXME
     """creates a default filename using metadata from the model instance."""
     # TODO: one day add a name property to models...
     _name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
-    
+
     # 3 to "ff3", FF models only ones that accept int. TODO: make 4 "carhart" if no region?
     model_name = f"ff{_name}" if str(_name).isdigit() else _name
-    
+
     freq = getattr(model, 'frequency', 'd').lower()
     _ff_region = getattr(model, 'region', None)
-    
+
     if hasattr(model, 'data') and not model.data.empty:
         # get actual start/end dates (ValueError if data empty)
         start = model.data.index.min().strftime('%Y%m%d')
         end = model.data.index.max().strftime('%Y%m%d')
-        
+
         date_str = f"{start}-{end}"
     else:
         # something might be messed up, or data is empty
@@ -113,14 +115,13 @@ def _generate_filename(model: 'FactorModel') -> str: # TODO typehint err
     return f"{base}_{date_str}.csv"
 
 
-
 def _save_to_file(data, filepath, model_instance=None):
     _name = _generate_filename(model_instance) if model_instance else "factors.csv"
     full_path = _prepare_filepath(filepath, _name)
     print(f"DEBUG: Attempting to save to: {full_path.absolute()}")
     try:
         extension = full_path.suffix.lower()
-        
+
         if extension == '.txt':
             data.to_csv(str(full_path), sep='\t')
         elif extension == '.csv':
@@ -137,98 +138,61 @@ def _save_to_file(data, filepath, model_instance=None):
         raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
 
 
-# TODO: check if ICR model has no RF or Mkt Excess return column
-# Base will do this
-def _pd_rearrange_cols(data):
-    """Rearranges columns of a df to put 'Mkt-RF' first and 'RF' last."""
-    if isinstance(data, pd.Series):
-        return data
-
-    if not isinstance(data, pd.DataFrame):
-        raise ValueError("Input must be a pandas DataFrame or Series")
-
-    cols = list(data.columns)
-    
-    if 'Mkt-RF' in cols:
-        cols.insert(0, cols.pop(cols.index('Mkt-RF')))
-        log.debug("`Mkt-RF` column moved to start")
-
-    if 'RF' in cols:
-        cols.append(cols.pop(cols.index('RF')))
-        log.debug("`RF` column moved to end of df.")
-
-    return data.loc[:, cols]
+def _roll_to_eom(dt: datetime) -> str:
+    """Roll a datetime to the last day of its month."""
+    last_day = calendar.monthrange(dt.year, dt.month)[1]
+    return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
 
-def _validate_date(date_input):
-    """Converts date formats to a standardized str format."""
+def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
+    """Standardize date input to a ISO (YYYY-MM-DD) string.
+
+    Args:
+        `date_input`: the date str. "2023", "202305", "2023-05-15"
+        `is_end`: if True, snaps YYYY to Dec 31st and YYYY-MM to the 
+          last calendar day of its month. If False, defaults to the 
+          first day of the period.
+
+    Returns:
+        str : a 'YYYY-MM-DD' string, or None if input is None.
+
+    Raises:
+        ValueError: If the input cannot be parsed as a valid date.
+    """
     if date_input is None:
         return None
 
-    if isinstance(date_input, int):
-        # int should be in the format YYYYMMDD or YYYYMM.
-        date_str = str(date_input)
-        
-        if len(date_str) == 8: # YYYYMMDD
-            return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:]}"
-        
-        if len(date_str) == 6:
-             return f"{date_str[:4]}-{date_str[4:]}-01"
-             
-        raise ValueError(f"invalid length int: {date_str}")
-    
-    # is a timestamp
-    if isinstance(date_input, pd.Timestamp):
-        return date_input.strftime("%Y-%m-%d")
+    raw_str = str(date_input).strip()
+    clean_str = raw_str.replace("-", "").replace("/", "")
 
-    # is str input
-    if isinstance(date_input, str):
-        try:
-            # cnvert to datetime
-            return pd.to_datetime(date_input).strftime("%Y-%m-%d")
-        except (ValueError, pd.errors.ParserError) as err:
-            raise ValueError("Incorrect date format, use YYYY-MM-DD.") from err
     try:
-        # already a dt object
-        return date_input.strftime("%Y-%m-%d")
-    except AttributeError:
-        raise TypeError(f"Unsupported date type: {type(date_input)}")
+        # YYYY, YYYYMM: don't allow parser to guess YYYYMM as YYMMDD!
+        if clean_str.isdigit():
+            if len(clean_str) == 4:
+                year = int(clean_str)
+                return f"{year}-12-31" if is_end else f"{year}-01-01"
 
-### HANDLED BY BASE MODEL NOW!
-def _slice_dates(data, start_date=None, end_date=None):
-    """Slice the dataframe to the specified date range."""
-    if start_date is None and end_date is None:
-        return data
+            if len(clean_str) == 6:
+                dt = datetime.strptime(clean_str, "%Y%m") # 6 chars IS %Y%m, parser
+                return _roll_to_eom(dt) if is_end else dt.strftime("%Y-%m-01")
 
-    if start_date is not None:
-        start_date = _validate_date(start_date)
-    if end_date is not None:
-        end_date = _validate_date(end_date)
+        # Parser
+        dt = parser.parse(raw_str)
 
-    start = _validate_date(start_date) if start_date else None
-    end = _validate_date(end_date) if end_date else None
+        # input give a day? "YYYY-MM" (len 7) or "YYYY/MM", then no
+        day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
 
-    if not isinstance(data.index, pd.DatetimeIndex):
-        try:
-            data.index = pd.to_datetime(data.index)
-        except Exception as e:
-            raise ValueError("error parsing dates") from e
-    
-    return data.loc[start:end]
+        if is_end and not day_given:
+            return _roll_to_eom(dt)
+        # they gave day, use it.
+        return dt.strftime("%Y-%m-%d")
 
-
-# TODO: KILLING THIS
-# Change: moved filepath stuff to a _prepare_filepath helper for now...
-def _process(data, start_date=None, end_date=None, filepath=None):
-    if not isinstance(data, (pd.DataFrame, pd.Series)):
-        raise ValueError("Input data must be a pandas DataFrame or Series")
-
-    data = _pd_rearrange_cols(data)
-    data = _slice_dates(data, start_date, end_date)
-
-    if filepath:
-        _save_to_file(data, filepath=filepath)
-
-    return data
-    
+    except (ValueError, OverflowError):
+        raise ValueError(f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.")# tests -- yyyy, yyyymm yyyy-mm start dates 
+# test:
+# yyyy, yyyy-mm, yyyymm, yyyymmdd end dates 
+# That they return as intended, and yyyy-mm isn't filling in today's day.
+# isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
+# isn't filling in today's month or current year.
+# IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
 

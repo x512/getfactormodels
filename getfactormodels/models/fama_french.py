@@ -19,7 +19,6 @@ from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.http_client import HttpClient
-from getfactormodels.utils.utils import _slice_dates
 
 # TODO: yearly data isn't inclusive of end yr
 #  but start_date includes partial start year/month !!
@@ -339,7 +338,7 @@ class FamaFrenchFactors(FactorModel):
             # Parse dates and add momentum if needed
             df = self._parse_dates(df)
             df = self._add_momentum_factor(df)
-            df = _slice_dates(df, self.start_date, self.end_date)
+            #df = _slice_dates(df, self.start_date, self.end_date)
             df = df.sort_index()
             # Just for now until rewrite... later.
             if self.region == 'Emerging':
@@ -353,7 +352,7 @@ class FamaFrenchFactors(FactorModel):
 
             # Decimalize. Keep here for now. Finicky.
             df = df.astype(float)
-            return df * 0.01
+            return df / 100
             # TODO: drop nans/nulls, after adding MOM, and for barillas shanken, etc.
 
         except Exception as e:

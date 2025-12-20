@@ -17,7 +17,6 @@ import io
 from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
 
 
 class LiquidityFactors(FactorModel):
@@ -90,6 +89,6 @@ class LiquidityFactors(FactorModel):
         #  weekend/non bday? maybe?..)
 
         # Check for nans, warn nd return 
-
-        return _process(data, self.start_date,
-                        self.end_date, filepath=self.output_file)
+        return data
+      #  return _process(data, self.start_date,
+      #                  self.end_date, filepath=self.output_file)

@@ -21,7 +21,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
 
 
 class ICRFactors(FactorModel):
@@ -141,9 +140,7 @@ class ICRFactors(FactorModel):
 
         precision = 8 if self.frequency == 'd' else 4  #TODO: handle these consistently
         df = df.round(precision)
-
-        #TODO: remove this
-        return _process(df, self.start_date, self.end_date, filepath=self.output_file)
+        return df
 
 """
 NOTES:
