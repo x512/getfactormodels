@@ -25,7 +25,6 @@ from pyarrow.compute import (  # type: ignore[reportAttributeAccessIssue]
     strptime,
 )
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
 
 
 class QFactors(FactorModel):
@@ -145,14 +144,13 @@ class QFactors(FactorModel):
             table = table.drop(["r_eg"])
 
         columns = [n.upper() for n in table.column_names]
-        columns = ["MKT-RF" if n == "R_MKT" else "RF" if n == "R_F" else n 
+        columns = ["Mkt-RF" if n == "R_MKT" else "RF" if n == "R_F" else n 
             for n in columns]
         table = table.rename_columns(columns)
 
         # ------------------------------------------------------------------ #
-        data = table.to_pandas().set_index("DATE")
-        if self.frequency == "m":
-            data.index = data.index + pd.offsets.MonthEnd(0)
-        #decimalizing here. Kill _process.
-        return _process(data * 0.01, self.start_date, self.end_date, 
-                        filepath=self.output_file) 
+        data = table.to_pandas().set_index("DATE").rename_axis("date")
+        
+        # DECIMALIZING HERE. TODO: PyArrow helper to decimalize all floats, not str/int/timestamp (pyarrow temporal?)
+        data /= 100.0
+        return data

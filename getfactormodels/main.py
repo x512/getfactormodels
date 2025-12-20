@@ -121,8 +121,10 @@ def main():
         data = model_obj.data
     
     if args.output:
-        model_obj.to_file(args.output)
+        from getfactormodels.utils.utils import _save_to_file
+        _save_to_file(data, args.output, model_instance=model_obj) #fix: saves result (extracted, dropped, etc.)
     
-    else:
-        if not args.quiet: 
-            print(data)
+    if not args.quiet: print(data)
+
+if __name__ == "__main__":
+    main()
