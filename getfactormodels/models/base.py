@@ -21,27 +21,12 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
 from getfactormodels.utils.http_client import HttpClient
-from getfactormodels.utils.utils import _validate_date
+from getfactormodels.utils.utils import _validate_date, _save_to_file
 from pathlib import Path
 
 
 class FactorModel(ABC):
-    """Abstract Base Class used by all factor model implementations."""
-    @property
-    @abstractmethod
-    def _frequencies(self) -> list[str]:
-        pass
-
-    @abstractmethod
-    def _get_url(self) -> str:
-        """Build the unique data source URL."""
-        pass
-
-    @abstractmethod
-    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
-        """Convert bytes into a pd.DataFrame or pa.Table."""
-        pass
-
+    """Abstract Base Class used by all factor model implementations.""" 
     def __init__(self, frequency: str | None = 'm',
                  start_date: str | None  = None,
                  end_date: str | None = None,
@@ -62,26 +47,53 @@ class FactorModel(ABC):
         self.end_date = end_date
         self.output_file = output_file
         self.cache_ttl = cache_ttl
+        
         super().__init__()
     
     def __repr__(self) -> str:
-        return (f"{self.__class__.__name__}(frequency='{self.frequency}', "
-                f"start='{self.start_date}', "
-                f"end='{self.end_date}')")
+        params = [
+            f"frequency='{self.frequency}'",
+            f"start_date='{self.start_date}'",
+            f"end_date='{self.end_date}'"
+        ]
+        
+        if hasattr(self, 'region') and self.region:
+            params.append(f"region='{self.region}'")
+        
+        if self.output_file:
+            params.append(f"output_file='{self.output_file}'")
 
+        return f"{self.__class__.__name__}({', '.join(params)})"
+   
     def __len__(self) -> int:
         if self._data is None:
             return 0
         return len(self._data)
 
-    def __bool__(self) -> bool:
-        return self._data is not None and len(self._data) > 0
- 
-    
+
+    @property
+    def start_date(self) -> str | None:
+        return self._start_date
+    @start_date.setter
+    def start_date(self, value: Any):
+        valid = _validate_date(value, is_end=False)
+        if self._start_date != valid:
+            self._data = None
+            self._start_date = valid
+
+    @property
+    def end_date(self) -> str | None:
+        return self._end_date
+    @end_date.setter
+    def end_date(self, value: Any):
+        valid = _validate_date(value, is_end=True)
+        if self._end_date != valid:
+            self._data = None
+            self._end_date = valid
+
     @property
     def frequency(self) -> str | None: #added none for typehint TODO check
         return self._frequency
-
     @frequency.setter
     def frequency(self, value: str | None):
         if value is None:
@@ -100,29 +112,6 @@ class FactorModel(ABC):
 
 
     @property
-    def start_date(self) -> str | None:
-        return self._start_date
-
-    @start_date.setter
-    def start_date(self, value: Any):
-        valid = _validate_date(value, is_end=False)
-        if self._start_date != valid:
-            self._data = None
-            self._start_date = valid
-
-    @property
-    def end_date(self) -> str | None:
-        return self._end_date
-
-    @end_date.setter
-    def end_date(self, value: Any):
-        valid = _validate_date(value, is_end=True)
-        if self._end_date != valid:
-            self._data = None
-            self._end_date = valid
-
-
-    @property
     def data(self) -> pd.DataFrame: # Note: currently guarantees a pd.DataFrame
         """Access the processed dataset.
 
@@ -130,7 +119,7 @@ class FactorModel(ABC):
 
         Returns:
             pd.DataFrame: The processed factor data.
-
+        ---
         TODO: Support returning pa.Table directly without forced conversion to pandas.
         """
         # return if cached
@@ -157,15 +146,18 @@ class FactorModel(ABC):
     def download(self) -> pd.DataFrame:
         """Download and return the data.
 
-        Method downloads the latest data or reads from cache. If output_file is set, 
-        the result is saved.
+        Will download the latest data or read from cache. If output_file is set on 
+        the model instance, the result is saved.
+        
+        ---
         TODO: pyarrow returns.
         """
         df = self.data
     
         # if path exists, savin
         if self.output_file:
-            self._export(df, self.output_file)
+            # to_file() logs the save
+            self.to_file()  # using public method now
 
         return df
 
@@ -185,7 +177,10 @@ class FactorModel(ABC):
         """
         data = self.data #was download()!
         _factors = self._check_factors_exist(data, factor)
-        return data[_factors] # if not _factors else data[factor]
+        #return data[_factors] # if not _factors else data[factor]
+        result = data[_factors]
+        # squeeze df to Series if 1 col
+        return result.squeeze() if isinstance(factor, str) else result  # type: ignore [reportReturnType]
 
 
     def drop(self, factor: str | list[str]) -> pd.Series | pd.DataFrame | list[str]: #will seperate vlidation when blocked in
@@ -210,13 +205,42 @@ class FactorModel(ABC):
         return data.drop(columns=factor) #errors=raise
 
 
-    @property
-    def _url(self) -> str:
-        """Internal property: data source URL. 
-        - Note: for Fama-French this is the "base" model: "3" for 3 and 4-factor models, 
-          "5" for the 5 and 6-factor models.)
+    # Generic public save to file method. # TODO: better saving util
+    def to_file(self, filepath: str | Path | None = None) -> None:
+        """Save data to a file.
+
+        If `filepath` is None, data is saved to user's CWD with generated filename.
+
+        Args:
+            filepath (str | Path | None): the filepath to save data to. 
+                Supported extensions: .pkl .csv .txt. .parquet. 
+
+        Example:
+            `.to_file()` or `.to_file('custom_name.pkl')`
+        ---
+        TODO: instead of using cwd, use XDG_USER_CACHE/getfactormodels/data/file.csv
         """
-        return self._get_url()
+
+     
+        # if self.data is None or self.data.empty:
+       #     self.log.warning("No data to save.")
+       #     return
+
+        target = filepath if filepath else self.output_file
+
+        if not target:
+            self.log.error("No filepath provided and no default output_file set.")
+            return
+            
+        df = self.data
+
+        if df is None or df.empty:
+            self.log.warning("No data available to save.")
+            return
+        
+        _save_to_file(df, target, model_instance=self)
+        self.log.info(f"Data saved: {target}")
+
 
 
     def _slice_to_range(self, data: pa.Table | pd.DataFrame) -> pa.Table | pd.DataFrame:
@@ -306,7 +330,7 @@ class FactorModel(ABC):
 
 
     # added data param = single point of access for drop/extract. But data should be safe to call anyway.
-    def _check_factors_exist(self, data: pd.DataFrame, factors: Any) -> list[str]:
+    def _check_factors_exist(self, data: pd.DataFrame, factors: Any) -> list[str]:  # make boolean for list[str] | str, and make _if_factors_exist
         """private helper: check a df for cols existing"""
         if data.empty:
             raise RuntimeError("DataFrame empty: no factors.")
@@ -315,6 +339,8 @@ class FactorModel(ABC):
             return []   #returns indexed empty.df
 
         _factors = [factors] if isinstance(factors, str) else list(factors)
+        if not _factors:
+            return []
 
         missing = [f for f in _factors if f not in data.columns]
 
@@ -325,7 +351,7 @@ class FactorModel(ABC):
 
 
     def _download(self) -> bytes:
-        url = self._url
+        url = self._get_url()
         log_msg = f"Downloading data from: {url}"
         self.log.info(log_msg)
         try:
@@ -336,33 +362,22 @@ class FactorModel(ABC):
             # crash fast on download failure
             raise RuntimeError(f"Download failed for {url}.") from e
 
-    # Generic public save to file method. # TODO: better saving util
-    def to_file(self, filepath: str | Path | None = None) -> None:
-        """ save to file 
-        Usage: .to_file() or .to_file('custom_name.csv')
-        """ 
-        if self.data is None or self.data.empty:
-            self.log.warning("No data to save.")
-            return
 
-        target = filepath if filepath else self.output_file
+    @property
+    @abstractmethod
+    def _frequencies(self) -> list[str]:
+        pass
 
-        if not target:
-            self.log.error("No filepath provided and no default output_file set.")
-            return
-            
-        if self.data.empty:
-            self.log.warning("No data to save.")
-            return
-        
-        self._export(self.data, target)
+    @abstractmethod
+    def _get_url(self) -> str:
+        """Build the unique data source URL."""
+        pass
 
+    @abstractmethod
+    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
+        """Convert bytes into a pd.DataFrame or pa.Table."""
+        pass
 
-    def _export(self, df: pd.DataFrame, target_path: str | Path | None) -> None:
-        if not target_path:   # fix
-            return
-        from getfactormodels.utils.utils import _save_to_file
-        _save_to_file(df, target_path, model_instance=self)
-        
-        self.log.info(f"Data saved: {self.output_file}")
-
+#feat branch: precision rf 
+#feat 
+#

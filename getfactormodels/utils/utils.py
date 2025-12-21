@@ -33,36 +33,35 @@ __model_input_map = MappingProxyType({
     "4": r"\b(c(ar(hart)?)?4?|ff4|carhart1997|4)\b",
     "6": r"\b(ff)?6|ff2018\b",
     "Q": r"\b(q(5)?|hmxz)\b",
-    "Qclassic": r"\b(q4|q(_)?classic)|classic_q\b",
+    "Qclassic": r"q4|q_?classic|classic_q", # removed \b from inside
     "Mispricing": r"\b(sy4?|mispricing)|misp|yuan$|m4|mis|sy\b",
     "Liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
-    "ICR": r"\bicr|hkm\b",
+    "ICR": r"icr|hkm",
     "DHS": r"^(\bdhs\b|behav.*)$",
     "HMLDevil": r"\bhml(_)?d(evil)?|hmld\b",
     "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b" })
 
+def _get_model_key(model: str | int) -> str:
+    """Private helper: Convert a model name to a model key.
 
-def _get_model_key(model):
-    """Convert a model name to a model key.
-
-    >>> _get_model_key('ff1993')
+    >>> _get_model_key('ff3')
     '3'
     >>> _get_model_key('liQ')
     'Liquidity'
-    >>>  _get_model_key('q4_factors')
+    >>> _get_model_key('q4_factors')
     'Qclassic'
-    >>> _get_model_key('ICR')
-    'ICR'
     """
-    model = str(model)
+    model_str = str(model).lower().strip()
 
-    for key, regex in __model_input_map.items():
-        if re.match(regex, model, re.I):
+    for key, pattern in __model_input_map.items():
+        wrapped_pattern = rf"({pattern})"
+        
+        if re.search(wrapped_pattern, model_str, re.IGNORECASE):
             return key
-    raise ValueError(f'Invalid model: {model}')
+
+    return model_str
 
 
-# change: now uses filepath and a generated filename. base model uses this! (timestamped files not helpful)
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
     if filepath is None:
         return Path.cwd() / filename
@@ -73,8 +72,7 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
         # directory, append filename
         final_path = user_path / filename
     else:
-        # file path
-        # add ext if missing, default .csv 
+        # file path: add ext if missing (defaulting to .csv) 
         if not user_path.suffix:
             user_path = user_path.with_suffix(".csv")
 
@@ -85,7 +83,7 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
 
 
 def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndefinedVariable]   TODO: FIXME
-    """creates a default filename using metadata from the model instance."""
+    """Private helper: create filename using metadata from a model instance."""
     # TODO: one day add a name property to models...
     _name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
 
@@ -163,8 +161,8 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
         return None
 
     raw_str = str(date_input).strip()
-    clean_str = raw_str.replace("-", "").replace("/", "")
-
+    #clean_str = raw_str.replace("-", "").replace("/", "")
+    clean_str = re.sub(r'\D', '', raw_str) # Removes anything that isn't a digit
     try:
         # YYYY, YYYYMM: don't allow parser to guess YYYYMM as YYMMDD!
         if clean_str.isdigit():
@@ -177,8 +175,10 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
                 return _roll_to_eom(dt) if is_end else dt.strftime("%Y-%m-01")
 
         # Parser
-        dt = parser.parse(raw_str)
-
+        #dt = parser.parse(raw_str)
+        # this sets a default fallback for dates which shouldn't ever be hit
+        dt = parser.parse(raw_str, default=datetime(1960, 1, 1))
+        
         # input give a day? "YYYY-MM" (len 7) or "YYYY/MM", then no
         day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
 

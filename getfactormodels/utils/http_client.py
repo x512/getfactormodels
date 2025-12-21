@@ -23,19 +23,32 @@ from platformdirs import user_cache_path
 from .cache import _Cache
 
 log = logging.getLogger(__name__)
-# TODO: errors
 
-class HttpClient:
-    """Simple http client: wrapper around httpx.Client with caching."""
+class _HttpClient:
+    """
+    Internal HTTP client with caching.
+
+    Wrapper around httpx.Client with SSL context creation and 
+    XDG-compliant caching.
+    """
     
     APP_NAME = "getfactormodels"  #platformdirs for xdg cache 
 
     def __init__(self, timeout: float | int = 15.0,
                  cache_dir: str | None = None, # None by default!
-                 default_cache_ttl: int = 86400): # 1 day default
+                 default_cache_ttl: int = 86400):
+        """Initialize the internal client 
+
+        Args:
+            timeout (str | float): max time to wait for a network response.
+            cache_dir (str, optional): Path to store cached files. Defaults to
+              standard user cache directory (~/.cache/getfactormodels).
+            default_cache_ttl (int): cache ttl in seconds (default: 86400, one day)
+        """
         self.timeout = timeout
         self.default_cache_ttl = default_cache_ttl
-        self._client = None # initializes client as None
+        
+        self._client = None
 
         # XDG path
         if cache_dir is None:
@@ -62,8 +75,8 @@ class HttpClient:
                 follow_redirects=True,
                 max_redirects=3,
             )
+        return self
 
-        return self 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
         msg = f"closed: {self._client.__class__.__name__}"
@@ -85,10 +98,12 @@ class HttpClient:
         return hashlib.sha256(url.encode('utf-8')).hexdigest()
 
     def download(self, url: str, cache_ttl: int | None = None) -> bytes:
-        """Downloads content from a given URL.
-           cache_ttl: int, secs
+        """Uses the HTTP Client to download content from a URL.
+            
+        Args:
+            url (str):
+            cache_ttl (int): cache ttl in seconds.
         """
-        # To prevent non-context manager usage?
         if self._client is None:
             raise ClientNotOpenError(
                 "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block.",

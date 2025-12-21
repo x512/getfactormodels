@@ -18,7 +18,7 @@ import zipfile
 from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.http_client import HttpClient
+from getfactormodels.utils.http_client import _HttpClient
 
 # TODO: yearly data isn't inclusive of end yr
 #  but start_date includes partial start year/month !!
@@ -266,11 +266,11 @@ class FamaFrenchFactors(FactorModel):
         df.index.name = "date"
         return df
 
-
+    # TODO: FIXME: FF only model using the HTTP Client outside base.
     def _download_mom_data(self, frequency):
         url = self._get_mom_url(frequency, self.region)
         try:
-            with HttpClient(timeout=10.0) as client:
+            with _HttpClient(timeout=10.0) as client:
                 _zip = client.download(url)
             return self._read_zip(_zip, frequency, self.region)
         except Exception as e: #todo exception

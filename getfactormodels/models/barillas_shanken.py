@@ -16,7 +16,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Any, override
 import pandas as pd
-from getfactormodels.utils.utils import _slice_dates
 from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
@@ -32,16 +31,11 @@ class BarillasShankenFactors(FactorModel):
     in Barillas and Shanken (2018).
 
     Args:
-        `frequency` (`str`): the frequency of the data. `d`, `m` (default: `m`)
-        (default: `m`). Note: Only the 3 factor model is available in weekly.
-        `start_date` (`str, optional`): the start date of the data, as 
-            YYYY-MM-DD.
-        `end_date` (`str, optional`): the end date of the data, as YYYY-MM-DD.
-        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
-            (default: `86400`).
-
-    Note:
-        - Relies on the HML Devil factors being retrieved (which is very slow).
+        frequency (str): the frequency of the data. d, m. (default: m).
+        start_date (str, optional): start date, YYYY-MM-DD.
+        end_date (str, optional): end date, YYYY-MM-DD.
+        cache_ttl (int, optional): Cache time-to-live in seconds 
+            (default: 86400).
 
     Returns:
         pd.DataFrame: A timeseries of the factor data.
@@ -49,6 +43,9 @@ class BarillasShankenFactors(FactorModel):
     References:
     - F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, Journal of 
     Finance, vol. 73, no. 2, pp. 715–754, 2018.
+
+    ---
+    NOTE: Relies on HML Devil being retreived, which is slow. 
     """
     # Not ideal but working
     #TODO: extract instead of dl
@@ -60,7 +57,7 @@ class BarillasShankenFactors(FactorModel):
         super().__init__(**kwargs)
 
     def _get_url(self) -> str:  # I guess?
-        msg = "_read called on BarillasShanken. Constructed from other models. No URL."
+        msg = "_read called on BarillasShanken: no data source url for barillas, returning empty str."
         self.log.warning(msg)
         return ""
 
@@ -69,51 +66,67 @@ class BarillasShankenFactors(FactorModel):
         self.log.warning("_read called on a constructed model (Barillas Shanken). Don't do that.")
         return pd.DataFrame()
 
-    @override
-    def download(self) -> pd.DataFrame:
-        """Overrides base download() for barillas shanken."""
+    @property
+    def data(self) -> pd.DataFrame:
+        """Access the processed dataset, constructing it if necessary.
+        
+        NOTE:
+        - Barillas Shanken is a composite model. This property overrides the base 
+        `FactorModel.data` to trigger construction from sub-models (Fama-French, 
+        Q-Factors, and HML Devil) rather than trying to initiate a download.
+        """
         if self._data is not None:
-            self.log.debug("Data loaded. Returning stored DataFrame.")
             return self._data
 
+        # for this model, construction is the download process
         df = self._construct_bs()
         
-        self._data = df 
+        _ordered = self._rearrange_columns(df)
+        _sliced = self._slice_to_range(_ordered)
         
+        self._data = _sliced
+        return self._data
+
+    @override
+    def download(self) -> pd.DataFrame:
+        """Overrides base download() to ensure export works."""
+        df = self.data # Hits the new property above
+        if self.output_file:
+            self.to_file(df, self.output_file)
         return df
+
     # ----------------------------------------------------------------- #
     def _construct_bs(self) -> pd.DataFrame:
-        """Constructs the Barillas 6 factor model from other models"""
+        """Internal: Build the Barillas-Shanken factor model.
 
-        print("  - Getting q factors...")
-        _q = QFactors(frequency=self.frequency, 
-                      classic=True).extract(['R_IA', 'R_ROE']) 
-        # test: if this fails .extract is bad
-        
-        print("  - Getting Fama-French factors...")
-        ffdata = FamaFrenchFactors(model='6', frequency=self.frequency)
-        ff = ffdata.download()[['Mkt-RF', 'SMB', 'UMD']]
+        Extracts the "R_IA" and "R_ROE" from q-factors, the "HML_Devil" 
+        and "RF" factors from AQR, and "Mkt-RF", "SMB" and "UMD" factors 
+        from the Fama-French 6-Factor model.
 
-        # Merge q and Fama-French factors
-        df = _q.merge(ff, left_index=True,
-                     right_index=True, how='inner')
+        ---
+        NOTE: uses the higher precision "RF" returned by AQR's HML_Devil.
+        TODO: double check actual hml devil precision...
+        TODO: q, ff and hml_d returning pa.Tables.
+        """
+        print("- Getting q factors...")
+        _q = QFactors(frequency=self.frequency, classic=True).extract(['R_IA', 'R_ROE'])
+        if self.frequency == 'm':
+            _q.index = _q.index + pd.offsets.MonthEnd(0)  # TODO
 
-        print("  - Getting HML_Devil factor (this can take a while,"
-            "please be patient)...")
+        print("- Getting Fama-French factors...")
+        ff = FamaFrenchFactors(model='6', frequency=self.frequency).extract(['Mkt-RF', 'SMB', 'UMD'])
 
-        hmld_data = HMLDevilFactors(frequency=self.frequency,
-                                    start_date=self.start_date,
-                                    end_date=self.end_date)
+        df = _q.merge(ff, left_index=True, right_index=True, how='inner')        
+
+        print("- Getting HML_Devil factor (this can take a while,"
+            " please be patient)...")
+
+        hmld_data = HMLDevilFactors(frequency=self.frequency)
 
         hml_d = hmld_data.download()
-        # NOTE: Taking the 'RF' from AQR's series since it's here,
-        # and it's the same data as Fama-French but to 4 decimals. 
-        # Mkt-RF shows a difference though -- and bs6 should use 
-        # the mkt-rf of ff!
         hml_d = hml_d[['HML_Devil', 'RF']]
 
         hml_d.index.name = 'date'
         df = df.merge(hml_d, left_index=True, right_index=True, how='inner')
-        df = _slice_dates(df, self.start_date, self.end_date)
 
         return df
