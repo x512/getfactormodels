@@ -15,8 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key 
-from .models import (  # todo: dont import all models, just QFactor and FamaFrench (function needs changing)
+from getfactormodels.utils.utils import _get_model_key, _save_to_file 
+from .models import (
     BarillasShankenFactors,
     CarhartFactors,
     DHSFactors,
@@ -27,90 +27,89 @@ from .models import (  # todo: dont import all models, just QFactor and FamaFren
     MispricingFactors,
     QFactors,
 )
+from getfactormodels.models.base import FactorModel
+from typing import Any
 
 
-# TEMPORARY MINIMAL REWORK (until the keymaps and insane regex is dropped
-# and base class and FactorExtractor done)
-# just getting get_factors to work!
 def get_factors(model: str | int = 3,
                 frequency: str = "m",
+                *,   #keyword all but model/freq
                 start_date: str | None = None,
                 end_date: str | None = None,
                 output_file: str | None = None,
-                *,
                 region: str | None = None,
-                ):
-    """Get data for a specific factor model.
+                **kwargs: Any) -> FactorModel:
+    """Get and process factor model data.
 
-    Main public function.
+    The primary entry point for the getfactormodels package. Maps the 'model' 
+    param the specific FactorModel subclass and initializes it with the 
+    requested parameters.
 
     Args:
-        model (str, float): the name of the factor model ('3', '4', '5', '6', 'carhart', 
-                            'liq', 'misp', 'icr', 'dhs', 'qclassic', 'q', 'hml_d').
-        frequency  (str, optional): the frequency of the data. ('d' 'w' 'm' 'q' or 'y', default: 'm')
-        start_date (str, optional): start date of the returned data, YYYY-MM-DD.
-        end_date (str, optional): end date of returned data, YYYY-MM-DD.
+        model (str, int): the name of the factor model.
+            one of: '3', '4', '5', '6', 'carhart', 'liq', 'misp', 'icr',
+            'dhs', 'qclassic', 'q', 'hml_d'.
+        frequency  (str, optional): the frequency of the data. Default: 'm'.
+            'd' 'w' 'w2w' 'm' 'q' or 'y'
+        start_date (str, optional): start date, YYYY-MM-DD.
+        end_date (str, optional): end date, YYYY-MM-DD.
         output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
 
     """
-    # NOTE: Parses input, assigns it to a factor model class, calls it, and returns the data.
-    #
-    # TODO: FIXME. kwargs. TODO: default outputs in CLI.
-    #
-    frequency = frequency.lower()
-    region = region
     model_key = _get_model_key(model)
 
-    factor_instance = None
-    if region is not None and model_key not in ['3', '4', '5', '6']:
-        _model = _get_model_key(model)
-        raise ValueError(
-            f"Region '{region}' is not supported for the '{_model}'. "
-            "The region parameter is only available for Fama-French models (3, 4, 5, 6).",
-        )
-    if model_key in ["3", "4", "5", "6"]:
-        factor_instance = FamaFrenchFactors(model=model_key,
-                                            frequency=frequency,
-                                            start_date=start_date,
-                                            end_date=end_date,
-                                            output_file=output_file,
-                                            region=region)
+    MODEL_MAP = {
+        "3": FamaFrenchFactors, "4": CarhartFactors,
+        "5": FamaFrenchFactors, "6": FamaFrenchFactors,
+        "Q": QFactors, "Qclassic": QFactors,
+        "Mispricing": MispricingFactors,
+        "Liquidity": LiquidityFactors,
+        "ICR": ICRFactors,
+        "DHS": DHSFactors,
+        "HMLDevil": HMLDevilFactors,
+        "BarillasShanken": BarillasShankenFactors
+    }
 
+    if model_key not in MODEL_MAP:
+        raise ValueError(f"Unknown model: '{model}' (mapped to '{model_key}')")
+
+    FactorClass = MODEL_MAP[model_key]
+
+    if not FactorClass:
+        raise ValueError(f"Unknown model '{model}' (mapped to '{model_key}').")
+
+    params = {
+        "frequency": frequency.lower(),
+        "start_date": start_date,
+        "end_date": end_date,
+        "output_file": output_file,
+        **kwargs # cache_ttl etc
+    }
+
+    if FactorClass is FamaFrenchFactors:
+        params.update({"model": model_key, "region": region})
+    elif FactorClass is CarhartFactors:
+        params.update({"region": region})
+    
     elif model_key == "Qclassic":
-        factor_instance = QFactors(frequency=frequency, start_date=start_date,
-                                   end_date=end_date, output_file=output_file, classic=True)
+        params["classic"] = True
 
-    else:
-        # Class loading: tries CamelCaseFactors then UPPERCASEFactors
-        class_name_camel = f"{model_key}Factors"
-        class_name_upper = f"{model_key.upper()}Factors"
+    return FactorClass(**params)
 
-        # search for the class in the global scope
-        FactorClass = globals().get(class_name_camel) or globals().get(class_name_upper)
 
-        if not FactorClass:
-            raise ValueError(f"Invalid model: '{model_key}'. "
-                             f"Tried:'{class_name_camel}','{class_name_upper}'.")
-
-        factor_instance = FactorClass(frequency=frequency,
-                                      start_date=start_date,
-                                      end_date=end_date,
-                                      cache_ttl=86400,
-                                      output_file=output_file)
-
-    return factor_instance
-
- 
 def main():
     args = parse_args()
-    
+    # TODO: list models
+    if not args.model:
+        print("Error: The -m/--model argument is required.")
+        return
+
     model_obj = get_factors(
         model=args.model,
         frequency=args.frequency,
         start_date=args.start,
         end_date=args.end,
         region=args.region,
-        output_file=args.output  # base handles output
     )
 
     if args.extract:
@@ -119,11 +118,10 @@ def main():
         data = model_obj.drop(args.drop)
     else:
         data = model_obj.data
-    
-    if args.output:
-        from getfactormodels.utils.utils import _save_to_file
+
+    if args.output:  # save here, not output_file -- writes twice.
         _save_to_file(data, args.output, model_instance=model_obj) #fix: saves result (extracted, dropped, etc.)
-    
+
     if not args.quiet: print(data)
 
 if __name__ == "__main__":

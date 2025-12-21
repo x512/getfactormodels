@@ -20,7 +20,7 @@ from typing import Any
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
-from getfactormodels.utils.http_client import HttpClient
+from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _validate_date, _save_to_file
 from pathlib import Path
 
@@ -355,7 +355,7 @@ class FactorModel(ABC):
         log_msg = f"Downloading data from: {url}"
         self.log.info(log_msg)
         try:
-            with HttpClient(timeout=15.0) as client:
+            with _HttpClient(timeout=15.0) as client:
                 return client.download(url, self.cache_ttl)
         except Exception as e:
             self.log.error(f"Failed to download from {url}: {e}")

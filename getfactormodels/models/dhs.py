@@ -96,8 +96,12 @@ class DHSFactors(FactorModel):
 
 
 
-    def _read(self, data: bytes) -> pd.DataFrame:
-        """(Internal) Read the DHS Factors into a DataFrame or Table."""
+    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
+        """Read the DHS factor data into a Dataframe or Table.
+        
+        NOTE: ICR factors are exported as an XLSX from Google Sheets to retain 
+        decimal precision. Exporting as CSV would result in 2 decimal places. 
+        """
         # Uses calamine to read the google sheets xlsx export, retaining precision!
         try:
             workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
@@ -121,12 +125,13 @@ class DHSFactors(FactorModel):
                 {name: _dict[name] for name in self.schema.names}, 
                 schema=self.schema
             )
+            
             table.validate(full=True) #explicit validation
             
             column_order = ['Date', 'PEAD', 'FIN']
             table = table.select(column_order)
 
-            #  decimalizing here for now - 15 decimals! gimme! [TODO: Change]
+            #  decimalizing here for now
             for col in ["FIN", "PEAD"]:
                 idx = table.schema.get_field_index(col)
                 table = table.set_column(idx, col, divide(table.column(col), 100.0))
@@ -138,6 +143,8 @@ class DHSFactors(FactorModel):
                 df.index = df.index + pd.offsets.MonthEnd(0)  # NO IT CANT YET AHH
 
             df.index.name = 'date'
+            # return here and wrap in base 
+
 
             # wrap in FF Mkt-RF and RF
             try:

@@ -48,7 +48,6 @@ class ICRFactors(FactorModel):
         return ["d", "m", "q"]
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        #self.frequency = frequency   already set in base class
         super().__init__(frequency=frequency, **kwargs)
 
     def _get_url(self) -> str:
@@ -69,13 +68,13 @@ class ICRFactors(FactorModel):
         else: # 'q'
             _date_col = "yyyyq"
 
-        SCHEMA = pa.schema([
+        SCHEMA = pa.schema([  # TODO: make @property
             (_date_col, pa.string()),
             ('intermediary_capital_ratio', pa.float64()),
             ('intermediary_capital_risk_factor', pa.float64()),
             ('intermediary_value_weighted_investment_return', pa.float64()),
             ('intermediary_leverage_ratio_squared', pa.float64()),
-        ])
+        ])  # TODO: match schema with source, transform if needed after.
         try:
             table = pv.read_csv(
                 io.BytesIO(data),
@@ -126,13 +125,12 @@ class ICRFactors(FactorModel):
             table = table.rename_columns(output_cols)
 
         # ------------------------------------------------------------------- #
-       # df = table.to_pandas()  #NaNs made here
-        df = table.to_pandas(
+        df = table.to_pandas(  # NaNs made here.
             date_as_object=False,  # dates stay as datetime64[ns]
             use_threads=True,
         )
 
-        if self.frequency in ['m', 'q']:
+        if self.frequency in ['m', 'q']:  # TODO: REMOVE THIS SOON
             # PyArrow parsed to 1st of month; switch to Month End like other models.
             df['date'] = df['date'] + pd.offsets.MonthEnd(0)
 
@@ -141,6 +139,10 @@ class ICRFactors(FactorModel):
         precision = 8 if self.frequency == 'd' else 4  #TODO: handle these consistently
         df = df.round(precision)
         return df
+
+# TODO: Expected output columns in var, used in: rename, used in producing empty df if err 
+# TODO: get ALL notes like below together.
+
 
 """
 NOTES:
