@@ -19,12 +19,9 @@ from typing import Any
 import pandas as pd
 import pyarrow as pa
 import pyarrow.csv as pv
-from pyarrow.compute import (  # type: ignore[reportAttributeAccessIssue]
-    binary_join_element_wise,
-    replace_substring_regex,
-    strptime,
-)
+import pyarrow.compute as pc
 from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.utils import _offset_period_eom
 
 
 class QFactors(FactorModel):
@@ -39,6 +36,7 @@ class QFactors(FactorModel):
 
     Returns:
         pd.DataFrame: timeseries of factors.
+    
     References:
     - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented q-factor model
     with expected growth, Review of Finance 25 (1), 1-41. (q5 model)
@@ -46,32 +44,12 @@ class QFactors(FactorModel):
     approach, Review of Financial Studies 28 (3), 650-705. (Classic q-factor model)
 
     Data Source: https://global-q.org/factors.html
+    ---
+    TODO:
     """
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
-
-    @property
-    def schema(self) -> pa.Schema:  # testing dynamic schema -- nice
-        """Returns model schema with normalised names."""  
-        factors = [  # TODO: lowercase previous pyarrow models, add property
-                   ("r_f", pa.float64()),
-                   ("r_mkt", pa.float64()),
-                   ("r_me", pa.float64()),
-                   ("r_ia", pa.float64()),
-                   ("r_roe", pa.float64()),
-                   ("r_eg", pa.float64()),
-            ]
-
-        if self.frequency in ["m", "q"]:
-            period_col = "month" if self.frequency == "m" else "quarter"
-            time_cols = [("year", pa.int64()), (period_col, pa.int64())]
-        elif self.frequency == "y":
-            time_cols = [("year", pa.int64())]
-        else:
-            time_cols = [("date", pa.int64())]  # 'w'/'w2w' = "date", 'd' = "DATE"
-
-        return pa.schema(time_cols + factors)
 
     def __init__(self, *, classic: bool = False, **kwargs: Any) -> None:
         self.classic = classic 
@@ -90,67 +68,80 @@ class QFactors(FactorModel):
         url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
         return url
 
-
-    def _read(self, data: bytes) -> pd.DataFrame:
-        # Normalizing headers
-        _header_raw = data.splitlines()[0].decode("utf-8")
-        header_line = _header_raw.lower().split(",")
-
-        try:
-            table = pv.read_csv(
-                io.BytesIO(data),
-                read_options=pv.ReadOptions(column_names=header_line, skip_rows=1),
-                convert_options=pv.ConvertOptions(
-                    column_types=self.schema,
-                    include_columns=self.schema.names,
-                ),
-            )
-        except Exception as e:
-            raise ValueError(f"error reading csv: {self.frequency}: {e}") from e
-
+    @property
+    def schema(self) -> pa.Schema:
+        factors = [
+            ("R_F", pa.float64()),
+            ("R_MKT", pa.float64()),
+            ("R_ME", pa.float64()),
+            ("R_IA", pa.float64()),
+            ("R_ROE", pa.float64()),
+            ("R_EG", pa.float64()),
+        ]
+        
         if self.frequency in ["m", "q"]:
-            _year = table.column(0).cast(pa.string())
-            _period = table.column(1).cast(pa.string())
-
-            period_str = replace_substring_regex(_period, r"^(\d)$", r"0\1")
-
-            if self.frequency == "q":
-                _p = replace_substring_regex(period_str, "^01$", "0331")
-                _p = replace_substring_regex(_p, "^02$", "0630") # chains, so _p to _p
-                _p = replace_substring_regex(_p, "^03$", "0930")
-                _p = replace_substring_regex(_p, "^04$", "1231") #fix: was returning 093031, ^ makes it exactly match.
-            else:
-                _p = binary_join_element_wise(period_str, "01", "")
-            # str = year + period
-            date_str = binary_join_element_wise(_year, _p, "")
+            time_cols = [("year", pa.string()), ("period", pa.string())] #force 'period' here
+        elif self.frequency == "y":
+            time_cols = [("year", pa.string())]
 
         else:
-            date_str = table.column(0).cast(pa.string())
-            
-            if self.frequency == "y":
-                date_str = binary_join_element_wise(date_str, "1231", "")
+            time_cols = [("date", pa.string())]
 
-        dates = strptime(date_str, format="%Y%m%d", unit="ns")
-        table = table.append_column("date", dates)
+        return pa.schema(time_cols + factors)
 
-        # drop cols: m/q have 2 columns at start (Year, Period), others have 1
+
+    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
+        """Reads the Augmented q5 factors from q-global.com"""
+        read_opts = pv.ReadOptions(column_names=self.schema.names, skip_rows=1)
+        conv_opts = pv.ConvertOptions(column_types=self.schema)
+
+        table = pv.read_csv(
+            io.BytesIO(data),
+            read_options=read_opts,
+            convert_options=conv_opts,
+        )
+
+        # join m/q year/period
         if self.frequency in ["m", "q"]:
-            # Year is at 0, Month/Quarter is at 1. can clear 0 twice:
-            table = table.remove_column(0).remove_column(0)
-        else: #drop date or year col
-            table = table.remove_column(0)
+            _year = table.column("year").cast(pa.string())
+            _period = table.column("period").cast(pa.int32())
 
-        if self.classic and "r_eg" in table.column_names:
-            table = table.drop(["r_eg"])
+            if self.frequency == "q":
+                _period = pc.multiply(_period, 3)
 
-        columns = [n.upper() for n in table.column_names]
-        columns = ["Mkt-RF" if n == "R_MKT" else "RF" if n == "R_F" else n 
-            for n in columns]
-        table = table.rename_columns(columns)
+            # padding
+            _p_str = _period.cast(pa.string())
+            _p_clean = pc.if_else(pc.equal(pc.utf8_length(_p_str), 1),
+                                  pc.binary_join_element_wise(pa.scalar("0"), _p_str, ""),
+                                  _p_str)
+            # join the 2 cols
+            date_str = pc.binary_join_element_wise(_year, _p_clean, "")
+            table = table.set_column(0, "date", date_str).remove_column(1)
 
-        # ------------------------------------------------------------------ #
-        data = table.to_pandas().set_index("DATE").rename_axis("date")
+        else:
+            # y, d, w: single col
+            date_str = table.column(0).cast(pa.string())
+            if self.frequency == "y":
+                date_str = pc.binary_join_element_wise(date_str, pa.scalar("12"), "")
+            table = table.set_column(0, "date", date_str)
+
+        table = _offset_period_eom(table, self.frequency)
+ 
+        rename_map = {"R_F": "RF", 
+                      "R_MKT": "Mkt-RF"}
+        col_renames = [rename_map.get(n, n) for n in table.column_names]
+        table = table.rename_columns(col_renames)
         
-        # DECIMALIZING HERE. TODO: PyArrow helper to decimalize all floats, not str/int/timestamp (pyarrow temporal?)
-        data /= 100.0
-        return data
+        _ordered = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  #base will handle this
+        
+        if not self.classic:
+            _ordered.insert(5, 'R_EG')
+            
+        table = table.select(_ordered)
+
+        table.validate(full=True)
+        #return table
+
+        data = table.to_pandas().set_index("date")
+        # -------------------------------------------------------#
+        return data / 100.0
