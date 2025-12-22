@@ -20,6 +20,7 @@ from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
 from .q_factors import QFactors
+import pyarrow as pa
 
 
 class BarillasShankenFactors(FactorModel):
@@ -45,41 +46,48 @@ class BarillasShankenFactors(FactorModel):
     Finance, vol. 73, no. 2, pp. 715–754, 2018.
 
     ---
-    NOTE: Relies on HML Devil being retreived, which is slow. 
+    NOTE: Relies on HML Devil which is slow to download.
+    - This model uses the higher precision "RF" returned by AQR's HML_Devil.
+    - Factors: R_IA and R_ROE from q-factors. Mkt-RF, SMB and UMD from Fama-French.
+    AQR's HML_Devil and RF.
     """
-    # Not ideal but working
-    #TODO: extract instead of dl
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
+    @property
+    def schema(self) -> pa.Schema:
+        """Barillas-Shanken schema."""
+        return pa.schema([
+            ('date', pa.string()),  # string  #('date', pa.timestamp('ns')), # pandas index becomes timestamp
+            ('Mkt-RF', pa.float64()),
+            ('SMB', pa.float64()),
+            ('HML_Devil', pa.float64()),
+            ('R_IA', pa.float64()),
+            ('R_ROE', pa.float64()),
+            ('UMD', pa.float64()),
+            ('RF', pa.float64()),
+        ])
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
-    def _get_url(self) -> str:  # I guess?
-        msg = "_read called on BarillasShanken: no data source url for barillas, returning empty str."
-        self.log.warning(msg)
-        return ""
-
-    def _read(self, data: bytes) -> pd.DataFrame:
-        # Must exist to satisfy the base class contract.
-        self.log.warning("_read called on a constructed model (Barillas Shanken). Don't do that.")
-        return pd.DataFrame()
+    @override
+    def download(self) -> pd.DataFrame:
+        """Overrides base download() to ensure export works."""
+        df = self.data # hit the data property below
+        if self.output_file:
+            self.to_file(df, self.output_file)
+        return df
 
     @property
-    def data(self) -> pd.DataFrame:
-        """Access the processed dataset, constructing it if necessary.
-        
-        NOTE:
-        - Barillas Shanken is a composite model. This property overrides the base 
-        `FactorModel.data` to trigger construction from sub-models (Fama-French, 
-        Q-Factors, and HML Devil) rather than trying to initiate a download.
-        """
+    def data(self) -> pd.DataFrame: #| pa.Table: #TODO: table
+        """Access or construct the Barillas-Shanken factor model."""
         if self._data is not None:
             return self._data
 
         # for this model, construction is the download process
-        df = self._construct_bs()
+        df = self._construct()
         
         _ordered = self._rearrange_columns(df)
         _sliced = self._slice_to_range(_ordered)
@@ -87,46 +95,56 @@ class BarillasShankenFactors(FactorModel):
         self._data = _sliced
         return self._data
 
-    @override
-    def download(self) -> pd.DataFrame:
-        """Overrides base download() to ensure export works."""
-        df = self.data # Hits the new property above
-        if self.output_file:
-            self.to_file(df, self.output_file)
-        return df
 
-    # ----------------------------------------------------------------- #
-    def _construct_bs(self) -> pd.DataFrame:
-        """Internal: Build the Barillas-Shanken factor model.
-
-        Extracts the "R_IA" and "R_ROE" from q-factors, the "HML_Devil" 
-        and "RF" factors from AQR, and "Mkt-RF", "SMB" and "UMD" factors 
-        from the Fama-French 6-Factor model.
-
+    def _construct(self) -> pd.DataFrame:
+        """Private: builds the Barillas-Shanken factor model.
+        
+        Creates the model by calling .extract() on QFactors (R_IA, R_ROE),
+        HMLDevilFactors (HML_Devil, RF) and FamaFrenchFactors (Mkt-RF, 
+        SMB and UMD).
         ---
-        NOTE: uses the higher precision "RF" returned by AQR's HML_Devil.
-        TODO: double check actual hml devil precision...
-        TODO: q, ff and hml_d returning pa.Tables.
+        NOTE:
+        - Uses the higher-precision RF from AQR as the risk-free rate (RF).
+        - Construction is triggered by the .data property override.
         """
-        print("- Getting q factors...")
-        _q = QFactors(frequency=self.frequency, classic=True).extract(['R_IA', 'R_ROE'])
-        if self.frequency == 'm':
-            _q.index = _q.index + pd.offsets.MonthEnd(0)  # TODO
+        #TODO: Check, double-check the source precisions.
 
-        print("- Getting Fama-French factors...")
-        ff = FamaFrenchFactors(model='6', frequency=self.frequency).extract(['Mkt-RF', 'SMB', 'UMD'])
+        self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
 
-        df = _q.merge(ff, left_index=True, right_index=True, how='inner')        
+        self.log.info("Downloading q-factors...")  #TODO: check if classic is faster
+        _q = QFactors(frequency=self.frequency).extract(['R_IA', 'R_ROE'])
 
-        print("- Getting HML_Devil factor (this can take a while,"
-            " please be patient)...")
+        self.log.info("Downloading Fama-French factors...")
+        _ff = FamaFrenchFactors(model='6', frequency=self.frequency).extract(['Mkt-RF', 'SMB', 'UMD'])
+        
+        self.log.info("Downloading the HML_Devil factors. This can take up to a minute, please be patient...")
+        _devil = HMLDevilFactors(frequency=self.frequency).extract(['HML_Devil', 'RF'])
 
-        hmld_data = HMLDevilFactors(frequency=self.frequency)
+        # Quick work around: using pd to join, back to table and 
+        #   enforce the schema.
+        # pd ------------------------------------------------------ #
+        #join not merge
+        df = _ff.join([_q, _devil], how='inner')
+        # fix: index to yyyymmdd str (schema)
+        df.index = df.index.strftime('%Y%m%d')
+        # pa-------------------------------------------------------#
+        table = pa.Table.from_pandas(df.reset_index())
+        # schema enforement for Barillas Shanken here...
+        _ordered = self.schema.names
+        table = table.select(_ordered).cast(self.schema)
+        table.validate(full=True)
 
-        hml_d = hmld_data.download()
-        hml_d = hml_d[['HML_Devil', 'RF']]
+        _df = table.to_pandas().set_index('date')
+        # pd-------------------------------------------------------#
+        return _df
 
-        hml_d.index.name = 'date'
-        df = df.merge(hml_d, left_index=True, right_index=True, how='inner')
 
-        return df
+    def _get_url(self) -> str:
+        """Composite model: no remote source."""
+        return ""
+
+    def _read(self, data: bytes) -> pd.DataFrame:
+        """Composite model: constructed via sub-models, not parsed from bytes."""
+        self.log.warning("BarillasShanken: _read called on composite model.")
+        return pd.DataFrame()
+

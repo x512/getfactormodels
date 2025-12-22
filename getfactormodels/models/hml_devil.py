@@ -20,15 +20,21 @@ import io
 from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _process
+import pyarrow as pa
+import pyarrow.compute as pc
+from python_calamine import CalamineWorkbook
+from getfactormodels.utils.utils import _offset_period_eom
 
 
-class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep consistent)
-    """Retrieve the HML Devil factors from AQR.com.
+class HMLDevilFactors(FactorModel):
+    """Download the HML Devil factors from AQR.com.
+
+    HML Devil factors of C. Asness and A. Frazzini (2013)
 
     Notes:
-    - Very slow. This model implements a cache, and second run today/this month 
-      should be faster.
+    - Slow. If download isn't cached, it takes a while.
+    I see why I had a boolean return as series...
+    full model for daily with no nans starts 1990-07-02, monthly 1990-07
 
     Parameters:
         frequency (str): The frequency of the data. M, D (default: M)
@@ -38,14 +44,24 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
 
     Returns:
         pd.DataFrame: the HML Devil model data indexed by date.
-    
+
     References:
-        C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio Management, vol. 39, pp. 49–68, 2013.
+        C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio 
+        Management, vol. 39, pp. 49–68, 2013.
     Data source: https//aqr.com
+    ---
+    NOTES:
+    - Slow. If download hasn't been cached, it can take a while.
+    - Data contains leading NaNs.
+    - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
+        starts 1926-07, and RF begins 1926-08-02.
+    TODO: smarter caching for HML Devil download.
+    TODO: progress bar for AQR (defeated)
+    TODO: check source...
     """
     @property
     def _frequencies(self) -> list[str]:
-        return ["d", "m"]  # TODO: Check AQR's HML Devil frequencies again. 
+        return ["d", "m"]  # TODO: aqr d/m only? 
 
     def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
         self.cache_ttl = cache_ttl
@@ -55,55 +71,102 @@ class HMLDevilFactors(FactorModel): # Note HMLDevil -> HMLDevilFactors (to keep 
         base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
         file = 'daily' if self.frequency == 'd' else 'monthly'
 
-        return f'{base_url}/Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
+        return f'{base_url}Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
 
-# --------------------------------------------------------------------------------#
-    def _read(self, data) -> pd.DataFrame:
-        """Processes the downloaded Excel file from AQR."""
+    @property
+    def schema(self) -> pa.Schema:
+        """Schema for HML Devil."""
+        return pa.schema([  
+            ('date', pa.string()),
+            ('HML Devil', pa.float64()),
+            ('MKT', pa.float64()),
+            ('SMB', pa.float64()),
+            ('UMD', pa.float64()),
+            ('RF', pa.float64()),
+        ])
+
+    def _read(self, data: bytes) -> pa.Table:
+        """Reads the HML Devil XLSX"""
+        workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
         sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
-        
-        df_dict = pd.read_excel(
-            io.BytesIO(data),
-            sheet_name=list(sheets.values()),
-            skiprows=18,
-            header=0,
-            engine='calamine', # The right choice for speed
-            index_col=0,
-            parse_dates=True,
-        )
 
-        dfs = []
-        for sheet_index, sheet_name in sheets.items():
-            df = df_dict[sheet_name]
-            
-            if sheet_index in [8, 0]:
-                # RF and HML Devil (iloc[:, 0:1])
-                df_slice = df.iloc[:, 0:1]
-            else:
-                # MKT, SMB, UMD (uses 'USA' column name)
-                if 'USA' in df.columns:
-                     df_slice = df[['USA']]
-            df_slice.columns = [sheet_name]
-            dfs.append(df_slice)
+        table_list = []
 
-        data = pd.concat(dfs, axis=1)
-        data = data.astype(float)
+        for idx, sheet_name in sheets.items():
+            rows = workbook.get_sheet_by_name(sheet_name).to_python()
 
-        data.rename(columns={
-            'MKT': 'Mkt-RF',     # TODO: double check!! This could just be mkt.
-            'HML Devil': 'HML_Devil',
-            'SMB': 'SMB_AQR', #
-            #'RF': to RF_AQR or RF_{countrycode} when added 
-        }, inplace=True)
+            # AQR headers: 18, data: 19-
+            headers = [str(h).strip() for h in rows[18]]
+            data_rows = rows[19:]
 
-        # Drops all data where HML_Devil is NaN
-        #data = data.dropna(subset=['HML_Devil'])
-        data = data.dropna(subset=['RF', 'UMD', 'HML_Devil'], how='any')
-        data = data.round(8)
-        return _process(data, self.start_date, self.end_date, filepath=self.output_file)
+            col_idx = headers.index('USA') if 'USA' in headers else 1
+
+            dates, values = [], []
+            for row in data_rows:
+                if not row or row[0] is None: continue
+
+                # AQR date format = MM/DD/YYYY... 
+                # Makes a YYYYMMDD string to _offset_period_eom
+                d = row[0]
+                if isinstance(d, str) and '/' in d:
+                    m, day, y = d.split('/')
+                    date_val = f"{y}{m.zfill(2)}{day.zfill(2)}"
+                elif hasattr(d, 'strftime'):
+                    date_val = d.strftime("%Y%m%d")
+                else:
+                    date_val = str(d)
+
+                # normalization
+                val = row[col_idx]
+                if not isinstance(val, (int, float)): continue
+
+                dates.append(date_val)
+                values.append(float(val))
+
+            temp_table = pa.Table.from_pydict({"date": dates, sheet_name: values})
+
+            temp_table = _offset_period_eom(temp_table, self.frequency)
+
+            table_list.append(temp_table)
+
+        final_table = table_list[0]
+
+        for next_t in table_list[1:]:
+            final_table = final_table.join(next_t, keys="date")
+
+        final_table = final_table.cast(self.schema)
+
+        rename_map = {'MKT': 'Mkt-RF', 
+                      'HML Devil': 'HML_Devil', 
+                      'SMB': 'SMB_AQR'}
+
+        renames = ['date' if n == 'Date' else rename_map.get(n, n) for n in final_table.column_names]
+
+        table = final_table.rename_columns(renames)
+        print(table)
+
+        # TODO: allow returning nulls? allow returning series?
+        # HML Devil factor goes back to 1926? Return NaNs then for all others...
+        #final_table = pc.drop_null(final_table)
+
+        #return table 
+
+        df = table.to_pandas().set_index('date')
+
+        # --------------------------------------------------------------------------------#
+        # Base will do this shortly...
+        df.index = pd.to_datetime(df.index)
+        #leading_nans_count = (~df.notna()).cumprod(axis=0).sum(axis=0)
+        #print("DataFrame:")
+        #print(df)
+        #print("\nNumber of leading NaNs per row before leaving class:")
+        #print(leading_nans_count)
+        precision = 8 if self.frequency == 'd' else 4
+        return df.round(precision)
+
         # From func - cache stuff -- OLD CACHE STUFF
         #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
         #self.cache_dir.mkdir(parents=True, exist_ok=True)
         #self.cache = dc.Cache(str(self.cache_dir)) # diskcache requires a string path
-# TODO: can see the last modified date in debug log; possibly set cache
-# according to this
+        # TODO: can see the last modified date in debug log; possibly set cache
+        # according to this
