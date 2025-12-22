@@ -19,17 +19,13 @@ from typing import Any
 import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.http_client import _HttpClient
-
-# TODO: yearly data isn't inclusive of end yr
-#  but start_date includes partial start year/month !!
-# eg start_date=1968-12-25, end_date=1970-01-01 with frequency='y' 
-## will return yearly data for all of 1968 and none of 1970.
-#
-# Potentially warn user if month and day is passed to year? 
-# Warn the returned data includes the full year, or not the last year because they specifed date...
-#  just read YYYY?
+import pyarrow as pa
+import pyarrow.csv as pv
+import pyarrow.compute as pc
+from getfactormodels.utils.utils import _offset_period_eom
 
 
+#TODO: break up _read_zip
 class FamaFrenchFactors(FactorModel):
     # will do proper docstr later. TODO: utils and getting every model with pyarrow and pushing pandas to
     # boundaries.
@@ -41,16 +37,15 @@ class FamaFrenchFactors(FactorModel):
     Saves data to file if `output_file` is specified.
 
     Args:
-        `model (str | int)`: model to return. `3`, `4`, `5` or `6` (default: 3)
-        `frequency` (`str`): the frequency of the data. `d`, `m` `y` or `w`
-        (default: `m`). Only the 3-Factor model is available for weekly freq.
-        `start_date` (`str, optional`): the start date of the data, as 
-            YYYY-MM-DD.
-        `end_date` (`str, optional`): the end date of the data, as YYYY-MM-DD.
-        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds 
-            (default: `86400`).
-        `region` (`str, optional`): returns the region (intl/developed/emerging markets)
-         model. New. Testing.
+        model (str | int): model to return. '3' '4' '5' '6' (default: '3')
+        frequency (str, optional): frequency of the data. 'd' 'm' 'y' 'w'
+            (default: 'm'). Weekly only available for the 3-factor model.
+        start_date (str, optional): start date of the data. YYYY[-MM-DD].
+        end_date (str, optional): end date of the data. YYYY[-MM-DD].
+        cache_ttl (int, optional`): cached download time-to-live in seconds 
+            (default: 86400).
+        region (str, optional): return a region-specific (emerging/developed)
+            factor model.
 
     Returns:
         `pd.Dataframe`: time series of returned data.
@@ -67,296 +62,196 @@ class FamaFrenchFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ['d', 'w', 'm', 'y']
 
-    FF_REGION_MAP = {
-        'us': 'us',
-        'emerging': 'Emerging',
-        'developed': 'Developed',
-        'developed ex us': 'Developed_ex_US',
-        'ex us': 'Developed_ex_US',
-        'ex-us': 'Developed_ex_US',
-        'europe': 'Europe',
-        'japan': 'Japan',
-        'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
-        'north_america': 'North_America',
-        'na': 'North_America',
-    } # TODO: Clean this up, and region map usage throughout (after factorextractor gets removed)
+    @property
+    def schema(self) -> pa.Schema:
+        """Fama-French schema for specific model/frequency/region."""
+        # all models
+        cols = [("date", pa.string()), 
+                ("Mkt-RF", pa.float64()), 
+                ("SMB", pa.float64()), 
+                ("HML", pa.float64())]
+        
+        # 5 and 6-factor models: RMW and CMA
+        if self.model in ["5", "6"]:
+            cols += [("RMW", pa.float64()), 
+                     ("CMA", pa.float64())]
 
-    def __init__(self,
-                 frequency: str = 'm',
-                 model: int|str = '3',
-                 region: str | None = 'us',
+        # momentum models
+        if self.model in ["4", "6"]:
+            _intl = self.region not in ["us", None]
+            
+            # dev/emerging: WML. US 6 factor: UMD. US 4: MOM. [missing something??]
+            mom_name = "WML" if _intl else ("UMD" if self.model == "6" else "MOM")
+            cols.append((mom_name, pa.float64()))
+        cols.append(("RF", pa.float64()))
+        
+        return pa.schema(cols)
+
+    @property
+    def _mom_schema(self) -> pa.Schema:
+        """Private helper: schema for momentum files.
+        'val' is a placeholder for the specific (model, region)
+          momentum factor, it gets renamed during the join process.
+        """
+        return pa.schema([("date", pa.string()), 
+                          ("val", pa.float64())])
+
+    @property  # new: now property
+    def _ff_region_map(self) -> dict[str, str]:
+        """Private: map input to region"""
+        return {
+            'us': 'us',
+            'emerging': 'Emerging',
+            'developed': 'Developed',
+            'ex-us': 'Developed_ex_US',
+            'ex us': 'Developed_ex_US',
+            'europe': 'Europe',
+            'japan': 'Japan',
+            'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
+            'na': 'North_America',
+            'north_america': 'North_America',
+        }
+
+    def __init__(self, frequency: str = 'm', 
+                 model: int | str = '3', 
+                 region: str | None = 'us', 
                  **kwargs: Any) -> None:
         self.model = str(model)
-        # eg: japan -> Japan [FIXME, lower everywhere]
-        self.region = None if region is None else self.FF_REGION_MAP.get(region.lower(), None)
-
-        super().__init__(frequency=frequency, model=model, **kwargs)
-
+        self.region = None if region is None else self._ff_region_map.get(region.lower(), None)
+        super().__init__(frequency=frequency, 
+                         model=model, 
+                         **kwargs)
+        
         self._validate_ff_input()
-    def _validate_ff_input(self):
+
+    def _validate_ff_input(self) -> None:
         if self.model not in ["3", "4", "5", "6"]:
-            raise ValueError(
-                f"Invalid model '{self.model}': must be '3' '4' '5' or '6'",
-            )
-        if self.frequency == 'w' and self.model not in {"3"}: #no 4 weekly mom
-            raise ValueError(f"Fama French weekly data is only available for the 3 Factor model ({self.model})")
+            raise ValueError(f"Invalid model '{self.model}'")
 
-        if self.frequency != 'm' and self.region == "Emerging":
-            raise ValueError(
-                "Emerging Markets data is only available in monthly frequency.",
-            )
-        if self.frequency not in ['d', 'm', 'y'] and self.region not in ['US', 'us', None]:
-            raise ValueError(
-                "Region data is only available in daily, monthly and yearly frequency.",
-            )       
-        # self.region is None if invalid region, or it is mapped! (e.g., 'Japan', 'us').
-        valid_mapped_regions = set(self.FF_REGION_MAP.values()) | {None}
+        if self.frequency == 'w' and self.model != "3":
+            raise ValueError("Weekly FF is only 3-Factor.")
 
-        if self.region not in valid_mapped_regions:
-            valid_region_keys = ', '.join(f'`{k}`' for k in self.FF_REGION_MAP)
-            raise ValueError(
-                f"Invalid region. Must be one of: {valid_region_keys}",
-            )
+        if self.region not in ['us', None] and self.frequency == 'w':
+            raise ValueError(f"Weekly frequency not available for {self.region}.")
+
+        if self.region == "Emerging" and self.frequency != 'm':
+            raise ValueError("Emerging markets only available in monthly.")
 
 
     def _get_url(self) -> str:
-        """Constructs the URL for downloading Fama-French data based on region, model, and frequency."""
+        """Constructs the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        region = self.region
-        model = self.model
-        frequency = self.frequency.lower()
+        # Default: region=US
+        if self.region in ['us', None]:
+            _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
+            freq_map = {'d': '_daily', 'w': '_weekly'}
+            suffix = freq_map.get(self.frequency, "")
+            
+            return f"{base_url}/{_model}{suffix}_CSV.zip"
 
-        file_name = None
-        basefilename = None # Initialize basefilename here for clarity
+        # Emerging: only monthly 5-factors avail
+        if self.region == 'Emerging':
+            return f"{base_url}/Emerging_5_Factors_CSV.zip"
 
-        if region in ['us', None]:
-            if model in {"3", "4"}:
-                basefilename = "F-F_Research_Data_Factors"
-            elif model in {"5", "6"}:
-                basefilename = "F-F_Research_Data_5_Factors_2x3"
-            else:
-                raise ValueError(f"Invalid model '{model}' for US factors. Must be 3, 4, 5, or 6.")
+        # region: 3 and 4 use 3 factors data, 5 and 6 use 5.
+        base_model = '3' if self.model in ['3', '4'] else '5'
+        _daily = '_Daily' if self.frequency == 'd' else ''
+        region_filename = f"{self.region}_{base_model}_Factors{_daily}_CSV.zip"
 
-            freq_suffix = ""
-            if frequency == 'd':
-                freq_suffix = "_daily"
-            elif frequency == 'w':
-                freq_suffix = "_weekly"
+        return f"{base_url}/{region_filename}"
 
-            file_name = f"{basefilename}{freq_suffix}_CSV.zip"
-            self.log.debug(f"filename: {file_name}")
-            self.log.debug(f"full url: {base_url}/{file_name}")
-            return f"{base_url}/{file_name}"
 
-        if model in ['3', '4', '5', '6']:
-            base_ff_model = '3' if model in ['3', '4'] else '5'
-        else:
-            raise ValueError(f"Invalid model '{model}' for regional factors in region '{region}'.")
-        freq_suffix = '_Daily' if frequency == 'd' else ''
-
-        if region == 'Emerging' and frequency == 'm':
-            file_name = 'Emerging_5_Factors_CSV.zip'
-        elif region is not None:
-            file_name = f'{region}_{base_ff_model}_Factors{freq_suffix}_CSV.zip'
-
-        return f'{base_url}/{file_name}'
-
-    def _get_mom_url(self, frequency, region):
-        """Constructs the URL for momentum factors."""
+    def _get_mom_url(self) -> str:
+        """Constructs URL for the required mom file."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        freq_suffix = "_daily" if self.frequency == 'd' else ""
 
-        if region not in ["us", None]: # Note: region is mapped 'Emerging', not 'emerging'
-            if self.model in ['4', '6']:
-                freq_suffix = "_Daily" if frequency == 'd' else ""
-                file_name = f'{region}_Mom_Factor{freq_suffix}_CSV.zip' 
-                return f"{base_url}/{file_name}"
-
-       # if region == 'Emerging':
-       #     file = "Emerging_MOM_Factor_TXT.zip" #only m; forgot why TXT 
-
-        elif frequency == 'd':
-            file = "F-F_Momentum_Factor_daily_CSV.zip"
-
+        if self.region in ['us', None]:
+            filename = f"F-F_Momentum_Factor{freq_suffix}_CSV.zip"
         else:
-            file = "F-F_Momentum_Factor_CSV.zip"
+            # regional, e.g., 'Europe_Mom_Factor_Daily_CSV.zip'
+            filename = f"{self.region}_Mom_Factor{freq_suffix.title()}_CSV.zip"
 
-        return f"{base_url}/{file}"
+        return f"{base_url}/{filename}"
 
-    # ------------------------------------------------------------------------- #
 
-    @staticmethod
-    def _read_zip(_data, frequency, region):
+    def _read_zip(self, _data: bytes, use_schema: pa.Schema = None) -> pa.Table:
         """Download and read CSV from zip file."""
-        # old function stuff....
+        _schema = use_schema if use_schema else self.schema
         
-        try:
-            with zipfile.ZipFile(io.BytesIO(_data)) as zip_file:
-                filename = zip_file.namelist()[0]
+        with zipfile.ZipFile(io.BytesIO(_data)) as z:
+            filename = z.namelist()[0]
+            with z.open(filename) as f:
+                lines = f.read().decode('utf-8').splitlines()
 
-                with zip_file.open(filename) as file:
-                    content = file.read().decode('utf-8')
-                if region == 'Emerging':
-                    skip_rows = 6
-                else:
-                    skip_rows = 12 if 'momentum' in filename.lower() else 4
+        # Gotta break this up
 
-                # Monthly files contain the annual data, under this line
-                annual_marker = " Annual Factors: January-December"
-                marker_pos = content.find(annual_marker)
-                
-                if frequency in ['y', 'm'] and marker_pos != -1:
-                    if frequency == 'm':
-                        content = content[:marker_pos]
-                    else:  # freq == 'y'
-                        all_lines = content[marker_pos:].split('\n')
-                        if len(all_lines) > 2:
-                            # Join lines starting from the Header Line
-                            content = '\n'.join(all_lines[1:])
-                            skip_rows = 0
+        # skip lines/where the data starts 
+        is_mom = 'momentum' in filename.lower() or '_mom_' in filename.lower()
+        start_idx = 6 if self.region == 'Emerging' else (12 if is_mom else 4)
+       
+        # TESTING: copyright info
+        if is_mom:
+            last_line = lines[-2].strip() if lines else ""
+        else:
+            last_line = lines[-1].strip() if lines else ""
+        if "copyright" in last_line.lower():
+            if last_line not in self.copyright:  # will extend to metadata TODO
+                self.copyright = f"{self.copyright} | {last_line}".strip(" | ")
+        
+        # filter content
+        content = []
+        for line in lines[start_idx:]:
+            _lower = line.lower()
+            # stop on annual marker or copyright footer:
+            if "annual factors" in _lower or "copyright" in _lower:
+                break
+            if line.strip():
+                content.append(line)
 
-                df = pd.read_csv(
-                    io.StringIO(content),
-                    skiprows=skip_rows,
-                    index_col=[0],
-                    header=0,
-                    parse_dates=False,
-                    skipfooter=1,
-                    engine="python",
-                    na_values=[-99.99, '-99.99'],  #stated in emerging, momentum; every model? 
-                    na_filter=True,   #fix to mom data  # NANS ARE RETURNING AS -0.99999 coz decimalizing
-                    on_bad_lines='error')
+        # pa to read
+        table = pv.read_csv(
+            io.BytesIO("\n".join(content).encode('utf-8')),
+            convert_options=pv.ConvertOptions(
+                null_values=['-99.99', '-999', ' -99.99', ' -999'],
+                column_types=_schema 
+            )
+        )
+        
+        return table.rename_columns(["date"] + table.column_names[1:])
+    
 
-            df.index = df.index.astype(str)
-            df.index = df.index.str.strip()
-            df.index.name = "date"
-            #df = df.dropna(how='all')
-            return df
+    def _read(self, data: bytes) -> pd.DataFrame:
+        table = self._read_zip(data, use_schema=self.schema)
 
-        except Exception as e:
-            print(f"Error parsing zip file: {e}")
-            return pd.DataFrame()
+        if self.model in {"4", "6"}:
+            with _HttpClient(timeout=15.0) as client:
+                mom_bytes = client.download(self._get_mom_url(), self.cache_ttl)
+            
+            mom_table = self._read_zip(mom_bytes, use_schema=self._mom_schema)
+            
+            mom_key = (set(self.schema.names) & {"UMD", "MOM", "WML"}).pop()
+            mom_table = mom_table.rename_columns(["date", mom_key])
+            
+            table = table.join(mom_table, keys="date", join_type="inner")
+        
+        table = table.set_column(0, "date", table.column(0).cast(pa.string()))
+        
+        table = _offset_period_eom(table, self.frequency)
 
-   
-    # parse_date=True prob handles this now: keeping for now.   #TODO: remove
-    def _parse_dates(self, df): #TODO: types everywhere.
-        """Parse the date index based on frequency."""
-        if df.empty:
-            return df
+        # decimalizing with pc here
+        for col in table.column_names:
+            if col == "date": continue
+            idx = table.schema.get_field_index(col)
+            table = table.set_column(idx, col, pc.divide(table.column(idx), 100.0))
 
-        if self.frequency == 'm':
-            # Monthly data YYYYMM (6 chars)
-            mask = df.index.str.len() == 6
-            df = df[mask]
-            if not df.empty:
-                df.index = pd.to_datetime(df.index, format='%Y%m') + pd.offsets.MonthEnd(0)
+        # cast schema/validate against it
+        table = table.select(self.schema.names).filter(pc.is_valid(table.column(1)))
+        table.validate(full=True)
+        #return table
+        df = table.to_pandas().set_index("date")
 
-        elif self.frequency == 'y':
-            mask = df.index.str.len() == 4
-            df = df[mask]
-            if not df.empty:
-                df.index = pd.to_datetime(df.index, format='%Y') + pd.offsets.YearEnd(month=12)
-
-        elif self.frequency in {'d', 'w'}:
-            # Day/week data shares YYYYMMDD format
-            mask = df.index.str.len() == 8
-            df = df[mask]
-            if not df.empty:
-                df.index = pd.to_datetime(df.index, format='%Y%m%d')
-
-        df.index.name = "date"
+        # pandas line--------------------------------------------------------------------# 
+        
         return df
 
-    # TODO: FIXME: FF only model using the HTTP Client outside base.
-    def _download_mom_data(self, frequency):
-        url = self._get_mom_url(frequency, self.region)
-        try:
-            with _HttpClient(timeout=10.0) as client:
-                _zip = client.download(url)
-            return self._read_zip(_zip, frequency, self.region)
-        except Exception as e: #todo exception
-            raise RuntimeError(f"Failed to download momentum data from {url}.") from e
-
-
-    def _add_momentum_factor(self, df):
-        if self.model not in {"4", "6"}:
-            return df 
-        
-        try:
-            mom_data = self._download_mom_data(self.frequency)
-        
-        except RuntimeError as e:
-            self.log.warning(f"Momentum factor download failure: {e}")
-            return df
-        
-        if mom_data.empty:
-            print("Empty df.")
-            return df
-        
-        mom_data = self._parse_dates(mom_data)
-
-        if self.region not in ['us', None]:
-            mom_name = "WML"  # winner minus loser in the EM and intl data
-        elif self.model == "6":    # 6 factor call it Up Minus Down
-            mom_name = "UMD"
-        elif self.model == "4":   # and MOM in 4-factor (TODO: name MOM for just MOM?)
-            mom_name = "MOM"
- 
-        if len(mom_data.columns) > 0:    
-            mom_series = (
-                mom_data.iloc[:, 0]  # Extracts first col,
-                .rename(mom_name) # Renames it
-                .reindex(df.index)
-            )
-
-            df = df.join(mom_series)
-            self.log.info(f"Added momentum factor: {mom_name}")
-
-            if self.region == 'us':
-                df = df.dropna(how='any')  # Drop NaNs after MOM added; trims models to MOM size 
-            else:
-                # eg, emerging RMW/CMA begins with NaNs -- keepin
-                # eg, asia pacific ex japan starts with 4 months of NaNs in WML (4 in monthly) -- droppin
-                # but all factors go back to 1990-07-02. 
-                #If momentum model, then we drop the nan WML rows...
-                if self.model in ['4', '6']:
-                    df = df.dropna(how='any')
-                else:
-                    df = df.dropna(how='all')  # in dev/emerging/intl markets the mom factor if often shorter than the dataset. (But if models are momentum models... might just trim to size as well)
-        else:        
-            self.log.warning("Mom data contained no columns after parsing...")
-        return df 
-
-
-    def _read(self, data) -> pd.DataFrame:
-        try:
-            df = self._read_zip(data, self.frequency, self.region)
-
-            if df.empty:
-                print("Warning: No data downloaded")
-                return pd.DataFrame()
-
-            # Parse dates and add momentum if needed
-            df = self._parse_dates(df)
-            df = self._add_momentum_factor(df)
-            #df = _slice_dates(df, self.start_date, self.end_date)
-            df = df.sort_index()
-            # Just for now until rewrite... later.
-            if self.region == 'Emerging':
-                if self.model == '3':
-                    df = df.get(["Mkt-RF", "SMB", "HML", "RF"], df)
-                if self.model == '4':
-                    df = df.get(["Mkt-RF", "SMB", "HML", "WML", "RF"], df)
-                if self.model == '5':
-                    df = df.get(["Mkt-RF", "SMB", "HML", "RMW", "CMA", "RF"], df)
-                #if 6 then it's all here...
-
-            # Decimalize. Keep here for now. Finicky.
-            df = df.astype(float)
-            return df / 100
-            # TODO: drop nans/nulls, after adding MOM, and for barillas shanken, etc.
-
-        except Exception as e:
-            print(f"Error downloading Fama-French data: {e}")
-            raise
-
-# Welllll its using the base class at least... TODO FIXME FIXME 
