@@ -21,7 +21,9 @@ from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 from dateutil import parser
-
+import pyarrow as pa
+import pyarrow.compute as pc
+#from pyarrow.compute import ceil_temporal, subtract
 # pyright: reportUnusedFunction=false
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
@@ -85,9 +87,10 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
 def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndefinedVariable]   TODO: FIXME
     """Private helper: create filename using metadata from a model instance."""
     # TODO: one day add a name property to models...
+    # TODO: if user used 'carhart' use carhart, if they used (ff)4, use ff.
     _name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
 
-    # 3 to "ff3", FF models only ones that accept int. TODO: make 4 "carhart" if no region?
+    # 3 to "ff3", FF models only ones that accept int.
     model_name = f"ff{_name}" if str(_name).isdigit() else _name
 
     freq = getattr(model, 'frequency', 'd').lower()
@@ -136,14 +139,54 @@ def _save_to_file(data, filepath, model_instance=None):
         raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
 
 
+#FIXME: store col 0 date, reapply it at end?
+def _offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
+    """Private helper to offset a pa.Table's col 0 to EOM. Standardizes col 0 as date32."""
+    if table.num_columns == 0:
+        raise ValueError("Table has no columns.")
+
+    first_col = table.column(0)
+
+    # float, dt obj, int 
+    d_str = first_col.cast(pa.string())
+
+    # removes trailing .0 (from floats) as well as date separators -, /, or spaces
+    clean_str = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
+
+    lengths = pc.utf8_length(clean_str)
+    is_short = pc.equal(lengths, 6) # YYYYMM
+    date_str = pc.if_else(
+        is_short,
+        pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),
+        clean_str
+    )
+
+    dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
+
+    if frequency in ['m', 'q']:
+        _next_mth = pc.ceil_temporal(dates, 1, unit='month')
+        _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
+        processed_dates = pc.subtract(_next_mth, _one_day_ms)
+    else:
+        processed_dates = dates
+    
+    # date32 out
+    eom_dates = processed_dates.cast(pa.date32())
+    table.validate()
+
+    return table.set_column(0, "date", eom_dates)
+
+
+
+### used ONLY for user input and get/set start/end. TODO: REDO
 def _roll_to_eom(dt: datetime) -> str:
     """Roll a datetime to the last day of its month."""
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
-
+# TODO: rework this...
 def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
-    """Standardize date input to a ISO (YYYY-MM-DD) string.
+    """Standardizes date input to a ISO (YYYY-MM-DD) string.
 
     Args:
         `date_input`: the date str. "2023", "202305", "2023-05-15"

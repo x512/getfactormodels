@@ -22,39 +22,38 @@ from pyarrow.compute import divide
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from datetime import datetime
+from getfactormodels.utils.utils import _offset_period_eom
+
 
 class DHSFactors(FactorModel):
-    """Download the DHS Behavioural Factors.
-
-  Downloads the Behavioural Factors of Kent Daniel, David Hirshleifer, and 
-  Lin Sun (DHS). Data from 1972-07-01 until end of 2023.
-
-  Args:
-  `frequency` (`str`): the frequency of the data. `m` or `d` (default: `m`)
-  `start_date` (`str, optional`): the start date of the data, `YYYY-MM-DD`
-  `end_date` (`str, optional`): the end date of the data, `YYYY-MM-DD`
-  `output_file` (`str, optional`): the filepath to save the output data.
-
-  Returns:
-    `pd.Dataframe` : timeseries of factors.
-
-  References:
-  - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
-  Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
-  1673-1736.
-
-  Data source: https://sites.google.com/view/linsunhome/
-
-  Schema:
-  - PEAD (float64): Post-Earnings Announcement Drift.
-  - FIN  (float64): Financing Factor.
-  --- 
-  Note: kwargs are passed to the base FactorModel.
     """
-    # roughing in infos, not approp for docstr but need TODO a reliable
-    # way of getting and setting these when more models are redone. Most
-    # importantly the copyright/attribution info! TODO
+    DHS Behavioural Factors (Daniel-Hirshleifer-Sun, 2020)
+
+    Downloads the Behavioural Factors of Kent Daniel, David Hirshleifer, and 
+    Lin Sun (DHS). Data from July 1972 - December, 2023.
+
+    Args:
+        frequency (str): The data frequency, 'm'.
+        start_date (str, optional): The start date YYYY-MM-DD.
+        end_date (str, optional): The end date YYYY-MM-DD.
+        output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
+        cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
+
+    Returns:
+        pd.Dataframe: timeseries of factors.
+
+    References:
+    - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
+    Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
+    1673-1736.
+
+    Data source: https://sites.google.com/view/linsunhome/
+
+    Factors: FIN, PEAD
+    ---
+    TODO:
+    """
+    # copyright/attribution info! TODO
     @property
     def _frequencies(self) -> list[str]:
         return ['d', 'm']
@@ -69,16 +68,13 @@ class DHSFactors(FactorModel):
     @property  #like q-factors, a dynamic schema (DHS factors swap cols)
     def schema(self) -> pa.Schema:
         """DHS schema"""
-        _date = [('Date', pa.timestamp('ms'))]
+        _date = [('Date', pa.string())]   # 197202, err as int64.
         _fin = [('FIN', pa.float64())]
         _pead = [('PEAD', pa.float64())]
-
+        # m = Date, PEAD, FIN. d = Date, FIN, PEAD.
         if self.frequency == 'd':
-            # d = Date, FIN, PEAD
             return pa.schema(_date + _fin + _pead)
-        else:
-            # m = Date, PEAD, FIN (they swap)
-            return pa.schema(_date + _pead + _fin)
+        return pa.schema(_date + _pead + _fin)
 
 
     def _get_url(self) -> str:
@@ -90,73 +86,55 @@ class DHSFactors(FactorModel):
             #info_id =
         else:
             gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
-            #info_sheet_id = '#gid=96292754'
+            #info_sheet_id = '#gid=96292754'  # Construction, Universe, Period, More Details
 
         return  f'{base_url}{gsheet_id}/export?format=xlsx'  # back to xlsx with calamine. need those decimals!
 
+    # Uses calamine to read a xlsx. Uses pyarrow, converts to dataframe for FF at end still. TODO: FIXME
+    def _read(self, data: bytes) -> pa.Table:
+        workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
+        rows = workbook.get_sheet_by_name(workbook.sheet_names[0]).to_python()
 
+        headers = [str(h).strip() for h in rows[0]]
+        _dict = {name: [row[i] for row in rows[1:]] for i, name in enumerate(headers)}
 
-    def _read(self, data: bytes) -> pd.DataFrame | pa.Table:
-        """Read the DHS factor data into a Dataframe or Table.
-        
-        NOTE: ICR factors are exported as an XLSX from Google Sheets to retain 
-        decimal precision. Exporting as CSV would result in 2 decimal places. 
-        """
-        # Uses calamine to read the google sheets xlsx export, retaining precision!
+        # fix: load without schema 
+        table = pa.Table.from_pydict(_dict)
+
+        # force date to str (eom expects str)
+        table = table.set_column(0, "Date", table.column(0).cast(pa.string()))
+
+        table = _offset_period_eom(table, self.frequency)
+
+        # TODO: FIXME: _offset_period_eom should return col as same name. 
+        if "date" in table.column_names:
+            table = table.rename_columns(["Date"] + table.column_names[1:])
+
+        # selecting to avoid the extra col error when Year Month present
+        table = table.select(self.schema.names).cast(self.schema)
+
+        # m/d swap PEAD/FIN cols, this returns them in same orders
+        output_names = ['date', 'PEAD', 'FIN']
+        table = table.select(['Date', 'PEAD', 'FIN']).rename_columns(output_names)
+        for col in ["FIN", "PEAD"]:
+            idx = table.schema.get_field_index(col)
+            table = table.set_column(idx, col, divide(table.column(col), 100.0))
+
+        table.validate(full=True)  #TODO remove full when base does this
+        # return table
+
+        # wrap in FF Mkt-RF and RF
+        df = table.to_pandas().set_index('date')
+        #--------------------------------------------------------------#
+        df.index.name = 'date'
+        df.index = pd.to_datetime(df.index)
+        # TODO: make this util using .extract()
         try:
-            workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
-            rows = workbook.get_sheet_by_name(workbook.sheet_names[0]).to_python()
-
-            headers = [str(h).strip() for h in rows[0]]
-            
-            _dict = {}
-            for i, name in enumerate(headers):
-                _dict[name] = [row[i] for row in rows[1:]]
-            
-            if self.frequency == 'm':
-                _dict['Date'] = [datetime.strptime(str(int(d)), '%Y%m') for d in _dict['Date']]
-            else:
-                _dict['Date'] = [
-                    datetime.combine(d, datetime.min.time()) if not hasattr(d, 'hour') else d 
-                    for d in _dict['Date']
-                ]
-            
-            table = pa.Table.from_pydict(
-                {name: _dict[name] for name in self.schema.names}, 
-                schema=self.schema
-            )
-            
-            table.validate(full=True) #explicit validation
-            
-            column_order = ['Date', 'PEAD', 'FIN']
-            table = table.select(column_order)
-
-            #  decimalizing here for now
-            for col in ["FIN", "PEAD"]:
-                idx = table.schema.get_field_index(col)
-                table = table.set_column(idx, col, divide(table.column(col), 100.0))
-            #--------------------------------------------------------------#
-            df = table.to_pandas().set_index('Date')
-
-            #base.py can handle this.
-            if self.frequency == 'm':
-                df.index = df.index + pd.offsets.MonthEnd(0)  # NO IT CANT YET AHH
-
-            df.index.name = 'date'
-            # return here and wrap in base 
-
-
-            # wrap in FF Mkt-RF and RF
-            try:
-                ff = FamaFrenchFactors(model="3", frequency=self.frequency,
-                                       start_date=self.start_date, end_date=self.end_date).download()
-                df = pd.concat([ff["Mkt-RF"], df, ff["RF"]], axis=1).dropna()
-            except Exception as e:
-                self.log.warning(f"FF Merge skipped: {e}")
-
-            return df
-
+            ff = FamaFrenchFactors(model="3", frequency=self.frequency,
+                                   start_date=self.start_date, end_date=self.end_date).download()
+            df = pd.concat([ff["Mkt-RF"], df, ff["RF"]], axis=1).dropna()
         except Exception as e:
-            self.log.error(f"DHS Read Failure: {e}")
-            return pd.DataFrame()
+            self.log.warning(f"FF Merge skipped: {e}")
+
+        return df
 

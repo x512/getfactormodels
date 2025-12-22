@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # getfactormodels: A Python package to retrieve financial factor model data.
 # Copyright (C) 2025 S. Martin <x512@pm.me>
 #
@@ -15,14 +16,18 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
 from typing import Any
-import pandas as pd
+#######import pandas as pd
 from getfactormodels.models.base import FactorModel
+import pyarrow as pa
+import pyarrow.csv as pv
+from getfactormodels.utils.utils import _offset_period_eom
+import re
 
 
 class LiquidityFactors(FactorModel):
-    """Download the Pastor-Stambaugh Liquidity Factors.
-
-    * Only available in monthly data.
+    """Liquidity factors of Pastor-Stambaugh (2003).
+    
+    Download the Pastor-Stambaugh Liquidity Factors.
 
     Args:
         frequency (str): The data frequency, 'm'.
@@ -39,6 +44,9 @@ class LiquidityFactors(FactorModel):
       Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
     
     Data source: https://finance.wharton.upenn.edu/~stambaug/
+    ---
+    NOTES: only available in monthly.
+    - NaNs: the leading 65 values in TRADED_LIQ.
     """
     @property
     def _frequencies(self) -> list[str]:
@@ -46,49 +54,65 @@ class LiquidityFactors(FactorModel):
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         super().__init__(frequency=frequency, **kwargs)
- 
+
     def _get_url(self) -> str:
         #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
         return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
 
+    @property
+    def schema(self) -> pa.Schema:
+        return pa.schema([
+            ('Month', pa.int64()),
+            ('Agg Liq.', pa.float64()),
+            ('Innov Liq (eq8)', pa.float64()),
+            ('Traded Liq (LIQ_V)', pa.float64())
+        ])
 
-    # Still old func stuff below here. Need to move some to base, but when consistent across models. 
-    def _read(self, data) -> pd.DataFrame:
-        _data = data.decode('utf-8')
-        data = io.StringIO(_data)
+    def _read(self, data: bytes) -> pa.Table:
+        _text = data.decode('utf-8')
+        _lines = [
+            re.sub(r'\s+', '\t', line.strip()) 
+            for line in _text.splitlines() 
+            if line.strip() and not line.startswith('%')
+        ]
+        
+        _data = '\n'.join(_lines).encode('utf-8')
 
-        # Note: headers are the last commented line in header.
-        headers = [line[1:].strip().split('\t')
-            for line in data.readlines() if line.startswith('%')][-1]
+        read_opts = pv.ReadOptions(
+            column_names=self.schema.names,
+            autogenerate_column_names=False,
+            skip_rows=0,
+        )
 
-        # Fix: was losing first line of data
-        data.seek(0)
-        data = pd.read_csv(data, sep='\\s+',
-                           names=headers, 
-                           comment='%',
-                           index_col=0, 
-                           na_filter=True, 
-                           na_values=[-99, '-99.000000'], # we returning NaNs now!  #TODO: test to check the first x values 
-                           )
+        parse_opts = pv.ParseOptions(
+            delimiter='\t',
+            ignore_empty_lines=True
+        )
 
-        data.index.name = 'date'  # Should make it all DATE
-        data.index = data.index.astype(str)
+        convert_opts = pv.ConvertOptions(
+            column_types=self.schema,
+            null_values=["-99", "-99.0", "-99.000000"],
+            include_columns=self.schema.names
+        )
+        try:
+            table = pv.read_csv(
+                io.BytesIO(_data),
+                read_options=read_opts,
+                parse_options=parse_opts,
+                convert_options=convert_opts
+            )
+        except (pa.ArrowInvalid, KeyError) as e:
+            raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
+        
+        # month only freq for liquidity (could send d/w through anyway, no-op)
+        table = _offset_period_eom(table, self.frequency)
 
-        data = data.rename(columns={'Agg Liq.': 'AGG_LIQ',
-                                    'Innov Liq (eq8)': 'INNOV_LIQ',
-                                    'Traded Liq (LIQ_V)': 'TRADED_LIQ'})
+        table.validate()  # explicit validation! in base: table.validate(full=True) 
 
-        data.index = pd.to_datetime(data.index, 
-                                    format='%Y%m') + pd.offsets.MonthEnd(0)  
+        table = table.rename_columns([
+                'date', 'AGG_LIQ', 'INNOV_LIQ', 'TRADED_LIQ'
+            ])
 
-        # some things...
-        data = data.round(6)
-        # Need to either consistently return start or end of month across all 
-        #  models, and decide whether or not to use BDay start/end (depending 
-        #  on what the source data does. Don't think any models have a 
-        #  weekend/non bday? maybe?..)
-
-        # Check for nans, warn nd return 
-        return data
-      #  return _process(data, self.start_date,
-      #                  self.end_date, filepath=self.output_file)
+        data = table.to_pandas().set_index("date")
+        # ---------------------------------------------- 
+        return data # TODO: rounding

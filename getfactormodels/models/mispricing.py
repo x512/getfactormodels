@@ -17,12 +17,10 @@
 import io
 from typing import Any
 import pandas as pd
-#import pyarrow.compute as pc
-from pyarrow.compute import (subtract, ceil_temporal)
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-
+from getfactormodels.utils.utils import _offset_period_eom
 
 # TODO: proper class docstr's.
 class MispricingFactors(FactorModel):
@@ -38,7 +36,7 @@ class MispricingFactors(FactorModel):
         output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
         classic (bool, optional): returns the classic 4-factor q-factor model. Default: False.
         cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
-    
+
     Returns:
         pd.DataFrame: timeseries of factor data.
 
@@ -51,7 +49,7 @@ class MispricingFactors(FactorModel):
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
-    
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
@@ -59,27 +57,31 @@ class MispricingFactors(FactorModel):
         base_url = "https://finance.wharton.upenn.edu/~stambaug"
         file_name = "M4d" if self.frequency == "d" else "M4"
         return f"{base_url}/{file_name}.csv"
-    
+
     @property
-    def schema(self):
+    def schema(self) -> pa.Schema:
+        # fix: schema wasn't enforced. 
+        #  M4d/M4 have differen't date columns.
+        #  by skipping the first row and applying the schema names, it still 
+        #  worked. Might be all that's needed though (types)
+        date_col = "DATE" if self.frequency == "d" else "YYYYMM"  # checked with renames, it's enforced now...
         return pa.schema([
-            ('YYYYMM', pa.timestamp('ms')),
-            ('MKTRF',  pa.float64()),
-            ('SMB',    pa.float64()),
-            ('MGMT',   pa.float64()),
-            ('PERF',   pa.float64()),
-            ('RF',     pa.float64()),
+            (date_col, pa.string()),  # TODO: FIXME: int32
+            ('MKTRF', pa.float64()),
+            ('SMB', pa.float64()),
+            ('MGMT', pa.float64()),
+            ('PERF', pa.float64()),
+            ('RF', pa.float64()),
         ])
+
 
     def _read(self, data):
         """Reads the Mispricing factors CSV."""
         try:
-            # TEST: reading CSV with PyArrow
-            # will be a CSV reader
             read_opts = pv.ReadOptions(
-                skip_rows=1,
-                column_names=['YYYYMM', 'MKTRF', 'SMB', 'MGMT', 'PERF', 'RF'],
-            )
+                #  skip_rows=1,
+                # column_names=self.schema.names,
+                autogenerate_column_names=False)
 
             parse_opts = pv.ParseOptions(
                 delimiter=',',
@@ -88,7 +90,8 @@ class MispricingFactors(FactorModel):
 
             convert_opts = pv.ConvertOptions(
                 column_types=self.schema,
-                timestamp_parsers=["%Y%m%d", "%Y%m"],
+                # timestamp_parsers=["%Y%m%d", "%Y%m"],
+                include_columns=self.schema.names,
             )
 
             table = pv.read_csv(
@@ -98,48 +101,30 @@ class MispricingFactors(FactorModel):
                 convert_options=convert_opts,
             )
 
-            if self.frequency == 'm':
-                dates = table.column('YYYYMM') 
-                 
-                # ceil to the first day of the NEXT month
-                # 'unit' is str not temporal
-                next_month = ceil_temporal(dates, 1, unit='month')
-                
-                # subtract a day in ms
-                one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
-                
-                snapped_dates = subtract(next_month, one_day_ms)
-                
-                # replace the column
-                date_idx = table.schema.get_field_index('YYYYMM')
-                table = table.set_column(date_idx, 'YYYYMM', snapped_dates)
-            
+            # fixed: _offset_period_eom helper utility works on col 0 (no need to rename date)
+            #print(table)
+            table = _offset_period_eom(table, self.frequency) 
+            #print(table)
+
             table = table.rename_columns([
-                'date',     # YYYYMM -> date
-                'Mkt-RF',   # MKTRF -> Mkt-RF
-                'SMB_SY',   # SMB -> SMB_SY
+                'date',     # YYYYMM
+                'Mkt-RF',   # MKTRF
+                'SMB_SY',   # SMB
                 'MGMT', 
                 'PERF',
                 'RF',
             ])
 
-            # Debug, testing
-            initial_rows = table.num_rows
-            table = table.drop_null()
-            self.log.debug(f"Read {table.num_rows} rows (dropped {initial_rows - table.num_rows} NaNs)")
+            #initial_rows = table.num_rows
+            #table = table.drop_null()
+            #self.log.debug(f"Read {table.num_rows} rows (dropped {initial_rows - table.num_rows} NaNs)")
+            # No NaNs in data source
 
-
+            df = table.to_pandas().set_index('date')
             # pandas line --------------------------------------------------- #
-            df = table.to_pandas()
+            return df.round(8 if self.frequency == 'd' else 4)
 
-            df = df.set_index('date')
-            df.index.name = 'date'
-
-            #df = df.replace([-99.99, -999], pd.NA).dropna()               
-            return df
-
-            # returns an empty dataframe that base class expects for this model.
-            # TODO: FIXIME: cleanup, handle errors properly everywhere...
+            # TODO: empty pa.Table if need 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
             self.log.error(f"Reading or parsing failed for Mispricing factors: {e}")
             column_names = ['Mkt-RF', 'SMB_SY', 'MGMT', 'PERF', 'RF']
