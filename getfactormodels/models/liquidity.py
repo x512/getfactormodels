@@ -15,13 +15,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
+import re
 from typing import Any
-#######import pandas as pd
-from getfactormodels.models.base import FactorModel
 import pyarrow as pa
 import pyarrow.csv as pv
+from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _offset_period_eom
-import re
 
 
 class LiquidityFactors(FactorModel):
@@ -33,15 +32,18 @@ class LiquidityFactors(FactorModel):
         frequency (str): The data frequency, 'm'.
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
-        cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
+        output_file (str, optional): Optional file path to save to file. 
+        Supports csv, pkl.
+        cache_ttl (int, optional): Cached download time-to-live in secs 
+        (default: 86400).
     
     Returns:
         pd.Dataframe: timeseries of factors.
 
     References:
-    - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock Returns’, 
-      Journal of Political Economy, vol. 111, no. 3, pp. 642–685, 2003.
+    - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock 
+    Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
+    642–685, 2003.
     
     Data source: https://finance.wharton.upenn.edu/~stambaug/
     ---
@@ -55,9 +57,9 @@ class LiquidityFactors(FactorModel):
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         super().__init__(frequency=frequency, **kwargs)
 
-    def _get_url(self) -> str:
-        #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
-        return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
+    @property   # already decimalized, m=8
+    def _precision(self) -> int:
+        return 10
 
     @property
     def schema(self) -> pa.Schema:
@@ -65,8 +67,14 @@ class LiquidityFactors(FactorModel):
             ('Month', pa.int64()),
             ('Agg Liq.', pa.float64()),
             ('Innov Liq (eq8)', pa.float64()),
-            ('Traded Liq (LIQ_V)', pa.float64())
+            ('Traded Liq (LIQ_V)', pa.float64()),
         ])
+
+    
+    def _get_url(self) -> str:
+        #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
+        return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
+    
 
     def _read(self, data: bytes) -> pa.Table:
         _text = data.decode('utf-8')
@@ -86,20 +94,20 @@ class LiquidityFactors(FactorModel):
 
         parse_opts = pv.ParseOptions(
             delimiter='\t',
-            ignore_empty_lines=True
+            ignore_empty_lines=True,
         )
 
         convert_opts = pv.ConvertOptions(
             column_types=self.schema,
             null_values=["-99", "-99.0", "-99.000000"],
-            include_columns=self.schema.names
+            include_columns=self.schema.names,
         )
         try:
             table = pv.read_csv(
                 io.BytesIO(_data),
                 read_options=read_opts,
                 parse_options=parse_opts,
-                convert_options=convert_opts
+                convert_options=convert_opts,
             )
         except (pa.ArrowInvalid, KeyError) as e:
             raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
@@ -109,10 +117,6 @@ class LiquidityFactors(FactorModel):
 
         table.validate()  # explicit validation! in base: table.validate(full=True) 
 
-        table = table.rename_columns([
-                'date', 'AGG_LIQ', 'INNOV_LIQ', 'TRADED_LIQ'
-            ])
-
-        data = table.to_pandas().set_index("date")
-        # ---------------------------------------------- 
-        return data # TODO: rounding
+        table = table.rename_columns(['date', 'AGG_LIQ', 
+                                      'INNOV_LIQ', 'TRADED_LIQ',])
+        return table

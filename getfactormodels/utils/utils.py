@@ -14,15 +14,16 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import calendar
 import logging
 import re
-import calendar
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
-from dateutil import parser
 import pyarrow as pa
 import pyarrow.compute as pc
+from dateutil import parser
+
 #from pyarrow.compute import ceil_temporal, subtract
 # pyright: reportUnusedFunction=false
 
@@ -138,29 +139,40 @@ def _save_to_file(data, filepath, model_instance=None):
         # Fix B904: Use from e to chain the exception
         raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
 
-
-#FIXME: store col 0 date, reapply it at end?
+# TODO: clean
 def _offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
-    """Private helper to offset a pa.Table's col 0 to EOM. Standardizes col 0 as date32."""
+    """Private helper to offset a pa.Table's col 0 to EOM. 
+
+    Standardizes col 0 to EOM for m/q freqs.
+    """
     if table.num_columns == 0:
         raise ValueError("Table has no columns.")
-
+    
+    orig_name = table.column_names[0]
     first_col = table.column(0)
 
     # float, dt obj, int 
-    d_str = first_col.cast(pa.string())
-
-    # removes trailing .0 (from floats) as well as date separators -, /, or spaces
+    #d_str = first_col.cast(pa.string())
+    # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars)
+    # TODO: is HML the only model that needs this? Does DHS? NOPE. WAIT YES. AHH
+    d_str = pc.utf8_slice_codeunits(first_col.cast(pa.string()), 
+                                                    start=0, stop=10)
     clean_str = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
 
     lengths = pc.utf8_length(clean_str)
-    is_short = pc.equal(lengths, 6) # YYYYMM
-    date_str = pc.if_else(
-        is_short,
-        pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),
-        clean_str
-    )
+    is_year = pc.equal(lengths, 4)   # YYYY
+    is_month = pc.equal(lengths, 6)  # YYYYMM
 
+    # chain logic: year adds '0101', month adds '01'
+    date_str = pc.if_else(
+        is_year,
+        pc.binary_join_element_wise(clean_str, pa.array(["0101"] * len(table)), ""),
+        pc.if_else(
+            is_month,
+            pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),
+            clean_str,
+        ),
+    )
     dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
 
     if frequency in ['m', 'q']:
@@ -169,22 +181,60 @@ def _offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
         processed_dates = pc.subtract(_next_mth, _one_day_ms)
     else:
         processed_dates = dates
-    
-    # date32 out
+
+    # fix: to date32, to 'ns'
     eom_dates = processed_dates.cast(pa.date32())
+    _dt = eom_dates.cast(pa.timestamp('ns'))
     table.validate()
 
-    return table.set_column(0, "date", eom_dates)
+    return table.set_column(0, orig_name, _dt)
 
 
+# new
+def _decimalize(table: pa.Table, schema: pa.Schema, precision: int) -> pa.Table:
+    """
+    Private helper: properly decimalizes a pa.Table.
 
+    Use model's schema and decimalize any matching pa.float64() 
+    columns. Converts to pa.decimal128(), returns pa.float64().
+    Use before renaming.
+    """
+    # for debug
+    decimalized_cols = []
+
+    decimal_type = pa.decimal128(18, precision)
+    divisor = pa.scalar(100, type=decimal_type)
+
+    for field in schema:
+        if pa.types.is_temporal(field.type) or not pa.types.is_floating(field.type):
+            continue
+
+        col_name = field.name
+        if col_name in table.column_names:
+            idx = table.schema.get_field_index(col_name)
+
+            precise_col = pc.divide(pc.cast(table.column(idx), decimal_type),
+                                    divisor)
+            table = table.set_column(idx, col_name, 
+                                     pc.cast(precise_col, pa.float64()))
+
+        # debuggn
+        decimalized_cols.append(field.name)
+        if decimalized_cols:
+            msg=(f"Decimalized {len(decimalized_cols)} "
+                f"columns: {', '.join(decimalized_cols)}")
+            log.info(msg)
+
+    return table
+
+
+# TODO: redo below, user date inputs... 
 ### used ONLY for user input and get/set start/end. TODO: REDO
 def _roll_to_eom(dt: datetime) -> str:
     """Roll a datetime to the last day of its month."""
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
-# TODO: rework this...
 def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
     """Standardizes date input to a ISO (YYYY-MM-DD) string.
 
@@ -238,4 +288,8 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
 # isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
 # isn't filling in today's month or current year.
 # IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
+
+
+
+
 
