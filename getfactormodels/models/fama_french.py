@@ -16,13 +16,13 @@
 import io
 import zipfile
 from typing import Any
-import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.csv as pv
+###import pandas as pd
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.http_client import _HttpClient
-import pyarrow as pa
-import pyarrow.csv as pv
-import pyarrow.compute as pc
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.utils import _offset_period_eom, _decimalize
 
 
 #TODO: break up _read_zip
@@ -111,6 +111,9 @@ class FamaFrenchFactors(FactorModel):
             'na': 'North_America',
             'north_america': 'North_America',
         }
+    @property 
+    def _precision(self) -> int:
+        return 8
 
     def __init__(self, frequency: str = 'm', 
                  model: int | str = '3', 
@@ -214,14 +217,14 @@ class FamaFrenchFactors(FactorModel):
             io.BytesIO("\n".join(content).encode('utf-8')),
             convert_options=pv.ConvertOptions(
                 null_values=['-99.99', '-999', ' -99.99', ' -999'],
-                column_types=_schema 
-            )
+                column_types=_schema, 
+            ),
         )
         
         return table.rename_columns(["date"] + table.column_names[1:])
     
 
-    def _read(self, data: bytes) -> pd.DataFrame:
+    def _read(self, data: bytes) -> pa.Table:
         table = self._read_zip(data, use_schema=self.schema)
 
         if self.model in {"4", "6"}:
@@ -229,29 +232,18 @@ class FamaFrenchFactors(FactorModel):
                 mom_bytes = client.download(self._get_mom_url(), self.cache_ttl)
             
             mom_table = self._read_zip(mom_bytes, use_schema=self._mom_schema)
-            
             mom_key = (set(self.schema.names) & {"UMD", "MOM", "WML"}).pop()
             mom_table = mom_table.rename_columns(["date", mom_key])
-            
             table = table.join(mom_table, keys="date", join_type="inner")
         
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         
         table = _offset_period_eom(table, self.frequency)
-
-        # decimalizing with pc here
-        for col in table.column_names:
-            if col == "date": continue
-            idx = table.schema.get_field_index(col)
-            table = table.set_column(idx, col, pc.divide(table.column(idx), 100.0))
-
+        table = _decimalize(table, self.schema, self._precision)
+        
         # cast schema/validate against it
         table = table.select(self.schema.names).filter(pc.is_valid(table.column(1)))
-        table.validate(full=True)
-        #return table
-        df = table.to_pandas().set_index("date")
-
-        # pandas line--------------------------------------------------------------------# 
         
-        return df
-
+        table.validate(full=True)
+        
+        return table

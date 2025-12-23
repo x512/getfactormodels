@@ -18,11 +18,10 @@ import io
 from typing import Any
 import pandas as pd
 import pyarrow as pa
-from pyarrow.compute import divide
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.utils import _offset_period_eom, _decimalize
 
 
 class DHSFactors(FactorModel):
@@ -58,24 +57,26 @@ class DHSFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ['d', 'm']
 
-
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         """Initialize the DHS factor model."""
         # TODO: docstrings, class, init, module level...
         super().__init__(frequency=frequency, **kwargs)
 
+    @property
+    def _precision(self) -> int:
+        return 12      # TODO CHECK SOURCE
 
-    @property  #like q-factors, a dynamic schema (DHS factors swap cols)
+
+    @property  # note: DHS factors swap cols between frequencies.
     def schema(self) -> pa.Schema:
         """DHS schema"""
         _date = [('Date', pa.string())]   # 197202, err as int64.
         _fin = [('FIN', pa.float64())]
         _pead = [('PEAD', pa.float64())]
-        # m = Date, PEAD, FIN. d = Date, FIN, PEAD.
+        
         if self.frequency == 'd':
             return pa.schema(_date + _fin + _pead)
         return pa.schema(_date + _pead + _fin)
-
 
     def _get_url(self) -> str:
         """(Internal) Constructs the Google Sheet URL for DHS monthly and daily factors."""
@@ -106,35 +107,35 @@ class DHSFactors(FactorModel):
 
         table = _offset_period_eom(table, self.frequency)
 
-        # TODO: FIXME: _offset_period_eom should return col as same name. 
         if "date" in table.column_names:
             table = table.rename_columns(["Date"] + table.column_names[1:])
 
         # selecting to avoid the extra col error when Year Month present
         table = table.select(self.schema.names).cast(self.schema)
-
+        
+        table = _decimalize(table, self.schema, self._precision)
         # m/d swap PEAD/FIN cols, this returns them in same orders
         output_names = ['date', 'PEAD', 'FIN']
         table = table.select(['Date', 'PEAD', 'FIN']).rename_columns(output_names)
-        for col in ["FIN", "PEAD"]:
-            idx = table.schema.get_field_index(col)
-            table = table.set_column(idx, col, divide(table.column(col), 100.0))
 
         table.validate(full=True)  #TODO remove full when base does this
-        # return table
 
         # wrap in FF Mkt-RF and RF
-        df = table.to_pandas().set_index('date')
-        #--------------------------------------------------------------#
-        df.index.name = 'date'
-        df.index = pd.to_datetime(df.index)
-        # TODO: make this util using .extract()
+        table = _offset_period_eom(table, self.frequency)
         try:
-            ff = FamaFrenchFactors(model="3", frequency=self.frequency,
-                                   start_date=self.start_date, end_date=self.end_date).download()
-            df = pd.concat([ff["Mkt-RF"], df, ff["RF"]], axis=1).dropna()
+            ff_model = FamaFrenchFactors(
+                model="3", 
+                frequency=self.frequency,
+                start_date=self.start_date, 
+                end_date=self.end_date,
+            )
+            ff_table = ff_model._get_table()
+            table = table.join(ff_table, keys="date", join_type="inner")
+            final_cols = ['date', 'Mkt-RF', 'PEAD', 'FIN', 'RF']
+            table = table.select(final_cols)
+
         except Exception as e:
-            self.log.warning(f"FF Merge skipped: {e}")
+            self.log.warning(f"FF join skipped: {e}")
 
-        return df
-
+        table.validate()
+        return table
