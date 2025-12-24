@@ -16,11 +16,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
 from typing import Any
-import pandas as pd
 import pyarrow as pa
-#import pyarrow.compute as pc
-from pyarrow.compute import replace_substring_regex
 import pyarrow.csv as pv
+import pyarrow.compute as pc
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.utils import _offset_period_eom
 
@@ -65,17 +63,13 @@ class ICRFactors(FactorModel):
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         super().__init__(frequency=frequency, **kwargs)
-
-    def _get_url(self) -> str:
-        _file = {"d": "daily", 
-                 "m": "monthly", 
-                 "q": "quarterly"}.get(self.frequency)
-        return f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
+    
+    @property
+    def _precision(self) -> int: return 8 if self.frequency == 'd' else 4  # TODO: check 
 
     @property
     def schema(self) -> pa.Schema:
         _date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(self.frequency, 'yyyyq')
-
         return pa.schema([
             (_date_col, pa.string()),
             ('intermediary_capital_ratio', pa.float64()),
@@ -84,49 +78,53 @@ class ICRFactors(FactorModel):
             ('intermediary_leverage_ratio_squared', pa.float64()),
         ])
 
+    def _get_url(self) -> str:
+        _file = {"d": "daily", 
+                 "m": "monthly", 
+                 "q": "quarterly"}.get(self.frequency)
+        return f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
 
     def _read(self, data: bytes):
-        """Reads the ICR factors data using PyArrow."""
-        convert_opts = pv.ConvertOptions(
-            column_types=self.schema, 
-            include_columns=self.schema.names,
-            null_values=[".", "NA", "nan", ""],
-            check_utf8=True,
-        )
+        """Reads the source ICR factor data from zhiguohe.net."""
         try:
             table = pv.read_csv(
                 io.BytesIO(data),
-                convert_options=convert_opts
+                convert_options=pv.ConvertOptions(
+                    column_types=self.schema, 
+                    include_columns=self.schema.names,
+                    null_values=[".", "NA", "nan", ""],
+                    check_utf8=True,
+                )
             )
-
         except (pa.ArrowInvalid, KeyError) as e:
             raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
 
         if self.frequency == "q":
-            # quarters to last day of the month. 20211 to 2021-03-31, etc. For the util.
-            date_array = table.column(0).cast(pa.string())
-            date_array = replace_substring_regex(date_array, pattern="1$", replacement="0301")
-            date_array = replace_substring_regex(date_array, pattern="2$", replacement="0601")
-            date_array = replace_substring_regex(date_array, pattern="3$", replacement="0901")
-            date_array = replace_substring_regex(date_array, pattern="4$", replacement="1201")
-            table = table.set_column(0, "Date", date_array)
-
+            dates = table.column(0).cast(pa.string())
+            years = pc.utf8_slice_codeunits(dates, start=0, stop=4)
+            _q = pc.utf8_slice_codeunits(dates, start=4, stop=5).cast(pa.int32()) 
+            # months: q * 3
+            _months = pc.multiply(_q, 3).cast(pa.string())
+            months = pc.utf8_lpad(_months, width=2, padding="0")
+            # adds '01', relies on offset util.
+            day = pa.array(["01"] * table.num_rows, type=pa.string())
+            date_str = pc.binary_join_element_wise(years, months, day, "-")
+            
+            table = table.set_column(0, "date", pc.cast(date_str, pa.timestamp('ns')))
+        
+        #offset util 
         table = _offset_period_eom(table, self.frequency)
+        
         # TODO: base should report any repeats in date col 
         # TODO: possibly check if last row is a duplicate quarter and drop it 
+        
         output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"] # renamed. Docstr needs to list factors.. TODO..
 
         if len(table.column_names) == len(output_cols):
             table = table.rename_columns(output_cols)
 
         table.validate()
-        #return table
-        df = table.to_pandas().set_index('date')
-        # ------------------------------------------------------------------- #
-        df.index = pd.to_datetime(df.index)
-        precision = 8 if self.frequency == 'd' else 4  #TODO: check precision.
-
-        return df.round(precision)
+        return table
 
 ## NOTES ##########################
 # - 20251, 20251: err, 'qtr in progress', or q2?

@@ -135,8 +135,6 @@ def _save_to_file(data, filepath, model_instance=None):
             raise ValueError(f'Unsupported file extension: {extension}. Must be one of: {supported}')
         print(f"File saved to: {full_path}")
     except Exception as e:
-        # Fix UP024: Use OSError instead of IOError
-        # Fix B904: Use from e to chain the exception
         raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
 
 # TODO: clean
@@ -199,10 +197,9 @@ def _decimalize(table: pa.Table, schema: pa.Schema, precision: int) -> pa.Table:
     columns. Converts to pa.decimal128(), returns pa.float64().
     Use before renaming.
     """
-    # for debug
     decimalized_cols = []
-
-    decimal_type = pa.decimal128(18, precision)
+    p_int = int(precision)  #force precision to ints
+    decimal_type = pa.decimal128(18, p_int)
     divisor = pa.scalar(100, type=decimal_type)
 
     for field in schema:
@@ -213,20 +210,20 @@ def _decimalize(table: pa.Table, schema: pa.Schema, precision: int) -> pa.Table:
         if col_name in table.column_names:
             idx = table.schema.get_field_index(col_name)
 
-            precise_col = pc.divide(pc.cast(table.column(idx), decimal_type),
-                                    divisor)
-            table = table.set_column(idx, col_name, 
-                                     pc.cast(precise_col, pa.float64()))
+            precise_col = pc.divide(
+                pc.cast(table.column(idx), decimal_type),
+                divisor
+            )
+            
+            table = table.set_column(idx, col_name, pc.cast(precise_col, pa.float64()))
+            decimalized_cols.append(col_name)
 
-        # debuggn
-        decimalized_cols.append(field.name)
-        if decimalized_cols:
-            msg=(f"Decimalized {len(decimalized_cols)} "
-                f"columns: {', '.join(decimalized_cols)}")
-            log.info(msg)
+    if decimalized_cols:
+        msg=(f"Decimalized to {p_int}: {len(decimalized_cols)} "
+                f"places: {', '.join(decimalized_cols)}")
+        log.info(msg)
 
     return table
-
 
 # TODO: redo below, user date inputs... 
 ### used ONLY for user input and get/set start/end. TODO: REDO
