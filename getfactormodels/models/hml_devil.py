@@ -21,7 +21,7 @@ from typing import Any
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.data_utils import offset_period_eom
 
 
 class HMLDevilFactors(FactorModel):
@@ -61,10 +61,13 @@ class HMLDevilFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]  # TODO: aqr d/m only? 
 
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
+    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 43200, country_code: str = 'usa', **kwargs):
+        self.country_code = country_code.upper()
         self.cache_ttl = cache_ttl
-        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
-    
+        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs) 
+        # TESTING, ROUGH
+        self.country_code = country_code.upper() # 'USA', 'AUS', 'JPN', etc.
+
     @property 
     def _precision(self) -> int:
         return 14 if self.frequency == 'd' else 14  #TODO: check m source!
@@ -103,17 +106,27 @@ class HMLDevilFactors(FactorModel):
         headers = [str(h).strip() for h in rows[18]]
         data_rows = rows[19:]
         
-        col_idx = headers.index('USA') if 'USA' in headers else 1
+        try:
+            col_idx = headers.index(self.country_code)
+        except ValueError:
+            # Fallback to USA or raise error if the region doesn't exist in this tab
+            col_idx = self.country_code.index('USA') if 'USA' in headers else 1
 
         dates, values = [], []
         # TODO: countries
         # Looking at the dataset, can extend FF's region param fully into HML Devil!!
+        # AUS  AUT	BEL	CAN	CHE	DEU	DNK	ESP	FIN	FRA	GBR	GRC	HKG	IRL	
+        #   ISR	ITA	JPN	NLD	NOR	NZL	PRT	SGP	SWE	USA
+        #
+        # v rough, implemented, must be one of above, not user friendly at all. 
+        # Aggregates won't work as uppercase... 
+        # TODO: PROPERLY! with ff's regions
         for r in data_rows:
             if not r or r[0] is None or r[col_idx] == '': 
                 continue # skip rows where USA has no data? Nans?
                 
             dates.append(self._aqr_dt_fix(r[0]))
-            values.append(float(r[col_idx]))
+            values.append(float(r[col_idx]))  # NOTE: EVERY FACTOR GETS PREPENDED WITH {country_code}_ AND RF BECOMES 1M_US_TBILL (KEEP AS RF FOR NOW)
 
         return pa.Table.from_pydict({"date": dates, sheet_name: values})
     
@@ -134,7 +147,7 @@ class HMLDevilFactors(FactorModel):
 
         for sheet in mapping.keys():
             t = self._process_sheet(sheet, workbook)
-            t = _offset_period_eom(t, self.frequency)
+            t = offset_period_eom(t, self.frequency)
             table_list.append(t)
 
         # the join
@@ -146,9 +159,39 @@ class HMLDevilFactors(FactorModel):
         
         _names = ['date' if n == 'date' else mapping.get(n, n) for n in table.column_names]
         table = table.rename_columns(_names)
-        table = _offset_period_eom(table, self.frequency)
+        table = offset_period_eom(table, self.frequency)
         table.validate(full=True)
+        # rename everything not date: {COUNTRY}_{FACTOR}   (TODO: RF to US_RF?)
+
+        if self.country_code not in ['US', None]:
+
+            prefix = f"{self.country_code}_"
+            new_names = [
+                'date' if n == 'date' else 'RF' if n == 'RF' 
+                    else 'AQR_RF' if n == 'AQR_RF' else f"{prefix}{mapping.get(n, n)}" 
+                for n in table.column_names
+            ]
         # TODO: Rounding in base 
         # TODO: smarter cache, ttl resets checking modified date
-        return table    # ALREADY DECIMALIZED!
+        return table.rename_columns(new_names)   # ALREADY DECIMALIZED!
 
+"""
+Fama French Regions, AQR countries/aggregate equity portfolios
+Global	
+Global Ex USA	
+Europe
+North America	
+Pacific
+---
+EQUITIES (Regions in FF):
+USA
+JPN
+---
+AUS	AUT	BEL	CAN	CHE	DEU	DNK	ESP	FIN	FRA	GBR	GRC	HKG	IRL	ISR	ITA	JPN	NLD	NOR	NZL	PRT	SGP	SWE	USA
+
+
+No RF's per country provided
+List countries needed
+Add error handling/validations
+Output to CLI then needs titles, FF and AQR specifics...
+"""
