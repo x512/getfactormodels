@@ -14,8 +14,10 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from typing import Any
+from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _save_to_file 
+from getfactormodels.utils.utils import _get_model_key, _save_to_file
 from .models import (
     BarillasShankenFactors,
     CarhartFactors,
@@ -27,8 +29,6 @@ from .models import (
     MispricingFactors,
     QFactors,
 )
-from getfactormodels.models.base import FactorModel
-from typing import Any
 
 
 def get_factors(model: str | int = 3,
@@ -58,7 +58,7 @@ def get_factors(model: str | int = 3,
     """
     model_key = _get_model_key(model)
 
-    MODEL_MAP = {
+    model_map = {
         "3": FamaFrenchFactors, "4": CarhartFactors,
         "5": FamaFrenchFactors, "6": FamaFrenchFactors,
         "Q": QFactors, "Qclassic": QFactors,
@@ -67,15 +67,15 @@ def get_factors(model: str | int = 3,
         "ICR": ICRFactors,
         "DHS": DHSFactors,
         "HMLDevil": HMLDevilFactors,
-        "BarillasShanken": BarillasShankenFactors
+        "BarillasShanken": BarillasShankenFactors,
     }
 
-    if model_key not in MODEL_MAP:
+    if model_key not in model_map:
         raise ValueError(f"Unknown model: '{model}' (mapped to '{model_key}')")
 
-    FactorClass = MODEL_MAP[model_key]
+    factorclass = model_map[model_key]
 
-    if not FactorClass:
+    if not factorclass:
         raise ValueError(f"Unknown model '{model}' (mapped to '{model_key}').")
 
     params = {
@@ -83,18 +83,18 @@ def get_factors(model: str | int = 3,
         "start_date": start_date,
         "end_date": end_date,
         "output_file": output_file,
-        **kwargs # cache_ttl etc
+        **kwargs, # cache_ttl etc
     }
 
-    if FactorClass is FamaFrenchFactors:
+    if factorclass is FamaFrenchFactors:
         params.update({"model": model_key, "region": region})
-    elif FactorClass is CarhartFactors:
+    elif factorclass is CarhartFactors:
         params.update({"region": region})
     
     elif model_key == "Qclassic":
         params["classic"] = True
 
-    return FactorClass(**params)
+    return factorclass(**params)
 
 
 def main():
@@ -113,16 +113,17 @@ def main():
     )
 
     if args.extract:
-        data = model_obj.extract(args.extract)
+        model_obj.extract(args.extract)
     elif args.drop:
-        data = model_obj.drop(args.drop)
-    else:
-        data = model_obj.data
+        model_obj.drop(args.drop)
 
-    if args.output:  # save here, not output_file -- writes twice.
-        _save_to_file(data, args.output, model_instance=model_obj) #fix: saves result (extracted, dropped, etc.)
+    display_data = model_obj.data
 
-    if not args.quiet: print(data)
+    if args.output:
+        _save_to_file(display_data, args.output, model_instance=model_obj)
 
+    if not args.quiet:
+        print(display_data)
+        
 if __name__ == "__main__":
     main()
