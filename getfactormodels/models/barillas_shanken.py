@@ -15,12 +15,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Any, override
-import pandas as pd
+import pyarrow as pa
+import pyarrow.compute as pc
+from getfactormodels.utils.utils import _offset_period_eom
 from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
 from .q_factors import QFactors
-import pyarrow as pa
 
 
 class BarillasShankenFactors(FactorModel):
@@ -51,15 +52,24 @@ class BarillasShankenFactors(FactorModel):
     - Factors: R_IA and R_ROE from q-factors. Mkt-RF, SMB and UMD from Fama-French.
     AQR's HML_Devil and RF.
     """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+    
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
-
+    
+    #TODO: set precision to min of models.
+    @property
+    def _precision(self) -> int:
+        return 3
+    
     @property
     def schema(self) -> pa.Schema:
         """Barillas-Shanken schema."""
         return pa.schema([
-            ('date', pa.string()),  # string  #('date', pa.timestamp('ns')), # pandas index becomes timestamp
+            ('date', pa.string()),
             ('Mkt-RF', pa.float64()),
             ('SMB', pa.float64()),
             ('HML_Devil', pa.float64()),
@@ -69,34 +79,30 @@ class BarillasShankenFactors(FactorModel):
             ('RF', pa.float64()),
         ])
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-
     @override
-    def download(self) -> pd.DataFrame:
-        """Overrides base download() to ensure export works."""
-        df = self.data # hit the data property below
-        if self.output_file:
-            self.to_file(df, self.output_file)
-        return df
-
-    @property
-    def data(self) -> pd.DataFrame: #| pa.Table: #TODO: table
-        """Access or construct the Barillas-Shanken factor model."""
+    def _get_table(self) -> pa.Table:
         if self._data is not None:
-            return self._data
+             return self._data
+        
+        # TODO: FIXME(HML_Devil): end date only, messes everything up (HML Devil, and BS6 by ext.)
+        # BAND-AID: If they specified an end date but no start date, 
+        # force the start to earliest AQR date: 1967-01-01
+        if self.end_date is not None and self.start_date is None:
+            self.log.info("End date detected without start date. Clamping to 1967-01-01 for BS6 compatibility.")
+            self._start_date = "1967-01-01"
+        # HML needs redo -- source isn't what it once was, so...
 
-        # for this model, construction is the download process
-        df = self._construct()
-        
-        _ordered = self._rearrange_columns(df)
-        _sliced = self._slice_to_range(_ordered)
-        
-        self._data = _sliced
+        table = self._construct()
+
+        table = self._rearrange_columns(table)
+        table = self._slice_to_range(table)
+
+        # Base class requires this!
+        self._data = table
+
         return self._data
 
-
-    def _construct(self) -> pd.DataFrame:
+    def _construct(self) -> pa.Table:
         """Private: builds the Barillas-Shanken factor model.
         
         Creates the model by calling .extract() on QFactors (R_IA, R_ROE),
@@ -107,44 +113,35 @@ class BarillasShankenFactors(FactorModel):
         - Uses the higher-precision RF from AQR as the risk-free rate (RF).
         - Construction is triggered by the .data property override.
         """
-        #TODO: Check, double-check the source precisions.
-
         self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
-
-        self.log.info("Downloading q-factors...")  #TODO: check if classic is faster
+        
+        print("- Downloading HML Devil Factors...")
         _q = QFactors(frequency=self.frequency).extract(['R_IA', 'R_ROE'])
-
-        self.log.info("Downloading Fama-French factors...")
+        
+        print("- Downloading Fama French Factors...")
         _ff = FamaFrenchFactors(model='6', frequency=self.frequency).extract(['Mkt-RF', 'SMB', 'UMD'])
         
-        self.log.info("Downloading the HML_Devil factors. This can take up to a minute, please be patient...")
+        print("- Downloading HML Devil Factors...")
         _devil = HMLDevilFactors(frequency=self.frequency).extract(['HML_Devil', 'RF'])
 
-        # Quick work around: using pd to join, back to table and 
-        #   enforce the schema.
-        # pd ------------------------------------------------------ #
-        #join not merge
-        df = _ff.join([_q, _devil], how='inner')
-        # fix: index to yyyymmdd str (schema)
-        df.index = df.index.strftime('%Y%m%d')
-        # pa-------------------------------------------------------#
-        table = pa.Table.from_pandas(df.reset_index())
-        # schema enforement for Barillas Shanken here...
-        _ordered = self.schema.names
-        table = table.select(_ordered).cast(self.schema)
-        table.validate(full=True)
+        # join FF and Q, then with HML Devil
+        table = _ff.join(_q, keys='date')
+        table = table.join(_devil, keys='date')
 
-        _df = table.to_pandas().set_index('date')
-        # pd-------------------------------------------------------#
-        return _df
+        #enforce/cast schema
+        table = table.select(self.schema.names).cast(self.schema)
+        
+        # using this util to cast TODO break it up 
+        table = _offset_period_eom(table, self.frequency)
 
+        return table
 
     def _get_url(self) -> str:
         """Composite model: no remote source."""
         return ""
 
-    def _read(self, data: bytes) -> pd.DataFrame:
+    def _read(self, data: bytes) -> pa.Table:
         """Composite model: constructed via sub-models, not parsed from bytes."""
         self.log.warning("BarillasShanken: _read called on composite model.")
-        return pd.DataFrame()
+        return pa.Table()
 
