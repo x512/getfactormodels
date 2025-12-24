@@ -20,11 +20,15 @@ from pathlib import Path
 from typing import Any
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
+from getfactormodels.utils.data_utils import (
+    filter_table_by_date,
+    rearrange_columns,
+    verify_cols_exist,
+)
 from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _save_to_file, _validate_date
 
-# Pandas display opts...
+# Pandas display opts... remove soon TODO
 pd.set_option('display.float_format', lambda x: f'{x:.8f}')
 
 class FactorModel(ABC):
@@ -40,9 +44,9 @@ class FactorModel(ABC):
         logger_name = f"{self.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(logger_name)
 
-        self._data: pa.Table | None = None     #pd.DataFrame | pa.Table | None = None # Internal storage for processed data 
+        self._data: pa.Table | None = None
         self._df: pd.DataFrame | None = None  # new caching the df
-        
+
         self._start_date = None
         self._end_date = None
         self._frequency = None
@@ -53,7 +57,7 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
-        
+
         super().__init__()
     
     def __repr__(self) -> str:
@@ -62,15 +66,15 @@ class FactorModel(ABC):
             f"start_date='{self.start_date}'",
             f"end_date='{self.end_date}'",
         ]
-        
+
         if hasattr(self, 'region') and self.region:
             params.append(f"region='{self.region}'")
-        
+
         if self.output_file:
             params.append(f"output_file='{self.output_file}'")
 
         return f"{self.__class__.__name__}({', '.join(params)})"
-   
+
     def __len__(self) -> int:
         return len(self.data) # length of the df (after slicing)
 
@@ -94,7 +98,7 @@ class FactorModel(ABC):
         if self._end_date != valid:
             self._end_date = valid  # set 
             self._df = None
-    
+
     @property
     def frequency(self) -> str | None: #added none for typehint TODO check
         return self._frequency
@@ -107,13 +111,14 @@ class FactorModel(ABC):
         val = value.lower()
         if val not in self._frequencies:
             raise ValueError(f"Invalid '{val}'. Options: {self._frequencies}") 
-        
+
         if val != self._frequency:
             if self._frequency is not None:
                 self.log.info(f"Freq. changed from {self._frequency} to {val}.")
             self._frequency = val
             self._data = None
             self._df = None
+
 
     @property
     def data(self) -> pd.DataFrame:
@@ -122,9 +127,9 @@ class FactorModel(ABC):
             return self._df
 
         table = self._get_table()
-        
+
         sliced_table = self._slice_to_range(table)
-        
+
         # pd containment zone ------------------------------ # 
         df = sliced_table.to_pandas(date_as_object=False)
         if 'date' in df.columns:
@@ -133,10 +138,6 @@ class FactorModel(ABC):
         self._df = df
         return self._df
         # -------------------------------------------------- #
-
-
-
-
 
 
     def extract(self, factor: str | list[str]) -> pa.Table | pa.ChunkedArray:
@@ -150,20 +151,18 @@ class FactorModel(ABC):
             pa.Series | pa.ChunkedArray: The subset of requested factors.
         """
         table = self._get_table()
-
         _sliced = self._slice_to_range(table)
         _factors = self._check_factors_exist(_sliced, factor)
-        
-        selection = list(set(['date'] + _factors))
-        
+        selection = list(dict.fromkeys(['date'] + _factors))
+
         self._data = _sliced.select(selection) #overwrite with the subset
-        self._df = None
-        
+        self._df = None #force clear
+
         table = self._data
 
-        if isinstance(factor, str):  #array if one col
-            return table.column(selection.index(factor))
-        
+        if isinstance(factor, str):
+            return table.column(factor)
+
         return table
 
 
@@ -178,74 +177,50 @@ class FactorModel(ABC):
             pd.DataFrame: The dataset excluding the specified factors.
         """
         table = self._get_table()
-        _sliced = self._slice_to_range(table)
-        
-        _factors_to_drop = self._check_factors_exist(_sliced, factor)
-        
-        drop_set = {f for f in _factors_to_drop if f != 'date'}
-        cols = [c for c in _sliced.column_names if c not in drop_set]
-        
-        if len(cols) <= 1: #check before update...
-            raise ValueError("Cannot drop all factors from the model.")
-        
-        self._data = _sliced.select(cols) 
+
+        _sliced = self._slice_to_range(table) 
+        to_drop = self._check_factors_exist(_sliced, factor)
+
+        drop_set = set(to_drop)
+        cols = [c for c in _sliced.column_names if c not in drop_set or c == 'date']
+        if 'date' not in cols: cols.insert(0, 'date') # just to be safe
+
+        if len(cols) <= 1:
+            raise ValueError("Can't drop all factors from the model... resulting table would only contain 'date'.")
+
+        self._data = _sliced.select(cols)
         self._df = None
 
         return self._data
 
 
-    # Generic public save to file method. # TODO: better saving util
     def to_file(self, filepath: str | Path | None = None) -> None:
         """Save data to a file.
-
-        If filepath is None, data is saved to user's CWD with generated filename.
-
+ 
         Args:
             filepath (str | Path | None): the filepath to save data to. 
-                Supported extensions: .pkl .csv .txt. .parquet. 
-
+                Supports: .parquet, .ipc, .feather, .csv, .txt, .pkl
+        
         Example:
-            `.to_file()` or `.to_file('custom_name.pkl')`
+            .to_file() or .to_file('custom_name.pkl')
         ---
-        TODO: instead of using cwd, use XDG_USER_CACHE/getfactormodels/data/file.csv
+        Notes:
+        - Used by the CLI via the --output flag.
+        - If filepath is None, data is saved to user's CWD with generated filename.
         """
-        # if self.data is None or self.data.empty:
-        #     self.log.warning("No data to save.")
-        #     return
-
         target = filepath if filepath else self.output_file
-
         if not target:
             self.log.error("No filepath provided and no default output_file set.")
             return
 
-        df = self.data
+        table = self._get_table()
+        sliced_table = self._slice_to_range(table)
 
-        if df is None or df.empty:
+        if sliced_table.num_rows == 0:
             self.log.warning("No data available to save.")
             return
 
-        _save_to_file(df, target, model_instance=self)
-        self.log.info(f"Data saved: {target}")
-
-    
-    def download(self) -> pd.DataFrame:
-        """Download and return the data.
-
-        Will download the latest data or read from cache. If output_file is set on 
-        the model instance, the result is saved. 
-        ---
-        TODO: pyarrow returns.
-        """
-        df = self.data
-    
-        # if path exists, savin
-        if self.output_file:
-            # to_file() logs the save
-            self.to_file()  # using public method now
-
-        return df
-
+        _save_to_file(sliced_table, target, model_instance=self)
 
     def _get_table(self) -> pa.Table:
         """Internal: always returns the full dataset."""
@@ -256,87 +231,10 @@ class FactorModel(ABC):
 
         table = self._read(raw_bytes) 
         self._data = self._rearrange_columns(table)
-        
+
         return self._data 
 
-
-    # TODO: Move utils out, if need in base then have helper in here
-    def _slice_to_range(self, table: pa.Table) -> pa.Table:
-        """Vectorized slicing using PyArrow compute expressions."""
-        start, end = self.start_date, self.end_date
-        if start is None and end is None:
-            return table
-
-        # target the date col and its type
-        date_col = 'date' if 'date' in table.column_names else table.column_names[0]
-        target_type = table.schema.field(date_col).type
-        expr = pc.field(date_col)
-
-        # Build the combined expression
-        mask = None
-        if start:
-            mask = (expr >= pc.scalar(start).cast(target_type))
-        
-        if end:
-            end_mask = (expr <= pc.scalar(end).cast(target_type))
-            mask = (mask & end_mask) if mask is not None else end_mask
-
-        return table.filter(mask) if mask is not None else table
-
-
-    def _rearrange_columns(self, table: pa.Table) -> pa.Table:
-        """Standardize column order between models. 
-        
-        - For the columns that exist in the model, the order is always: 
-        date, Mkt-RF, [FACTORS...], RF.
-        """
-        cols = table.column_names
-
-        if 'date' not in cols:
-            # if 'date' isn't col 0 by now the subclass/model is bad. It's not the user's input.
-            raise RuntimeError(
-                f"Error: '{self.__class__.__name__}' did not create a 'date' column! (cols: {cols})"
-            )
-        
-        front = [c for c in ['date', 'Mkt-RF'] if c in cols]
-        back = [c for c in ['RF'] if c in cols]
-        
-        boundaries = set(front + back)
-        mid = [c for c in cols if c not in boundaries]
-        
-        new_order = front + mid + back
-        
-        if new_order == cols:
-            return table
-            
-        return table.select(new_order)
-
-
-    def _check_factors_exist(self, 
-                            table: pa.Table, 
-                            factors: str | list[str] | None) -> list[str]:
-        """
-        Checks if factors exist in a pyarrow Table. 
-        Returns the list of valid factors or raises if missing.
-        """
-        if table.num_rows == 0:
-            raise RuntimeError("Table is empty.")
-        
-        if not factors: #silently return if nothing to do 
-            return []
-
-        _factors = [factors] if isinstance(factors, str) else list(factors)
-        
-        # Validation against table schema
-        table_cols = set(table.column_names)
-        missing = [f for f in _factors if f not in table_cols]
-
-        if missing:
-            raise ValueError(f"Factors not in Table: {missing}")
-
-        return _factors    
-    
-    # TODO: ff requires two files, allow list passed in, or it's two connections
+    # TODO: ff requires two files... allow list passed in
     def _download(self) -> bytes:
         url = self._get_url()
         log_msg = f"Downloading data from: {url}"
@@ -349,7 +247,16 @@ class FactorModel(ABC):
             # crash fast on download failure
             raise RuntimeError(f"Download failed for {url}.") from e
 
+    def _slice_to_range(self, table: pa.Table) -> pa.Table:
+        return filter_table_by_date(table, self.start_date, self.end_date)
 
+    def _rearrange_columns(self, _table: pa.Table) -> pa.Table:
+        return rearrange_columns(table=_table)
+
+    def _check_factors_exist(self, table: pa.Table, factors: str | list[str] | None) -> list[str]:
+        return verify_cols_exist(table, factors)
+
+    # TODO: Need to specify RF col seperate from factor cols etc.
     @property # new default
     def _precision(self) -> int:
         return 8
