@@ -16,8 +16,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Any, override
 import pyarrow as pa
-import pyarrow.compute as pc
-from getfactormodels.utils.utils import _offset_period_eom
 from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
@@ -60,10 +58,10 @@ class BarillasShankenFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
     
-    #TODO: set precision to min of models.
+    #TODO: set precision to min of models?
     @property
     def _precision(self) -> int:
-        return 3
+        return 8
     
     @property
     def schema(self) -> pa.Schema:
@@ -76,24 +74,16 @@ class BarillasShankenFactors(FactorModel):
             ('R_IA', pa.float64()),
             ('R_ROE', pa.float64()),
             ('UMD', pa.float64()),
-            ('RF', pa.float64()),
+            ('AQR_RF', pa.float64()),
         ])
+
 
     @override
     def _get_table(self) -> pa.Table:
         if self._data is not None:
              return self._data
         
-        # TODO: FIXME(HML_Devil): end date only, messes everything up (HML Devil, and BS6 by ext.)
-        # BAND-AID: If they specified an end date but no start date, 
-        # force the start to earliest AQR date: 1967-01-01
-        if self.end_date is not None and self.start_date is None:
-            self.log.info("End date detected without start date. Clamping to 1967-01-01 for BS6 compatibility.")
-            self._start_date = "1967-01-01"
-        # HML needs redo -- source isn't what it once was, so...
-
         table = self._construct()
-
         table = self._rearrange_columns(table)
         table = self._slice_to_range(table)
 
@@ -102,39 +92,21 @@ class BarillasShankenFactors(FactorModel):
 
         return self._data
 
+
     def _construct(self) -> pa.Table:
-        """Private: builds the Barillas-Shanken factor model.
-        
-        Creates the model by calling .extract() on QFactors (R_IA, R_ROE),
-        HMLDevilFactors (HML_Devil, RF) and FamaFrenchFactors (Mkt-RF, 
-        SMB and UMD).
-        ---
-        NOTE:
-        - Uses the higher-precision RF from AQR as the risk-free rate (RF).
-        - Construction is triggered by the .data property override.
-        """
         self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
-        
-        print("- Downloading HML Devil Factors...")
+
         _q = QFactors(frequency=self.frequency).extract(['R_IA', 'R_ROE'])
-        
-        print("- Downloading Fama French Factors...")
         _ff = FamaFrenchFactors(model='6', frequency=self.frequency).extract(['Mkt-RF', 'SMB', 'UMD'])
         
-        print("- Downloading HML Devil Factors...")
-        _devil = HMLDevilFactors(frequency=self.frequency).extract(['HML_Devil', 'RF'])
+        print(" - Downloading HML Devil factors. This can take a while, please be patient...")
+        _devil = HMLDevilFactors(frequency=self.frequency).extract(['HML_Devil', 'AQR_RF'])
 
-        # join FF and Q, then with HML Devil
-        table = _ff.join(_q, keys='date')
-        table = table.join(_devil, keys='date')
+        table = _ff.join(_q, keys='date', join_type='inner')
+        table = table.join(_devil, keys='date', join_type='inner')
 
-        #enforce/cast schema
-        table = table.select(self.schema.names).cast(self.schema)
-        
-        # using this util to cast TODO break it up 
-        table = _offset_period_eom(table, self.frequency)
-
-        return table
+        return table.select(self.schema.names).cast(self.schema)    
+    
 
     def _get_url(self) -> str:
         """Composite model: no remote source."""
