@@ -67,9 +67,10 @@ getfactormodels -m ff6 -f m --region europe --drop "RF" -o europe_factors.csv
 **`get_factors`**
 
 ```py 
-from getfactormodels import DHSFactors
+import getfactormodels as gfm
 
-model = DHSFactors(
+m = gfm.get_factors(
+    model = 'dhs',
     frequency='m',
     start_date='2000-01-01',
     end_date='2024-12-31',
