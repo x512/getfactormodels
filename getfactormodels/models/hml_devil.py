@@ -17,13 +17,11 @@
 # TODO: break this all up into models/*.py !
 # TODO: httpx, a client class, model classes... (done done and done)
 import io
-from typing import Any
-import pandas as pd
-from getfactormodels.models.base import FactorModel
 import pyarrow as pa
 import pyarrow.compute as pc
 from python_calamine import CalamineWorkbook
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.data_utils import offset_period_eom
 
 
 class HMLDevilFactors(FactorModel):
@@ -42,9 +40,6 @@ class HMLDevilFactors(FactorModel):
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
         output_file (str, optional): The filepath to save the output data.
 
-    Returns:
-        pd.DataFrame: the HML Devil model data indexed by date.
-
     References:
         C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio 
         Management, vol. 39, pp. 49–68, 2013.
@@ -58,20 +53,22 @@ class HMLDevilFactors(FactorModel):
     TODO: smarter caching for HML Devil download.
     TODO: progress bar for AQR (defeated)
     TODO: check source...
+    TODO: country code to region
     """
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]  # TODO: aqr d/m only? 
 
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 43200, **kwargs: Any) -> None:
+    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 43200, country_code: str = 'usa', **kwargs):
+        self.country_code = country_code.upper()
         self.cache_ttl = cache_ttl
-        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
+        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs) 
+        # TESTING, ROUGH
+        self.country_code = country_code.upper() # 'USA', 'AUS', 'JPN', etc.
 
-    def _get_url(self) -> str:
-        base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
-        file = 'daily' if self.frequency == 'd' else 'monthly'
-
-        return f'{base_url}Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
+    @property 
+    def _precision(self) -> int:
+        return 10 
 
     @property
     def schema(self) -> pa.Schema:
@@ -85,88 +82,129 @@ class HMLDevilFactors(FactorModel):
             ('RF', pa.float64()),
         ])
 
+
+    def _get_url(self) -> str:
+        file = 'daily' if self.frequency == 'd' else 'monthly'
+        base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
+        return f'{base_url}Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
+
+
+    def _aqr_dt_fix(self, d) -> str:
+        """Fixes AQR's 'MM/DD/YYYY' format."""
+        if isinstance(d, str) and '/' in d:
+            m, day, y = d.split('/')
+            return f"{y}{m.zfill(2)}{day.zfill(2)}"
+        if hasattr(d, 'strftime'):
+            # for the dt objects from Calamine
+            return d.strftime("%Y%m%d")
+        return str(d)
+    
+    def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
+        rows = wb.get_sheet_by_name(sheet_name).to_python()
+        headers = [str(h).strip() for h in rows[18]]
+        data_rows = rows[19:]
+        
+        try:
+            col_idx = headers.index(self.country_code)
+        except ValueError:
+            # Fallback to USA or raise error if the region doesn't exist in this tab
+            col_idx = self.country_code.index('USA') if 'USA' in headers else 1
+
+        dates, values = [], []
+        # TODO: countries
+        # Looking at the dataset, can extend FF's region param fully into HML Devil!!
+        # AUS  AUT	BEL	CAN	CHE	DEU	DNK	ESP	FIN	FRA	GBR	GRC	HKG	IRL	
+        #   ISR	ITA	JPN	NLD	NOR	NZL	PRT	SGP	SWE	USA
+        #
+        # v rough, implemented, must be one of above, not user friendly at all. 
+        # Aggregates won't work as uppercase... 
+        # TODO: PROPERLY! with ff's regions
+        for r in data_rows:
+            if not r or r[0] is None or r[col_idx] == '': 
+                continue # skip rows where USA has no data? Nans?
+                
+            dates.append(self._aqr_dt_fix(r[0]))
+            values.append(float(r[col_idx]))  # NOTE: EVERY FACTOR GETS PREPENDED WITH {country_code}_ AND RF BECOMES 1M_US_TBILL (KEEP AS RF FOR NOW)
+
+        return pa.Table.from_pydict({"date": dates, sheet_name: values})
+    
     def _read(self, data: bytes) -> pa.Table:
-        """Reads the HML Devil XLSX"""
-        workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
-        sheets = {0: 'HML Devil', 4: 'MKT', 5: 'SMB', 7: 'UMD', 8: 'RF'}
+        wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
+        
+        sheet_map = {
+            'HML Devil': 'HML_Devil',
+            'MKT': 'Mkt-RF',
+            'SMB': 'SMB_AQR',
+            'UMD': 'AQR_UMD',
+            'RF': 'AQR_RF',
+        }
 
-        table_list = []
+        # Extract and align
+        tables = []
+        for sheet in sheet_map:
+            t = self._process_sheet(sheet, wb)
+            t = offset_period_eom(t, self.frequency)
+            tables.append(t)
 
-        for idx, sheet_name in sheets.items():
-            rows = workbook.get_sheet_by_name(sheet_name).to_python()
+        # 'left outer' join using HML Devil col 
+        table = tables[0]
+        for t in tables[1:]:
+            table = table.join(t, keys='date', join_type='left outer')
+            # consolidate memory after join
+            table = table.combine_chunks() 
 
-            # AQR headers: 18, data: 19-
-            headers = [str(h).strip() for h in rows[18]]
-            data_rows = rows[19:]
+        #  sort after outer joins
+        table = table.sort_by([(table.schema.names[0], "ascending")])
 
-            col_idx = headers.index('USA') if 'USA' in headers else 1
+        # Rename and prefix if country_code
+        is_intl = self.country_code not in ['US', 'USA', 'us', 'usa', None]
+        prefix = f"{self.country_code}_" if is_intl else ""
+        
+        new_names = []
+        for col in table.column_names:
+            if col == 'date':
+                new_names.append('date')
+                continue
+            
+            base_name = sheet_map.get(col, col)
 
-            dates, values = [], []
-            for row in data_rows:
-                if not row or row[0] is None: continue
+            if base_name in ['RF', 'AQR_RF']:
+                new_names.append(base_name)
+            else:
+                new_names.append(f"{prefix}{base_name}")
 
-                # AQR date format = MM/DD/YYYY... 
-                # Makes a YYYYMMDD string to _offset_period_eom
-                d = row[0]
-                if isinstance(d, str) and '/' in d:
-                    m, day, y = d.split('/')
-                    date_val = f"{y}{m.zfill(2)}{day.zfill(2)}"
-                elif hasattr(d, 'strftime'):
-                    date_val = d.strftime("%Y%m%d")
-                else:
-                    date_val = str(d)
+        table = table.rename_columns(new_names)
 
-                # normalization
-                val = row[col_idx]
-                if not isinstance(val, (int, float)): continue
+        # Rounding here 
+        # fix: _precision for factors, but 4 for RF.
+        for col_name in table.column_names:
+            if col_name == 'date':
+                continue
+            
+            idx = table.schema.get_field_index(col_name)
+            prec = 4 if col_name in ['RF', 'AQR_RF'] else self._precision
+            
+            rounded_col = pc.round(table.column(idx), prec)
+            table = table.set_column(idx, col_name, rounded_col)
 
-                dates.append(date_val)
-                values.append(float(val))
+        return table
+"""
+Fama French Regions, AQR countries/aggregate equity portfolios
+Global	
+Global Ex USA	
+Europe
+North America	
+Pacific
+---
+EQUITIES (Regions in FF):
+USA
+JPN
+---
+AUS	AUT	BEL	CAN	CHE	DEU	DNK	ESP	FIN	FRA	GBR	GRC	HKG	IRL	ISR	ITA	JPN	NLD	NOR	NZL	PRT	SGP	SWE	USA
 
-            temp_table = pa.Table.from_pydict({"date": dates, sheet_name: values})
 
-            temp_table = _offset_period_eom(temp_table, self.frequency)
-
-            table_list.append(temp_table)
-
-        final_table = table_list[0]
-
-        for next_t in table_list[1:]:
-            final_table = final_table.join(next_t, keys="date")
-
-        final_table = final_table.cast(self.schema)
-
-        rename_map = {'MKT': 'Mkt-RF', 
-                      'HML Devil': 'HML_Devil', 
-                      'SMB': 'SMB_AQR'}
-
-        renames = ['date' if n == 'Date' else rename_map.get(n, n) for n in final_table.column_names]
-
-        table = final_table.rename_columns(renames)
-        print(table)
-
-        # TODO: allow returning nulls? allow returning series?
-        # HML Devil factor goes back to 1926? Return NaNs then for all others...
-        #final_table = pc.drop_null(final_table)
-
-        #return table 
-
-        df = table.to_pandas().set_index('date')
-
-        # --------------------------------------------------------------------------------#
-        # Base will do this shortly...
-        df.index = pd.to_datetime(df.index)
-        #leading_nans_count = (~df.notna()).cumprod(axis=0).sum(axis=0)
-        #print("DataFrame:")
-        #print(df)
-        #print("\nNumber of leading NaNs per row before leaving class:")
-        #print(leading_nans_count)
-        precision = 8 if self.frequency == 'd' else 4
-        return df.round(precision)
-
-        # From func - cache stuff -- OLD CACHE STUFF
-        #self.cache_dir = Path('~/.cache/getfactormodels/aqr/hml_devil').expanduser()
-        #self.cache_dir.mkdir(parents=True, exist_ok=True)
-        #self.cache = dc.Cache(str(self.cache_dir)) # diskcache requires a string path
-        # TODO: can see the last modified date in debug log; possibly set cache
-        # according to this
+No RF's per country provided
+List countries needed
+Add error handling/validations
+Output to CLI then needs titles, FF and AQR specifics...
+"""
