@@ -17,50 +17,81 @@ import io
 import zipfile
 from typing import Any
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.csv as pv
-###import pandas as pd
 from getfactormodels.models.base import FactorModel
+from getfactormodels.utils.data_utils import scale_to_decimal, offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
-from getfactormodels.utils.utils import _offset_period_eom, _decimalize
 
 
 #TODO: break up _read_zip
 class FamaFrenchFactors(FactorModel):
-    # will do proper docstr later. TODO: utils and getting every model with pyarrow and pushing pandas to
-    # boundaries.
     """Download Fama-French (and Carhart) factor models.
 
     Downloads the 3-factor (1993), 5-factor (2015), or 6-factor (2018)
-    model of Fama & French, or Carhart's (1997) 4-factor model. Data
-    is available in daily, weekly, monthly, and annual frequencies.
-    Saves data to file if `output_file` is specified.
+    model of Fama & French, or Carhart's (1997) 4-factor model.
 
-    Args:
+    Weekly data only available for the 3-factor model.
+
+    Args
         model (str | int): model to return. '3' '4' '5' '6' (default: '3')
         frequency (str, optional): frequency of the data. 'd' 'm' 'y' 'w'
-            (default: 'm'). Weekly only available for the 3-factor model.
+            (default: 'm').
         start_date (str, optional): start date of the data. YYYY[-MM-DD].
         end_date (str, optional): end date of the data. YYYY[-MM-DD].
         cache_ttl (int, optional`): cached download time-to-live in seconds 
             (default: 86400).
-        region (str, optional): return a region-specific (emerging/developed)
-            factor model.
+        region (str, optional): return an international/emerging market 
+            model.
 
-    Returns:
-        `pd.Dataframe`: time series of returned data.
+    References
+    - E. F. Fama and K. R. French, ‘Common risk factors in the returns 
+      on stocks and bonds’, Journal of Financial Economics, vol. 33, 
+      no. 1, pp. 3–56, 1993.
+    - E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, 
+      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
+    - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of 
+      Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
 
-    References:
-    - E. F. Fama and K. R. French, ‘Common risk factors in the returns on stocks 
-    and bonds’, Journal of Financial Economics, vol. 33, no. 1, pp. 3–56, 1993.
-    - E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, Journal 
-    of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
-    - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of Financial 
-    Economics, vol. 128, no. 2, pp. 234–252, 2018.
     """
+    # TODO: NaNs in FamaFrench models!
+
     @property
     def _frequencies(self) -> list[str]:
         return ['d', 'w', 'm', 'y']
+
+    @property 
+    def _precision(self) -> int:
+        return 6  
+
+    @property
+    def _ff_region_map(self) -> dict[str, str]:
+        """Private: map input to region"""
+        return {
+            'us': 'us',
+            'emerging': 'Emerging',
+            'developed': 'Developed',
+            'ex-us': 'Developed_ex_US',
+            'ex us': 'Developed_ex_US',
+            'europe': 'Europe',
+            'japan': 'Japan',
+            'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
+            'na': 'North_America',
+            'north_america': 'North_America',
+        }
+
+    def __init__(self, 
+                 frequency: str = 'm', 
+                 model: int | str = '3', 
+                 region: str | None = 'us', 
+                 **kwargs: Any) -> None:
+        """Initialize the Fama-French factor model."""
+        self.model = str(model)
+        self.region = None if region is None else self._ff_region_map.get(region.lower(), None)
+        super().__init__(frequency=frequency, 
+                         model=model, 
+                         **kwargs)
+
+        self._validate_ff_input()
 
     @property
     def schema(self) -> pa.Schema:
@@ -80,7 +111,7 @@ class FamaFrenchFactors(FactorModel):
         if self.model in ["4", "6"]:
             _intl = self.region not in ["us", None]
             
-            # dev/emerging: WML. US 6 factor: UMD. US 4: MOM. [missing something??]
+            # dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
             mom_name = "WML" if _intl else ("UMD" if self.model == "6" else "MOM")
             cols.append((mom_name, pa.float64()))
         cols.append(("RF", pa.float64()))
@@ -95,37 +126,6 @@ class FamaFrenchFactors(FactorModel):
         """
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
-
-    @property  # new: now property
-    def _ff_region_map(self) -> dict[str, str]:
-        """Private: map input to region"""
-        return {
-            'us': 'us',
-            'emerging': 'Emerging',
-            'developed': 'Developed',
-            'ex-us': 'Developed_ex_US',
-            'ex us': 'Developed_ex_US',
-            'europe': 'Europe',
-            'japan': 'Japan',
-            'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
-            'na': 'North_America',
-            'north_america': 'North_America',
-        }
-    @property 
-    def _precision(self) -> int:
-        return 8
-
-    def __init__(self, frequency: str = 'm', 
-                 model: int | str = '3', 
-                 region: str | None = 'us', 
-                 **kwargs: Any) -> None:
-        self.model = str(model)
-        self.region = None if region is None else self._ff_region_map.get(region.lower(), None)
-        super().__init__(frequency=frequency, 
-                         model=model, 
-                         **kwargs)
-        
-        self._validate_ff_input()
 
     def _validate_ff_input(self) -> None:
         if self.model not in ["3", "4", "5", "6"]:
@@ -144,28 +144,29 @@ class FamaFrenchFactors(FactorModel):
     def _get_url(self) -> str:
         """Constructs the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        # Default: region=US
+        
+        # Emerging: only monthly 5-factors avail
+        if self.region == 'Emerging':
+            return f"{base_url}/Emerging_5_Factors_CSV.zip"
+
         if self.region in ['us', None]:
             _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
             freq_map = {'d': '_daily', 'w': '_weekly'}
             suffix = freq_map.get(self.frequency, "")
             
-            return f"{base_url}/{_model}{suffix}_CSV.zip"
+            filename = f"{_model}{suffix}_CSV.zip"
 
-        # Emerging: only monthly 5-factors avail
-        if self.region == 'Emerging':
-            return f"{base_url}/Emerging_5_Factors_CSV.zip"
+        else:
+            # regions: 3 and 4 use 3. 5 and 6 use the 5-factor file.
+            base_model = '3' if self.model in ['3', '4'] else '5'
+            daily = '_Daily' if self.frequency == 'd' else ''
+            filename = f"{self.region}_{base_model}_Factors{daily}_CSV.zip"
 
-        # region: 3 and 4 use 3 factors data, 5 and 6 use 5.
-        base_model = '3' if self.model in ['3', '4'] else '5'
-        _daily = '_Daily' if self.frequency == 'd' else ''
-        region_filename = f"{self.region}_{base_model}_Factors{_daily}_CSV.zip"
-
-        return f"{base_url}/{region_filename}"
+        return f"{base_url}/{filename}"
 
 
     def _get_mom_url(self) -> str:
-        """Constructs URL for the required mom file."""
+        """Constructs the URL for the required momentum file."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
         freq_suffix = "_daily" if self.frequency == 'd' else ""
 
@@ -181,69 +182,80 @@ class FamaFrenchFactors(FactorModel):
     def _read_zip(self, _data: bytes, use_schema: pa.Schema = None) -> pa.Table:
         """Download and read CSV from zip file."""
         _schema = use_schema if use_schema else self.schema
-        
+
         with zipfile.ZipFile(io.BytesIO(_data)) as z:
             filename = z.namelist()[0]
             with z.open(filename) as f:
                 lines = f.read().decode('utf-8').splitlines()
 
-        # Gotta break this up
-
         # skip lines/where the data starts 
         is_mom = 'momentum' in filename.lower() or '_mom_' in filename.lower()
-        start_idx = 6 if self.region == 'Emerging' else (12 if is_mom else 4)
-       
-        # TESTING: copyright info
-        if is_mom:
-            last_line = lines[-2].strip() if lines else ""
+
+        annual_marker = None
+        for i, line in enumerate(lines):
+            if "annual factors:" in line.lower():
+                annual_marker = i
+                break
+
+        if self.frequency == 'y':
+            start_line = annual_marker + 1
+            raw_content = lines[start_line:]
         else:
-            last_line = lines[-1].strip() if lines else ""
-        if "copyright" in last_line.lower():
-            if last_line not in self.copyright:  # will extend to metadata TODO
-                self.copyright = f"{self.copyright} | {last_line}".strip(" | ")
-        
-        # filter content
+            _start = 6 if self.region == 'Emerging' else (12 if is_mom else 4)
+            _stop = annual_marker if annual_marker else len(lines)
+            raw_content = lines[_start:_stop]
+
+        #testing .copyright -- need to find in intl files
         content = []
-        for line in lines[start_idx:]:
-            _lower = line.lower()
-            # stop on annual marker or copyright footer:
-            if "annual factors" in _lower or "copyright" in _lower:
+        for line in raw_content:
+            if "copyright" in line.lower():
+                self.copyright = line.strip()
+                break
+            if "annual factors" in line.lower():
                 break
             if line.strip():
                 content.append(line)
 
-        # pa to read
         table = pv.read_csv(
             io.BytesIO("\n".join(content).encode('utf-8')),
-            convert_options=pv.ConvertOptions(
-                null_values=['-99.99', '-999', ' -99.99', ' -999'],
-                column_types=_schema, 
+            convert_options = pv.ConvertOptions(
+                null_values=["-99.99", "-999"],
+                strings_can_be_null=True,
             ),
         )
-        
-        return table.rename_columns(["date"] + table.column_names[1:])
+
+        return table.rename_columns(["date"] + table.column_names[1:])    
     
+
+    def _add_momentum(self, table: pa.Table) -> pa.Table:
+        """Private helper to download and join the specific momentum
+        factor required."""
+
+        with _HttpClient(timeout=15.0) as client:
+            mom_zip = client.download(self._get_mom_url(), self.cache_ttl)
+
+        mom_table = self._read_zip(mom_zip, use_schema=self._mom_schema)
+        
+        # WML for intl, UMD for US 6, MOM for US 4
+        mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
+        mom_table = mom_table.rename_columns(["date", mom_key])
+
+        return table.join(mom_table, keys="date", join_type="inner").combine_chunks()
+
 
     def _read(self, data: bytes) -> pa.Table:
         table = self._read_zip(data, use_schema=self.schema)
 
         if self.model in {"4", "6"}:
-            with _HttpClient(timeout=15.0) as client:
-                mom_bytes = client.download(self._get_mom_url(), self.cache_ttl)
-            
-            mom_table = self._read_zip(mom_bytes, use_schema=self._mom_schema)
-            mom_key = (set(self.schema.names) & {"UMD", "MOM", "WML"}).pop()
-            mom_table = mom_table.rename_columns(["date", mom_key])
-            table = table.join(mom_table, keys="date", join_type="inner")
-        
+            table = self._add_momentum(table)
+
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
-        
-        table = _offset_period_eom(table, self.frequency)
-        table = _decimalize(table, self.schema, self._precision)
-        
-        # cast schema/validate against it
-        table = table.select(self.schema.names).filter(pc.is_valid(table.column(1)))
-        
-        table.validate(full=True)
-        
+        table = offset_period_eom(table, self.frequency)
+
+        # rebuild the table once, not set column in a loop
+        table = scale_to_decimal(table)
+        #table = round_to_precision(table, self._precision)  # base handles this
+        table = table.select(self.schema.names).combine_chunks()
+        table.validate()
+
         return table

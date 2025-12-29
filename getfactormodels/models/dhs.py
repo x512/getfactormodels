@@ -16,42 +16,36 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import io
 from typing import Any
-import pandas as pd
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.utils import _offset_period_eom, _decimalize
+from getfactormodels.utils.data_utils import round_to_precision, scale_to_decimal, offset_period_eom
 
 
 class DHSFactors(FactorModel):
     """
-    DHS Behavioural Factors (Daniel-Hirshleifer-Sun, 2020)
+    Download and process the DHS Behavioural Factors.
 
-    Downloads the Behavioural Factors of Kent Daniel, David Hirshleifer, and 
-    Lin Sun (DHS). Data from July 1972 - December, 2023.
+    Behavioural Factors of Kent Daniel, David Hirshleifer, and 
+    Lin Sun (DHS). Data from July 1972 - December, 2023. Factors: FIN, PEAD
 
-    Args:
+    Args
         frequency (str): The data frequency, 'm'.
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file. Supports csv, pkl.
-        cache_ttl (int, optional): Cached download time-to-live in seconds (default: 86400).
+        output_file (str, optional): Optional file path to save to file.
+            Supports csv, pkl.
+        cache_ttl (int, optional): Cached download time-to-live in 
+            seconds (default: 86400).
 
-    Returns:
-        pd.Dataframe: timeseries of factors.
-
-    References:
+    References
     - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
     Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
     1673-1736.
 
-    Data source: https://sites.google.com/view/linsunhome/
-
-    Factors: FIN, PEAD
-    ---
-    TODO:
     """
+    # Data source: https://sites.google.com/view/linsunhome/
     # copyright/attribution info! TODO
     @property
     def _frequencies(self) -> list[str]:
@@ -59,13 +53,11 @@ class DHSFactors(FactorModel):
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         """Initialize the DHS factor model."""
-        # TODO: docstrings, class, init, module level...
         super().__init__(frequency=frequency, **kwargs)
 
     @property
     def _precision(self) -> int:
-        return 12      # TODO CHECK SOURCE
-
+        return 12
 
     @property  # note: DHS factors swap cols between frequencies.
     def schema(self) -> pa.Schema:
@@ -91,7 +83,7 @@ class DHSFactors(FactorModel):
 
         return  f'{base_url}{gsheet_id}/export?format=xlsx'  # back to xlsx with calamine. need those decimals!
 
-    # Uses calamine to read a xlsx. Uses pyarrow, converts to dataframe for FF at end still. TODO: FIXME
+    # Uses calamine to read a xlsx.
     def _read(self, data: bytes) -> pa.Table:
         workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = workbook.get_sheet_by_name(workbook.sheet_names[0]).to_python()
@@ -104,8 +96,7 @@ class DHSFactors(FactorModel):
 
         # force date to str (eom expects str)
         table = table.set_column(0, "Date", table.column(0).cast(pa.string()))
-
-        table = _offset_period_eom(table, self.frequency)
+        table = offset_period_eom(table, self.frequency)
 
         if "date" in table.column_names:
             table = table.rename_columns(["Date"] + table.column_names[1:])
@@ -113,7 +104,10 @@ class DHSFactors(FactorModel):
         # selecting to avoid the extra col error when Year Month present
         table = table.select(self.schema.names).cast(self.schema)
         
-        table = _decimalize(table, self.schema, self._precision)
+        # requires scaling
+        table = scale_to_decimal(table)
+        #table = round_to_precision(table, self._precision)
+
         # m/d swap PEAD/FIN cols, this returns them in same orders
         output_names = ['date', 'PEAD', 'FIN']
         table = table.select(['Date', 'PEAD', 'FIN']).rename_columns(output_names)
@@ -121,21 +115,20 @@ class DHSFactors(FactorModel):
         table.validate(full=True)  #TODO remove full when base does this
 
         # wrap in FF Mkt-RF and RF
-        table = _offset_period_eom(table, self.frequency)
-        try:
-            ff_model = FamaFrenchFactors(
-                model="3", 
-                frequency=self.frequency,
-                start_date=self.start_date, 
-                end_date=self.end_date,
-            )
-            ff_table = ff_model._get_table()
-            table = table.join(ff_table, keys="date", join_type="inner")
-            final_cols = ['date', 'Mkt-RF', 'PEAD', 'FIN', 'RF']
-            table = table.select(final_cols)
+        table = offset_period_eom(table, self.frequency)
+        ff_model = FamaFrenchFactors(
+            model="3", 
+            frequency=self.frequency,
+            start_date=self.start_date, 
+            end_date=self.end_date,
+        )
+        ff_table = ff_model._get_table()
+        # join, then combine_chunks!
+        table = table.join(ff_table, keys="date", join_type="inner")
+        table = table.combine_chunks() #.sort_by([("date", "descending")])
 
-        except Exception as e:
-            self.log.warning(f"FF join skipped: {e}")
+        final_cols = ['date', 'Mkt-RF', 'PEAD', 'FIN', 'RF']
+        table = table.select(final_cols)
 
         table.validate()
         return table

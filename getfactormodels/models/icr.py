@@ -17,51 +17,54 @@
 import io
 from typing import Any
 import pyarrow as pa
-import pyarrow.csv as pv
 import pyarrow.compute as pc
+import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.data_utils import offset_period_eom
 
 
 class ICRFactors(FactorModel):
     """
-    Download the Intermediary Capital Ratio of He, Kelly, Manela (2017)
+    Download the Intermediary Capital Ratio of He, Kelly, Manela (2017).
 
-    Args:
-        frequency (str): The data frequency ('d', 'm', 'q') (default: 'm').
-        start_date (str, optional): The start date YYYY-MM-DD for the factor data
+    Monthly and quarterly data start in 1970, daily begins on 1999-05-03.
+
+    Args
+        frequency (str): The data frequency, 'd' 'm' 'q' (default: 'm')
+        start_date (str, optional): The start date YYYY-MM-DD
         end_date (str, optional): The end date YYYY-MM-DD
-        output_file (str, optional): optional filepath to save data to. Supports .csv, .pkl.
-        cache_ttl (int): Time-to-live for cache in seconds (default: 86400).
+        output_file (str, optional): optional filepath to save data to. 
+          Supports .csv, .pkl.
+        cache_ttl (int): Time-to-live for cache in seconds 
+          (default: 86400).
 
-    Returns:
-        pd.DataFrame
-
-    References:
+    References
     - Z. He, B. Kelly, and A. Manela, ‘Intermediary asset pricing: New evidence
     from many asset classes’, Journal of Financial Economics, vol. 126, no. 1, 
     pp. 1–35, 2017. (https://doi.org/10.1016/j.jfineco.2017.08.002)
 
-    Data source: https://zhiguohe.net
     ---
-    NOTES:
-    - Quarterly data source (as of Dec 2025) contains duplicate entries 
+    Notes
+    - quarterly data (as of Dec 2025) contains a duplicate entry
       for 2025Q1.
-    - Data availability: Monthly/Quarterly: 1970. Daily: 1999-05-03.
-    - NaNs: daily IC_RISK factor has 2180 empty leading values, begins in 2008. (quarterly, 
-    monthly IC_RISK goes back to 1970).
+    - NaNs: daily IC_RISK factor doesn't begin until 2008.
     - Precision: Quarterly: 4 decimals before 2013, 18 after.
-    - FACTORS:
-        - IC_RATIO: Intermediary Capital Ratio 
-        - IC_RISK: Intermediary Capital Risk Factor 
-        - VW_IR: Intermediary Value Weighted Investment Return
-        - LEV_SQ: Intermediary Leverage Ratio Squared
+    
+    Factors
+    - IC_RATIO: Intermediary Capital Ratio 
+    - IC_RISK: Intermediary Capital Risk Factor 
+    - VW_IR: Intermediary Value Weighted Investment Return
+    - LEV_SQ: Intermediary Leverage Ratio Squared
+    
     """
+    # Data source: https://zhiguohe.net
+
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m", "q"]
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
+        """Initialize the ICR Factor model."""
         super().__init__(frequency=frequency, **kwargs)
     
     @property
@@ -94,7 +97,7 @@ class ICRFactors(FactorModel):
                     include_columns=self.schema.names,
                     null_values=[".", "NA", "nan", ""],
                     check_utf8=True,
-                )
+                ),
             )
         except (pa.ArrowInvalid, KeyError) as e:
             raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
@@ -113,28 +116,15 @@ class ICRFactors(FactorModel):
             table = table.set_column(0, "date", pc.cast(date_str, pa.timestamp('ns')))
         
         #offset util 
-        table = _offset_period_eom(table, self.frequency)
+        table = offset_period_eom(table, self.frequency)
         
         # TODO: base should report any repeats in date col 
         # TODO: possibly check if last row is a duplicate quarter and drop it 
         
-        output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"] # renamed. Docstr needs to list factors.. TODO..
+        output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"] # renamed.
 
         if len(table.column_names) == len(output_cols):
             table = table.rename_columns(output_cols)
 
         table.validate()
         return table
-
-## NOTES ##########################
-# - 20251, 20251: err, 'qtr in progress', or q2?
-# - Daily data: starts at 1999-05-03, others 1970.
-# - The factor "IC_RISK_FACTOR" doesn't start until 2008.
-#     20071231,0.054184042885248127,,0.002794355636822843,340.60983767904156
-#     20080102,0.0534001171270667,-0.014500376955897757,-0.014935307118801533,350.68370058245614
-#     NaNs (daily only): IC_RISK_FACTOR: first 2180 values
-# - Decimals change at 2013, quarterly:
-#     20123,0.0433,0.0599,0.1086,534.2535
-#     20124,0.049,0.1108,0.1367,417.2462
-#     20131,0.047232556885232674,0.01682231506466723,0.0711293544918774,448.2466860180383
-#     20132,0.049717547164912494,0.03834382965518407,0.05416122668963008,404.5578300568576

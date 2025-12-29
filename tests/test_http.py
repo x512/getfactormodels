@@ -20,7 +20,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 from getfactormodels.utils.http_client import ClientNotOpenError
-from getfactormodels.utils.http_client import _HttpClient as HttpClient # RENAMED
+from getfactormodels.utils.http_client import \
+    _HttpClient as HttpClient  # RENAMED
 
 
 @pytest.fixture

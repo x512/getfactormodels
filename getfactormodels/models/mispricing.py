@@ -19,17 +19,17 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.data_utils import offset_period_eom
 
 
-# TODO: proper class docstr's.
 class MispricingFactors(FactorModel):
-    """Mispricing factors of Stambaugh & Yuan (2016).
+    """
+    Mispricing Factors of Stambaugh & Yuan.
 
-    Downloads the Mispricing factors of R. F. Stambaugh and Y. Yuan.
-    Data from 1963 to 2016. Note: the SMB factor is returned as SMB_SY.
+    Download and process the Mispricing factor data of Stambaugh-Yuan
+    (2016). Data from 1963 to 2016. The SMB factor is returned as SMB_SY.
 
-    Args:
+    Args
         frequency(str, optional): 'm' (monthly), 'd' (daily)
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
@@ -40,25 +40,23 @@ class MispricingFactors(FactorModel):
         cache_ttl (int, optional): Cached download time-to-live in 
             seconds (default: 86400).
 
-    Returns:
-        pd.DataFrame: timeseries of factor data.
-
-    References:
-    - Pub: R. F. Stambaugh and Y. Yuan, ‘Mispricing Factors’, The Review 
+    References
+    - R. F. Stambaugh and Y. Yuan, ‘Mispricing Factors’, The Review 
       of Financial Studies, vol. 30, no. 4, pp. 1270–1315, 12 2016.
 
-    Data source: https://finance.wharton.upenn.edu/~stambaug/
     """
+    #Data source: https://finance.wharton.upenn.edu/~stambaug/
+
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
     def __init__(self, **kwargs: Any) -> None:
+        """Initialize the MispricingFactors model."""
         super().__init__(**kwargs)
 
     @property   # decimalized already. d/m: MKTRF=6,[FACTORS]=10, RF=5.
-    def _precision(self) -> int:
-        return 12
+    def _precision(self) -> int: return 12
         
     @property
     def schema(self) -> pa.Schema:
@@ -106,7 +104,7 @@ class MispricingFactors(FactorModel):
                 convert_options=convert_opts,
             )
 
-            table = _offset_period_eom(table, self.frequency) 
+            table = offset_period_eom(table, self.frequency) 
             table = table.rename_columns([
                 'date',     # YYYYMM
                 'Mkt-RF',   # MKTRF
@@ -116,14 +114,10 @@ class MispricingFactors(FactorModel):
                 'RF',
             ])
 
-            #initial_rows = table.num_rows
-            #table = table.drop_null()
-            #self.log.debug(f"Read {table.num_rows} rows "
-            #               f"(dropped {initial_rows - table.num_rows} NaNs)")
-            # No NaNs in data source
             table.validate()
             return table
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            self.log.error(f"Reading table failed: {e}")
+            errmsg = f"Reading table failed: {e}"
+            self.log.error(errmsg)
             return pa.Table.from_batches([], schema=self.schema)

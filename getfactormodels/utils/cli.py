@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 
 # This avoids importing __init__ just for the ver
@@ -72,7 +72,6 @@ def parse_args() -> argparse.Namespace:
                         " and international markets. Defaults to 'us'.")
 
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
-
     args = parser.parse_args()
 
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:

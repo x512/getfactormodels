@@ -20,41 +20,42 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _decimalize, _offset_period_eom
+from getfactormodels.utils.data_utils import round_to_precision, scale_to_decimal, offset_period_eom
 
 
 class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
-    """Download q-factor data from global-q.org.
+    """
+    Download and process q-factor data from global-q.org.
 
-    Args:
+    Args
         frequency (str): the frequency of the data. d, m, y, q, w, w2w.
         start_date (str, optional): start date, YYYY-MM-DD.
         end_date (str, optional): end date, YYYY-MM-DD.
         classic (bool, optional): returns original 4-factor model.
+        output_file (str, optional): Path to save the data automatically.
         cache_ttl (int, optional): cache TTL in seconds.
 
-    Returns:
-        pd.DataFrame: timeseries of factors.
-    
-    References:
+    References
     - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented 
-    q-factor model with expected growth, Review of Finance 25 (1), 
-    1-41.
+      q-factor model with expected growth, Review of Finance 25 (1), 
+      1-41.
     - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An 
-    investment approach, Review of Financial Studies 28 (3), 650-705.
+      investment approach, Review of Financial Studies 28 (3), 650-705.
 
-    Data Source: https://global-q.org/factors.html
     """
+    # Data Source: https://global-q.org/factors.html
+
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
 
     def __init__(self, *, classic: bool = False, **kwargs: Any) -> None:
+        """Initialize the QFactors model."""
         self.classic = classic 
-        super().__init__(classic=classic, **kwargs)
-
-    @property 
-    def _precision(self) -> int: return 8
+        super().__init__(**kwargs)
+    
+    @property
+    def _precision(self) -> int: return 6
 
     @property
     def schema(self) -> pa.Schema:
@@ -111,42 +112,31 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
 
             if self.frequency == "q":
                 _period = pc.multiply(_period, 3)
-
-            # padding
-            _p_str = _period.cast(pa.string())
-            _p_clean = pc.utf8_lpad(_p_str, width=2, padding="0") #!!!!
-
-            # join the 2 cols
+            
+            _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
             date_str = pc.binary_join_element_wise(_year, _p_clean, "")
+            
             table = table.set_column(0, "date", date_str).remove_column(1)
-
-        else: # y, d, w: single col
+        else:
             date_raw = table.column(0).cast(pa.string())
-            
-            #YYYY to YYYY1231
-            if self.frequency == "y": 
-                date_str = pc.binary_join_element_wise(date_raw, 
-                                                       pa.scalar("1231"), "")
-            else: # For 'd' or 'w', just make sure it's 8
-                date_str = pc.utf8_lpad(date_raw, width=8, padding="0")
-            
-        table = table.set_column(0, "date", date_str)
-        table = _offset_period_eom(table, self.frequency)
-        
-        # New helper!! Decimalizing here
-        table = _decimalize(table, self.schema, self._precision)
-        table.validate(full=True)
- 
-        rename_map = {"R_F": "RF",  # TODO: make RF R_F or RF_Q?
-                      "R_MKT": "Mkt-RF"}
-        renames = [rename_map.get(n, n) for n in table.column_names]
-        table = table.rename_columns(renames)
+            date_str = pc.binary_join_element_wise(date_raw, pa.scalar("1231"), "") if self.frequency == "y" \
+                       else pc.utf8_lpad(date_raw, width=8, padding="0")
+            table = table.set_column(0, "date", date_str)
 
-        #base will handle this 
-        # TODO: if col exists, then date Mkt-RF [FACTORS] RF
-        col_order = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  
+        table = offset_period_eom(table, self.frequency)
         
+        rename_map = {"R_F": "RF",
+                      "R_MKT": "Mkt-RF"}
+        table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
+
+        table = scale_to_decimal(table)
+        #table = round_to_precision(table, self._precision)
+
+        rename_map = {"R_F": "RF", "R_MKT": "Mkt-RF"}
+        table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
+
+        col_order = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  
         if not self.classic:
             col_order.insert(5, 'R_EG')
-            
-        return table.select(col_order)
+                
+        return table.select(col_order).combine_chunks()

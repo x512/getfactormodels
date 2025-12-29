@@ -89,13 +89,15 @@ def get_factors(model: str | int = 3,
     if factorclass is FamaFrenchFactors:
         params.update({"model": model_key, "region": region})
     elif factorclass is CarhartFactors:
+        # CarhartFactors.__init__ hardcodes model=4 in its super() call.
+        # If we pass 'model' in params, super() gets it twice.
         params.update({"region": region})
+        params.pop("model", None)  # Remove it so Carhart can set its own
     
     elif model_key == "Qclassic":
         params["classic"] = True
 
     return factorclass(**params)
-
 
 def main():
     args = parse_args()
@@ -112,18 +114,18 @@ def main():
         region=args.region,
     )
 
+    # These update model_obj._data and model_obj._df = None
     if args.extract:
         model_obj.extract(args.extract)
     elif args.drop:
         model_obj.drop(args.drop)
 
-    display_data = model_obj.data
-
+    # Save table, not the display df
     if args.output:
-        _save_to_file(display_data, args.output, model_instance=model_obj)
+        model_obj.to_file(args.output) 
 
     if not args.quiet:
-        print(display_data)
+        print(model_obj.data)  #uses pandas
         
 if __name__ == "__main__":
     main()

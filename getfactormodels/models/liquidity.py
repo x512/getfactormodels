@@ -20,46 +20,44 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.utils import _offset_period_eom
+from getfactormodels.utils.data_utils import offset_period_eom
 
 
 class LiquidityFactors(FactorModel):
     """Liquidity factors of Pastor-Stambaugh (2003).
     
-    Download the Pastor-Stambaugh Liquidity Factors.
+    Download the Pastor-Stambaugh Liquidity Factors. Only available 
+    in monthly.
 
-    Args:
+    Args
         frequency (str): The data frequency, 'm'.
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file. 
-        Supports csv, pkl.
-        cache_ttl (int, optional): Cached download time-to-live in secs 
+        output_file (str, optional): file path to save to.
+          Supports csv, pkl.
+        cache_ttl (int, optional): download time-to-live in secs 
         (default: 86400).
     
-    Returns:
-        pd.Dataframe: timeseries of factors.
-
-    References:
+    References
     - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock 
-    Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
-    642–685, 2003.
+      Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
+      642–685, 2003.
     
-    Data source: https://finance.wharton.upenn.edu/~stambaug/
     ---
-    NOTES: only available in monthly.
-    - NaNs: the leading 65 values in TRADED_LIQ.
+    Note
+        the leading 65 values of TRADED_LIQ are NaNs.
     """
     @property
-    def _frequencies(self) -> list[str]:
+    def _frequencies(self) -> list[str]: 
         return ["m"]
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
+        """Initialize the Liquidity factors model."""
         super().__init__(frequency=frequency, **kwargs)
 
-    @property   # already decimalized, m=8
+    @property
     def _precision(self) -> int:
-        return 10
+        return 8
 
     @property
     def schema(self) -> pa.Schema:
@@ -72,7 +70,6 @@ class LiquidityFactors(FactorModel):
 
     
     def _get_url(self) -> str:
-        #TODO: Backup data sources: https://research.chicagobooth.edu/-/media/research/famamiller/data/liq_data_1962_2024.txt')
         return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
     
 
@@ -112,11 +109,8 @@ class LiquidityFactors(FactorModel):
         except (pa.ArrowInvalid, KeyError) as e:
             raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
         
-        # month only freq for liquidity (could send d/w through anyway, no-op)
-        table = _offset_period_eom(table, self.frequency)
-
+        table = offset_period_eom(table, self.frequency)
         table.validate()  # explicit validation! in base: table.validate(full=True) 
 
-        table = table.rename_columns(['date', 'AGG_LIQ', 
-                                      'INNOV_LIQ', 'TRADED_LIQ',])
-        return table
+        return table.rename_columns(['date', 'AGG_LIQ', 
+                                      'INNOV_LIQ', 'TRADED_LIQ'])

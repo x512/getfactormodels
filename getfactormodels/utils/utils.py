@@ -22,10 +22,8 @@ from pathlib import Path
 from types import MappingProxyType
 import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.csv as pv
 from dateutil import parser
-
-#from pyarrow.compute import ceil_temporal, subtract
-# pyright: reportUnusedFunction=false
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
@@ -104,7 +102,6 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
 
         date_str = f"{start}-{end}"
     else:
-        # something might be messed up, or data is empty
         from datetime import datetime
         log.warning("No data. Used timestamp for filename.")
         date_str = f"no_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -117,113 +114,59 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
     return f"{base}_{date_str}.csv"
 
 
-def _save_to_file(data, filepath, model_instance=None):
+def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
+    """Private helper: save a table to file. 
+    - Uses pyarrow, falls back to pandas to write .pkl.
+    """
+    #TODO: require user to have pandas installed for pkl, or use python's pickle...
     _name = _generate_filename(model_instance) if model_instance else "factors.csv"
     full_path = _prepare_filepath(filepath, _name)
-    print(f"DEBUG: Attempting to save to: {full_path.absolute()}")
+    ext = full_path.suffix.lower()
+
+    table = table.combine_chunks()
+
+    # FIXME: TODO:
+    # temp fix. RF cols are 4 decimals from every source. 
+    # Avoids returning any rounding errors in RF cols in all models
+    # FIXME: TODO: still need to implement proper precision for every model. 
+    #           (factors have rounding errors in them (in ff)).
+    _rfs = {'RF', 'R_F', 'AQR_RF'}
+    for i, name in enumerate(table.schema.names):
+        clean_name = name.upper().strip()
+        if clean_name in _rfs:
+            rounded_col = pc.round(table.column(name), ndigits=4)
+            table = table.set_column(i, name, rounded_col)
+
+    # TODO: configure these if needed, new...
     try:
-        extension = full_path.suffix.lower()
-
-        if extension == '.txt':
-            data.to_csv(str(full_path), sep='\t')
-        elif extension == '.csv':
-            data.to_csv(str(full_path))
-        elif extension == '.pkl':
-            data.to_pickle(str(full_path))
-        else:
-            supported = ['.txt', '.csv', '.pkl']  # to add: feather, parquet, json
-            raise ValueError(f'Unsupported file extension: {extension}. Must be one of: {supported}')
-        print(f"File saved to: {full_path}")
-    except Exception as e:
-        raise OSError(f"Failed to save file to {full_path}: {str(e)}") from e
-
-# TODO: clean
-def _offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
-    """Private helper to offset a pa.Table's col 0 to EOM. 
-
-    Standardizes col 0 to EOM for m/q freqs.
-    """
-    if table.num_columns == 0:
-        raise ValueError("Table has no columns.")
-    
-    orig_name = table.column_names[0]
-    first_col = table.column(0)
-
-    # float, dt obj, int 
-    #d_str = first_col.cast(pa.string())
-    # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars)
-    # TODO: is HML the only model that needs this? Does DHS? NOPE. WAIT YES. AHH
-    d_str = pc.utf8_slice_codeunits(first_col.cast(pa.string()), 
-                                                    start=0, stop=10)
-    clean_str = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
-
-    lengths = pc.utf8_length(clean_str)
-    is_year = pc.equal(lengths, 4)   # YYYY
-    is_month = pc.equal(lengths, 6)  # YYYYMM
-
-    # chain logic: year adds '0101', month adds '01'
-    date_str = pc.if_else(
-        is_year,
-        pc.binary_join_element_wise(clean_str, pa.array(["0101"] * len(table)), ""),
-        pc.if_else(
-            is_month,
-            pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),
-            clean_str,
-        ),
-    )
-    dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
-
-    if frequency in ['m', 'q']:
-        _next_mth = pc.ceil_temporal(dates, 1, unit='month')
-        _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
-        processed_dates = pc.subtract(_next_mth, _one_day_ms)
-    else:
-        processed_dates = dates
-
-    # fix: to date32, to 'ns'
-    eom_dates = processed_dates.cast(pa.date32())
-    _dt = eom_dates.cast(pa.timestamp('ns'))
-    table.validate()
-
-    return table.set_column(0, orig_name, _dt)
-
-
-# new
-def _decimalize(table: pa.Table, schema: pa.Schema, precision: int) -> pa.Table:
-    """
-    Private helper: properly decimalizes a pa.Table.
-
-    Use model's schema and decimalize any matching pa.float64() 
-    columns. Converts to pa.decimal128(), returns pa.float64().
-    Use before renaming.
-    """
-    decimalized_cols = []
-    p_int = int(precision)  #force precision to ints
-    decimal_type = pa.decimal128(18, p_int)
-    divisor = pa.scalar(100, type=decimal_type)
-
-    for field in schema:
-        if pa.types.is_temporal(field.type) or not pa.types.is_floating(field.type):
-            continue
-
-        col_name = field.name
-        if col_name in table.column_names:
-            idx = table.schema.get_field_index(col_name)
-
-            precise_col = pc.divide(
-                pc.cast(table.column(idx), decimal_type),
-                divisor
-            )
+        if ext == '.parquet':
+            import pyarrow.parquet as pq
+            pq.write_table(table, full_path, compression='snappy')
             
-            table = table.set_column(idx, col_name, pc.cast(precise_col, pa.float64()))
-            decimalized_cols.append(col_name)
+        elif ext in ('.feather', '.arrow', '.ipc'):
+            import pyarrow.feather as pf
+            pf.write_feather(table, full_path, compression='uncompressed')
 
-    if decimalized_cols:
-        msg=(f"Decimalized to {p_int}: {len(decimalized_cols)} "
-                f"places: {', '.join(decimalized_cols)}")
-        log.info(msg)
+        elif ext == '.csv':
+            write_options = pv.WriteOptions(include_header=True)
+            pv.write_csv(table, full_path, write_options=write_options)
 
-    return table
+        elif ext == '.txt':
+            write_options = pv.WriteOptions(delimiter='\t')
+            pv.write_csv(table, full_path, write_options=write_options)
+
+        elif ext == '.pkl':
+        # pd ----------------------------------- #
+            df = table.to_pandas()
+            df.to_pickle(full_path)
+        # -------------------------------------- #
+        else:
+            supported = ['.parquet', '.feather', '.csv', '.txt', '.pkl']
+            raise ValueError(f"Extension '{ext}' not supported. Options: {supported}")
+
+    except Exception as e:
+        raise OSError(f"Failed to write {ext} file to {full_path}: {e}") from e
+
 
 # TODO: redo below, user date inputs... 
 ### used ONLY for user input and get/set start/end. TODO: REDO
@@ -285,8 +228,3 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
 # isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
 # isn't filling in today's month or current year.
 # IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
-
-
-
-
-

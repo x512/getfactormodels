@@ -18,24 +18,18 @@ from .fama_french import FamaFrenchFactors
 
 
 class CarhartFactors(FamaFrenchFactors): # inheritence ooo
-    """Download the Carhart 4-Factor model.
+    """
+    Download and process the Carhart 4-Factor model data.
     
-    Args:
-        `frequency` (`str`): The data frequency. `d`, `m`, `y` (default: `m`).
-        `start_date` (`str, optional`): The start date `YYYY-MM-DD`
-        `end_date` (`str, optional`): The end date `YYYY-MM-DD`
-        `output_file` (`str, optional`): Optional file path to save to file.
-        `cache_ttl` (`int, optional`): Cached download time-to-live in seconds
-            (default: `86400`).
-
-    Returns:
-        `pd.DataFrame`: timeseries of factors.
+    This model extends the Fama-French 3-factor model to 4 factors, 
+    adding a momentum factor (MOM).
 
     References:
     - M. Carhart, ‘On Persistence in Mutual Fund Performance’, Journal
-    of Finance, vol. 52, no. 1, pp. 57–82, 1997.
+      of Finance, vol. 52, no. 1, pp. 57–82, 1997.
 
-    Data source: https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
+    Data source: 
+        https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
     """
     @property
     def _frequencies(self) -> list[str]:
