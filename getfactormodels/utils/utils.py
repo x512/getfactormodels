@@ -24,6 +24,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from dateutil import parser
+from .data_utils import round_to_precision
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
@@ -126,10 +127,9 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
     table = table.combine_chunks()
 
     # FIXME: TODO:
-    # temp fix. RF cols are 4 decimals from every source. 
+    # temp fix. RF cols are 4 decimals from every source.
+    # TODO: should be done, test with rounding util.
     # Avoids returning any rounding errors in RF cols in all models
-    # FIXME: TODO: still need to implement proper precision for every model. 
-    #           (factors have rounding errors in them (in ff)).
     _rfs = {'RF', 'R_F', 'AQR_RF'}
     for i, name in enumerate(table.schema.names):
         clean_name = name.upper().strip()
@@ -137,7 +137,6 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
             rounded_col = pc.round(table.column(name), ndigits=4)
             table = table.set_column(i, name, rounded_col)
 
-    # TODO: configure these if needed, new...
     try:
         if ext == '.parquet':
             import pyarrow.parquet as pq
@@ -155,47 +154,90 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
             write_options = pv.WriteOptions(delimiter='\t')
             pv.write_csv(table, full_path, write_options=write_options)
 
+        elif ext in ('.md', '.markdown'):
+            try:
+                with open(full_path, 'w', encoding='utf-8') as f:
+                    for line in _stream_table_to_md(table):
+                        f.write(line + '\n')
+            except Exception as e:
+                raise OSError(f"Failed to write markdown to {full_path}: {e}")
+
         elif ext == '.pkl':
         # pd ----------------------------------- #
             df = table.to_pandas()
             df.to_pickle(full_path)
         # -------------------------------------- #
         else:
-            supported = ['.parquet', '.feather', '.csv', '.txt', '.pkl']
+            supported = ['.parquet', '.feather', '.csv', '.txt', '.pkl', '.md']
             raise ValueError(f"Extension '{ext}' not supported. Options: {supported}")
 
     except Exception as e:
         raise OSError(f"Failed to write {ext} file to {full_path}: {e}") from e
 
 
-# TODO: redo below, user date inputs... 
-### used ONLY for user input and get/set start/end. TODO: REDO
+def _stream_table_to_md(table, precision=4):  # TODO: use model's _precision
+    """Generator that yields markdown rows.
+    
+    - Reduces memory usage for writing larger tables.
+    """
+    yield "| " + " | ".join(table.column_names) + " |"
+    yield "| " + " | ".join(["-----"] * len(table.column_names)) + " |"
+
+    str_columns = []
+    rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} 
+
+    for name in table.column_names:
+        col = table.column(name)
+        clean_name = name.upper().strip()
+        
+        # set precision per col
+        curr_prec = 4 if clean_name in rfs else precision
+
+        if pa.types.is_timestamp(col.type) or pa.types.is_date(col.type):
+            clean_col = col.cast(pa.date32()).cast(pa.string()).to_pylist()
+        
+        elif pa.types.is_floating(col.type):
+            # f-strings to force decimals
+            data = col.to_pylist()
+            clean_col = [
+                f"{x:.{curr_prec}f}" if x is not None else "" 
+                for x in data
+            ]
+        else:
+            clean_col = col.cast(pa.string()).to_pylist()
+
+        str_columns.append(clean_col)
+    for row in zip(*str_columns):
+        yield "| " + " | ".join(row) + " |"
+
+
 def _roll_to_eom(dt: datetime) -> str:
     """Roll a datetime to the last day of its month."""
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
+
+# TODO: redo below, user date inputs... 
+### used ONLY for user input and get/set start/end. TODO: REDO
 def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
-    """Standardizes date input to a ISO (YYYY-MM-DD) string.
+    """Internal helper: standardizes date input to an ISO (YYYY-MM-DD) str.
 
-    Args:
-        `date_input`: the date str. "2023", "202305", "2023-05-15"
+    - Takes a date_input, "2023", "202310", "2023-10" and converts it to 
+      YYYY-MM-DD. If end_date is True, sets day to last of m/q/y period.
+    - Used for start_date/end_date inputs.
+
+    Args
+        `date_input`: the date str.
         `is_end`: if True, snaps YYYY to Dec 31st and YYYY-MM to the 
-          last calendar day of its month. If False, defaults to the 
-          first day of the period.
-
-    Returns:
-        str : a 'YYYY-MM-DD' string, or None if input is None.
-
-    Raises:
-        ValueError: If the input cannot be parsed as a valid date.
+          last calendar day of its month. Else, defaults to the first
+          day of the period.
     """
     if date_input is None:
         return None
 
     raw_str = str(date_input).strip()
-    #clean_str = raw_str.replace("-", "").replace("/", "")
     clean_str = re.sub(r'\D', '', raw_str) # Removes anything that isn't a digit
+
     try:
         # YYYY, YYYYMM: don't allow parser to guess YYYYMM as YYMMDD!
         if clean_str.isdigit():
@@ -207,8 +249,6 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
                 dt = datetime.strptime(clean_str, "%Y%m") # 6 chars IS %Y%m, parser
                 return _roll_to_eom(dt) if is_end else dt.strftime("%Y-%m-01")
 
-        # Parser
-        #dt = parser.parse(raw_str)
         # this sets a default fallback for dates which shouldn't ever be hit
         dt = parser.parse(raw_str, default=datetime(1960, 1, 1))
         

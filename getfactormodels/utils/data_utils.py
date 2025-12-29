@@ -137,7 +137,7 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     # chain logic: year adds '0101', month adds '01'
     date_str = pc.if_else(
         is_year,
-        pc.binary_join_element_wise(clean_str, pa.array(["0101"] * len(table)), ""),
+        pc.binary_join_element_wise(clean_str, pa.array(["1231"] * len(table)), ""),
         pc.if_else(
             is_month,
             pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),

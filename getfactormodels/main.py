@@ -17,7 +17,7 @@
 from typing import Any
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.utils import _get_model_key, _save_to_file
+from getfactormodels.utils.utils import _generate_filename, _get_model_key
 from .models import (
     BarillasShankenFactors,
     CarhartFactors,
@@ -89,10 +89,8 @@ def get_factors(model: str | int = 3,
     if factorclass is FamaFrenchFactors:
         params.update({"model": model_key, "region": region})
     elif factorclass is CarhartFactors:
-        # CarhartFactors.__init__ hardcodes model=4 in its super() call.
-        # If we pass 'model' in params, super() gets it twice.
         params.update({"region": region})
-        params.pop("model", None)  # Remove it so Carhart can set its own
+        params.pop("model", None)  # Remove model from carhart here, it's in its super() call.
     
     elif model_key == "Qclassic":
         params["classic"] = True
@@ -102,6 +100,7 @@ def get_factors(model: str | int = 3,
 def main():
     args = parse_args()
     # TODO: list models
+
     if not args.model:
         print("Error: The -m/--model argument is required.")
         return
@@ -122,10 +121,17 @@ def main():
 
     # Save table, not the display df
     if args.output:
-        model_obj.to_file(args.output) 
-
+        model_obj.to_file(args.output)
+        
+        if not args.quiet:
+            from pathlib import Path
+            actual_path = Path(args.output).expanduser()
+            if actual_path.is_dir():
+                actual_path = actual_path / _generate_filename(model_obj)
+            
+            print(f"Data saved to: {actual_path.resolve()}")
     if not args.quiet:
-        print(model_obj.data)  #uses pandas
+        print(model_obj.data) #uses pandas
         
 if __name__ == "__main__":
     main()
