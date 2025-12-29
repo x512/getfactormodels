@@ -7,7 +7,7 @@
 ![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square&labelColor=%23313131)
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
-Reliably retrieve data for various multi-factor asset pricing models.
+A command-line tool to retrieve data for multi-factor asset pricing models.
 
 
 ## Models
@@ -41,151 +41,76 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 - Python >=3.10
 
 
-The easiest way to install (and update) `getfactormodels` is with pip:
+The easiest way to install `getfactormodels` is with pip:
 
 
 ```bash
-pip install -U getfactormodels
+pip install getfactormodels
 ```
-
-You can also download the [latest release](https://github.com/x512/getfactormodels/releases/latest) and install using pip.
-<details>
-
-<summary>linux/macOS</summary>
-
-```bash
- curl -LO https://github.com/x512/getfactormodels/archive/latest.tar.gz
- tar -xzf latest.tar.gz
- cd getfactormodels-*
- pip install .
-```
-</details>
-
 
 ## Quick start
 
-**Basic usage:**
+### CLI
 
-- Import getfactormodels and use the `get_factors` function, with a `model` parameter:
+```bash 
+# Fama-French 3-Factor (monthly) starting Jan 2020
+getfactormodels -m ff3 -f m -s 2020-01-01 -o my_factors.csv
 
-```py
- import getfactormodels
+# ICR factors (daily) data saved to Parquet
+getfactormodels -m icr -f d -s 2015-01-01 -o data.parquet
 
- data = getfactormodels.get_factors(model='q', frequency='d')
+# Fama-French 6-Factor (Europe) with factor dropping
+getfactormodels -m ff6 -f m --region europe --drop "RF" -o europe_factors.csv
+
 ```
+### Python
+**`get_factors`**
 
-- All other parameters are optional. By default monthly data is returned.
+```py 
+from getfactormodels import DHSFactors
 
-```py
-# monthly Fama-French 3-factors since start_date
-df = getfactormodels.get_factors(model='ff3', start_date='2006-01-01')
-
-# Daily Mispricing factors saved to file:
-df = getfactormodels.get_factors(
-    model='mispricing',
-    start_date='1970-01-01',
-    end_date='1999-12-31',
-    output='~/mispricing_factors.csv'  #.csv, .pkl, .parquet, .txt
+model = DHSFactors(
+    frequency='m',
+    start_date='2000-01-01',
+    end_date='2024-12-31',
+    output_file='data.csv',
+    cache_ttl=86400
 )
+df = model.data
+model.to_file("factors.md")
 ```
 
-- Using the model classes, you can import only the models you want: 
+**Model classes**
 
-```python
-from getfactormodels import ICRFactors, QFactors
-```
-```python
-model = ICRFactors(frequency='m', start_date='2000-01-01')
+```py
+from getfactormodels import FamaFrenchFactors, DHSFactors, BarillasShankenFactors, QFactors
 
-# use the download module to get the data
-df = model.download()
+# Fama-French 3-Factor
+ff3 = FamaFrenchFactors(model='3', frequency='m', region='developed', start_date='2020-01-01')
 
-# use the extract module to get a factor
-factor = model.extract("IC_RATIO")
-```
-- Fama-French 3-Factors and the q-factors have weekly data available:
-```python
-df = QFactors(frequency='w',
-              start_date='1992-05-22',
-              end_date='2019-01-05').download() # chained! Wow!
-```
+ff3.end_date = '2020'
+ff3.frequency = 'd'
 
-- For more examples see the notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
+df_ff3 = ff3.data
 
-## CLI
+# Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
+q = QFactors(classic=True, frequency='w').data
 
-You can use getfactormodels from the command line. Just call `getfactormodels` with the `--model` `-m` flag.
-
-- Frequency `-f` defaults to monthly and all other parameters are optional:
-
-
-```bash
-#monthly Fama-French 3 factor model
-getfactormodels --model ff3
-
-# daily mispricing factors since start
-getfactormodels -m mis --frequency d --start 2000-01-01
-```
->Note: all data is cached for 1 day, re-running commands isn't wasteful.
-
-
-- Save data to a file with `--output` `-o`:
-
-```bash 
-#save annual Fama-French 5-Factors to file:
-getfactormodels -m 5 - f y --output "~/dir/filename.csv" # can be csv, pkl, parquet, txt.
-
-getfactormodels -m liq -f m -o somefile # will be a csv, will be in users current directory.
-```
->Note: Fama French models can be a string ("ff3") or int (3, 4, 5, 6, where 4 = carhart).
-
-
-- Extract a factor from a model with the `--extract` `-x` flag:
-
-```bash 
-getfactormodels -m carhart -f m --extract MOM
-# extract multiple factors to a file 
-getfactormodels -m ff3 -f m -x SMB HML -o "dir/filename.pkl"
+misp = gfm.MispricingFactors(frequency='m')
+df = misp.data
 ```
 
+*A list of model classes available:*
+ - `FamaFrenchFactors`
+ - `CarhartFactors`
+ - `QFactors`
+ - `ICRFactors`
+ - `DHSFactors`
+ - `LiquidityFactors`
+ - `MispricingFactors`
+ - `HMLDevilFactors`
+ - `BarillasShankenFactors`
 
-- Access Fama-French Emerging and Developed/International markets using the `--region` `-r` flag:
-
-```bash
-
-# 3 factor model for developed markets
-getfactormodels -m ff3 --region developed
-
-# 5-Factor model for Europe saved to file 
-getfactormodels -m 5 -r europe -o euro_factors
-
-# extract the SMB and WML factors from the 4 Factor model
-getfactormodels -m 4 --region emerging --extract SMB WML
-```
-
-- See more in the example notebook: [here](https://github.com/x512/getfactormodels/blob/main/example.ipynb)
-
-*Or try it for yourself:*
-
-[![Open in nbviewer](https://raw.githubusercontent.com/jupyter/design/main/logos/Badges/nbviewer_badge.svg)](https://nbviewer.org/github/x512/getfactormodels/blob/dev/example.ipynb)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/x512/getfactormodels/blob/dev/example.ipynb)
-
-#### Classes
-
-A list of model classes available:
-
-- `FamaFrenchFactors`
-- `CarhartFactors`
-- `QFactors`
-- `ICRFactors`
-- `DHSFactors`
-- `LiquidityFactors`
-- `MispricingFactors`
-- `HMLDevilFactors`
-- `BarillasShankenFactors`
-
-
-*For a list of parameters, see the [example notebook](https://github.com/x512/getfactormodels/blob/main/example.ipynb). (Docs are coming)*
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -244,16 +169,15 @@ contains the shortest identifier for each model. These should all work in python
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
 ### Known issues
-* The first `hml_devil_factors()` retrieval is slow, because the download from aqr.com is slow. It's the only model implementing a cache—daily data expires at the end of the day, and will only re-download when the requested `end_date` exceeds the cache's latest index date. Similar for monthly, expiring at at the end of the month, and re-downloaded when next needed.
-* ~~Some models aren't downloading.~~ *__Update:__ all models should be downloading.*
+* HML Devil: initial download is slow, particulary for daily data.
 
-#### Todo
-- [ ] Refactor: a complete rewrite, implementing a better interface and design patterns, dropping dependencies.
-- [ ] Refactor: FF models.
-- [ ] Docs
-- [ ] Every model should have an about and author/copyright info, and general disclaimer
-- [ ] This README
-  - [ ] Example ipynb
-- [ ] Tests
-- [ ] Error handling!
-- [ ] Types
+##### Todo
+- Documentation
+- Example notebook
+- better error handling
+- HML Devil: progress bar on download, smarter caching.
+- this README
+- metadata on model (copyright, construction, factors)
+- Drop pandas
+- Refactor of FF models
+
