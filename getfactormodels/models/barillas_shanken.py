@@ -16,6 +16,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from typing import Any, override
 import pyarrow as pa
+from getfactormodels.utils.data_utils import (
+    filter_table_by_date,
+    rearrange_columns,
+    round_to_precision,
+)
 from .base import FactorModel
 from .fama_french import FamaFrenchFactors
 from .hml_devil import HMLDevilFactors
@@ -79,11 +84,14 @@ class BarillasShankenFactors(FactorModel):
              return self._data
         
         table = self._construct()
-        table = self._rearrange_columns(table)
-        table = self._slice_to_range(table)
-      
-        self._data = table
+        table = rearrange_columns(table)
+        #table = self._slice_to_range(table)
+        #table = round_to_precision(table, self._precision)
         
+        table.validate(full=True)
+        table = table.combine_chunks()
+
+        self._data = table
         return self._data
 
 

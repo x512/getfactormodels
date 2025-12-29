@@ -21,7 +21,10 @@ import pyarrow as pa
 import pyarrow.compute as pc
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import offset_period_eom
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    round_to_precision,
+)
 
 
 class HMLDevilFactors(FactorModel):
@@ -59,16 +62,16 @@ class HMLDevilFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]  # TODO: aqr d/m only? 
 
-    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 43200, country_code: str = 'usa', **kwargs):
-        self.country_code = country_code.upper()
+    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 43200, country: str = 'usa', **kwargs):
+        self.country = country.upper()
         self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs) 
         # TESTING, ROUGH
-        self.country_code = country_code.upper() # 'USA', 'AUS', 'JPN', etc.
+        self.country = country.upper() # 'USA', 'AUS', 'JPN', etc.
 
     @property 
     def _precision(self) -> int:
-        return 10 
+        return 8 
 
     @property
     def schema(self) -> pa.Schema:
@@ -105,10 +108,10 @@ class HMLDevilFactors(FactorModel):
         data_rows = rows[19:]
         
         try:
-            col_idx = headers.index(self.country_code)
+            col_idx = headers.index(self.country)
         except ValueError:
-            # Fallback to USA or raise error if the region doesn't exist in this tab
-            col_idx = self.country_code.index('USA') if 'USA' in headers else 1
+            # Fallback to USA or raise error if the region doesn't exist in this tab   #TODO: FIXME: countries non-HML devils
+            col_idx = self.country.index('USA') if 'USA' in headers else 1
 
         dates, values = [], []
         # TODO: countries
@@ -124,7 +127,7 @@ class HMLDevilFactors(FactorModel):
                 continue # skip rows where USA has no data? Nans?
                 
             dates.append(self._aqr_dt_fix(r[0]))
-            values.append(float(r[col_idx]))  # NOTE: EVERY FACTOR GETS PREPENDED WITH {country_code}_ AND RF BECOMES 1M_US_TBILL (KEEP AS RF FOR NOW)
+            values.append(float(r[col_idx]))  # NOTE: EVERY FACTOR GETS PREPENDED WITH {country}_
 
         return pa.Table.from_pydict({"date": dates, sheet_name: values})
     
@@ -156,9 +159,9 @@ class HMLDevilFactors(FactorModel):
         #  sort after outer joins
         table = table.sort_by([(table.schema.names[0], "ascending")])
 
-        # Rename and prefix if country_code
-        is_intl = self.country_code not in ['US', 'USA', 'us', 'usa', None]
-        prefix = f"{self.country_code}_" if is_intl else ""
+        # Rename and prefix if country
+        is_intl = self.country not in ['US', 'USA', 'us', 'usa', None]
+        prefix = f"{self.country}_" if is_intl else ""
         
         new_names = []
         for col in table.column_names:
@@ -177,17 +180,18 @@ class HMLDevilFactors(FactorModel):
 
         # Rounding here 
         # fix: _precision for factors, but 4 for RF.
-        for col_name in table.column_names:
-            if col_name == 'date':
-                continue
+        #for col_name in table.column_names:
+        #    if col_name == 'date':
+        #        continue
             
-            idx = table.schema.get_field_index(col_name)
-            prec = 4 if col_name in ['RF', 'AQR_RF'] else self._precision
-            
-            rounded_col = pc.round(table.column(idx), prec)
-            table = table.set_column(idx, col_name, rounded_col)
-
-        return table
+        #    idx = table.schema.get_field_index(col_name)
+        #    prec = 4 if col_name in ['RF', 'AQR_RF'] else self._precision
+        #    
+        #    rounded_col = pc.round(table.column(idx), prec)
+        #    table = table.set_column(idx, col_name, rounded_col)
+        table = round_to_precision(table, self._precision)
+        table.validate()
+        return table.combine_chunks()
 """
 Fama French Regions, AQR countries/aggregate equity portfolios
 Global	

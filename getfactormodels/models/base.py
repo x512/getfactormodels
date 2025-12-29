@@ -23,12 +23,12 @@ import pyarrow as pa
 from getfactormodels.utils.data_utils import (
     filter_table_by_date,
     rearrange_columns,
-    verify_cols_exist,
     round_to_precision,
-) # just use these...
-
+    verify_cols_exist,
+)
 from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _save_to_file, _validate_date
+
 
 class FactorModel(ABC):
     """Abstract Base Class used by all factor model implementations."""
@@ -66,7 +66,7 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
-        self._selected_factors: list[str] | None = None
+        self._selected_factors: list[str] | None = None  # for eg drop/extract
 
         super().__init__()
     
@@ -138,13 +138,13 @@ class FactorModel(ABC):
 
         table = self._get_table()
 
-        sliced_table = self._slice_to_range(table)
+        sliced_table = filter_table_by_date(table, self.start_date, self.end_date)
 
         # pd containment zone ------------------------------ # 
         df = sliced_table.to_pandas(date_as_object=False)
         if 'date' in df.columns:
             # fix: carhart daily was returning 2014 only.
-            df['date'] = pd.to_datetime(df['date'].astype(str), format='%Y-%m-%d')
+            df['date'] = pd.to_datetime(df['date'])
             df = df.set_index('date').sort_index()            
         self._df = df
         return self._df        
@@ -155,36 +155,49 @@ class FactorModel(ABC):
         """Internal helper: Extracts factors (columns) and returns 
         a pa.Table."""
         table = self._get_table()
-        _sliced = self._slice_to_range(table)
+        _sliced = filter_table_by_date(table, self.start_date, self.end_date)
         
-        _factors = self._check_factors_exist(table, factors)
+        factors = [factor] if isinstance(factor, str) else factor
+        
+        _factors = verify_cols_exist(table, factors)
         selection = list(dict.fromkeys(['date'] + _factors))
 
         return _sliced.select(selection)
 
 
     def extract(self, factor: str | list[str]) -> pd.DataFrame | pd.Series:
-        """Select specific factors without destroying the full dataset."""
+        """Select specific factors from the model.
+
+        Args
+            factor (str | list[str]): The column name(s) to extract. 
+                Matches are case-sensitive.
+        """
         factors = [factor] if isinstance(factor, str) else factor
         
         full_table = self._get_table()
         
         # Validate/prevent date index being extracted.
-        validated = self._check_factors_exist(full_table, factors)   
+        validated = verify_cols_exist(full_table, factors)  
         if not validated or (len(validated) == 1 and validated[0] == 'date'):
              raise ValueError("Extraction must include at least one factor (cannot extract only 'date').")
 
         self._selected_factors = [f for f in validated if f != 'date']
         self._df = None
         
-        return self.data[factor] if isinstance(factor, str) else self.data        
+        return self.data[factor] if isinstance(factor, str) else self.data       
+
 
     def drop(self, factor: str | list[str]) -> pd.DataFrame:
-        """Exclude specific factors without destroying the full dataset."""
+        """Remove specific factors from the model.
+
+        Args
+            factor (str | list[str]): The column name(s) to remove.
+                Matches are case-sensitive.
+        """
         to_drop = [factor] if isinstance(factor, str) else factor
         full_table = self._get_table()
         
-        valid_to_drop = self._check_factors_exist(full_table, to_drop)
+        valid_to_drop = verify_cols_exist(full_table, to_drop)
         
         # Calculate selection, error if all factors try to get dropped:
         new_selection = [
@@ -204,7 +217,7 @@ class FactorModel(ABC):
  
         Args:
             filepath (str | Path | None): the filepath to save data to. 
-                Supports: .parquet, .ipc, .feather, .csv, .txt, .pkl
+                Supports: .parquet, .ipc, .feather, .csv, .txt, .pkl, .md
         
         Example:
             .to_file() or .to_file('custom_name.pkl')
@@ -219,7 +232,7 @@ class FactorModel(ABC):
             return
 
         table = self._get_table()
-        sliced_table = self._slice_to_range(table)
+        sliced_table = filter_table_by_date(table, self.start_date, self.end_date)
 
         if sliced_table.num_rows == 0:
             self.log.warning("No data available to save.")
@@ -238,7 +251,7 @@ class FactorModel(ABC):
             table = self._read(raw_bytes)
             table = round_to_precision(table, self._precision)
             table.validate(full=True)
-            self._data = self._rearrange_columns(table)
+            self._data = rearrange_columns(table=table)
         
         # If not dropping or extracting:
         if not self._selected_factors:
@@ -261,20 +274,12 @@ class FactorModel(ABC):
             # crash fast on download failure
             raise RuntimeError(f"Download failed for {url}.") from e
 
-    def _slice_to_range(self, table: pa.Table) -> pa.Table:
-        return filter_table_by_date(table, self.start_date, self.end_date)
-
-    def _rearrange_columns(self, _table: pa.Table) -> pa.Table:
-        return rearrange_columns(table=_table)
-
-    def _check_factors_exist(self, table: pa.Table, factors: str | list[str] | None) -> list[str]:
-        return verify_cols_exist(table, factors)
 
     @property
     def _precision(self) -> int:
         return 8
 
-    @property 
+    @property
     @abstractmethod
     def schema(self) -> pa.Schema:
         pass

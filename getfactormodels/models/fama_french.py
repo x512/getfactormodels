@@ -19,7 +19,10 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import scale_to_decimal, offset_period_eom
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    scale_to_decimal,
+)
 from getfactormodels.utils.http_client import _HttpClient
 
 
@@ -51,6 +54,8 @@ class FamaFrenchFactors(FactorModel):
       Journal of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
     - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of 
       Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
+
+    Note: "-0.9999" should be NaNs! [TODO: FIXME]
 
     """
     # TODO: NaNs in FamaFrench models!
@@ -188,43 +193,36 @@ class FamaFrenchFactors(FactorModel):
             with z.open(filename) as f:
                 lines = f.read().decode('utf-8').splitlines()
 
-        # skip lines/where the data starts 
         is_mom = 'momentum' in filename.lower() or '_mom_' in filename.lower()
-
-        annual_marker = None
-        for i, line in enumerate(lines):
-            if "annual factors:" in line.lower():
-                annual_marker = i
-                break
+        annual_marker = next((i for i, l in enumerate(lines) if "annual factors:" in l.lower()), None)
 
         if self.frequency == 'y':
-            start_line = annual_marker + 1
-            raw_content = lines[start_line:]
+            raw_content = lines[annual_marker + 1:] if annual_marker is not None else lines
         else:
             _start = 6 if self.region == 'Emerging' else (12 if is_mom else 4)
             _stop = annual_marker if annual_marker else len(lines)
             raw_content = lines[_start:_stop]
 
-        #testing .copyright -- need to find in intl files
-        content = []
+        content = [",".join(_schema.names)]  # Force clean header
         for line in raw_content:
-            if "copyright" in line.lower():
-                self.copyright = line.strip()
-                break
-            if "annual factors" in line.lower():
-                break
-            if line.strip():
-                content.append(line)
+            clean = line.strip()
+            if not clean or "copyright" in clean.lower():
+                if "copyright" in clean.lower(): self.copyright = clean
+                continue
+            
+            # fix: keep lines starting with a number
+            first_part = clean.replace(',', ' ').split()
+            if first_part and first_part[0].isdigit():
+                content.append(",".join(first_part))
 
-        table = pv.read_csv(
+        return pv.read_csv(
             io.BytesIO("\n".join(content).encode('utf-8')),
-            convert_options = pv.ConvertOptions(
-                null_values=["-99.99", "-999"],
+            convert_options=pv.ConvertOptions(
+                null_values=["-99.99", "-999", "-99.990", "-0.9999"],
                 strings_can_be_null=True,
+                column_types=_schema
             ),
-        )
-
-        return table.rename_columns(["date"] + table.column_names[1:])    
+        )   
     
 
     def _add_momentum(self, table: pa.Table) -> pa.Table:
@@ -244,18 +242,16 @@ class FamaFrenchFactors(FactorModel):
 
 
     def _read(self, data: bytes) -> pa.Table:
-        table = self._read_zip(data, use_schema=self.schema)
+        # Temporary schema without the momentum factor for the first file
+        main_cols = [f for f in self.schema if f.name not in ["UMD", "MOM", "WML"]]
+        main_schema = pa.schema(main_cols)
+
+        table = self._read_zip(data, use_schema=main_schema)
 
         if self.model in {"4", "6"}:
             table = self._add_momentum(table)
 
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
-
-        # rebuild the table once, not set column in a loop
         table = scale_to_decimal(table)
-        #table = round_to_precision(table, self._precision)  # base handles this
-        table = table.select(self.schema.names).combine_chunks()
-        table.validate()
-
-        return table
+        return table.select(self.schema.names).combine_chunks()

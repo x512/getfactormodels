@@ -20,7 +20,11 @@ import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.data_utils import round_to_precision, scale_to_decimal, offset_period_eom
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    round_to_precision,
+    scale_to_decimal,
+)
 
 
 class DHSFactors(FactorModel):
