@@ -25,7 +25,7 @@ from getfactormodels.utils.data_utils import offset_period_eom
 
 class LiquidityFactors(FactorModel):
     """Liquidity factors of Pastor-Stambaugh (2003).
-    
+
     Download the Pastor-Stambaugh Liquidity Factors. Only available 
     in monthly.
 
@@ -37,12 +37,12 @@ class LiquidityFactors(FactorModel):
           Supports csv, pkl.
         cache_ttl (int, optional): download time-to-live in secs 
         (default: 86400).
-    
+
     References
     - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock 
       Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
       642–685, 2003.
-    
+
     ---
     Note
         the leading 65 values of TRADED_LIQ are NaNs.
@@ -52,7 +52,7 @@ class LiquidityFactors(FactorModel):
         return ["m"]
 
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        """Initialize the Liquidity factors model."""
+        """Initialize the Liquidity Factors model."""
         super().__init__(frequency=frequency, **kwargs)
 
     @property
@@ -68,49 +68,47 @@ class LiquidityFactors(FactorModel):
             ('Traded Liq (LIQ_V)', pa.float64()),
         ])
 
-    
     def _get_url(self) -> str:
         return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
-    
 
     def _read(self, data: bytes) -> pa.Table:
-        _text = data.decode('utf-8')
-        _lines = [
-            re.sub(r'\s+', '\t', line.strip()) 
-            for line in _text.splitlines() 
-            if line.strip() and not line.startswith('%')
-        ]
-        
-        _data = '\n'.join(_lines).encode('utf-8')
-
-        read_opts = pv.ReadOptions(
-            column_names=self.schema.names,
-            autogenerate_column_names=False,
-            skip_rows=0,
-        )
-
-        parse_opts = pv.ParseOptions(
-            delimiter='\t',
-            ignore_empty_lines=True,
-        )
-
-        convert_opts = pv.ConvertOptions(
-            column_types=self.schema,
-            null_values=["-99", "-99.0", "-99.000000"],
-            include_columns=self.schema.names,
-        )
         try:
-            table = pv.read_csv(
-                io.BytesIO(_data),
-                read_options=read_opts,
-                parse_options=parse_opts,
-                convert_options=convert_opts,
-            )
-        except (pa.ArrowInvalid, KeyError) as e:
-            raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
-        
-        table = offset_period_eom(table, self.frequency)
-        table.validate()  # explicit validation! in base: table.validate(full=True) 
+            _text = data.decode('utf-8')
+            _lines = [
+                re.sub(r'\s+', '\t', line.strip()) 
+                for line in _text.splitlines() 
+                if line.strip() and not line.startswith('%')
+            ]
 
-        return table.rename_columns(['date', 'AGG_LIQ', 
-                                      'INNOV_LIQ', 'TRADED_LIQ'])
+            _data = '\n'.join(_lines).encode('utf-8')
+
+            # open stream reader not read whole thing
+            reader = pv.open_csv(
+                io.BytesIO(_data),
+                read_options=pv.ReadOptions(
+                    column_names=self.schema.names,
+                    block_size=1024*1024*2,
+                ),
+                parse_options=pv.ParseOptions(delimiter='\t'),
+                convert_options=pv.ConvertOptions(
+                    column_types=self.schema,
+                    null_values=["-99", "-99.0", "-99.000000"]
+                )
+            )
+
+            # Batch processing
+            batches = []
+            for batch in reader:
+                batches.append(batch)
+
+            # .from_batches!!!
+            table = pa.Table.from_batches(batches)
+            table = offset_period_eom(table, self.frequency)
+            #table.validate()
+            return table.rename_columns(['date', 'AGG_LIQ', 
+                                         'INNOV_LIQ', 'TRADED_LIQ'])
+
+        except (pa.ArrowIOError, pa.ArrowInvalid) as e:
+                msg = f"{self.__class__.__name__}: reading failed: {e}"
+                self.log.error(msg)
+                raise ValueError(msg) from e

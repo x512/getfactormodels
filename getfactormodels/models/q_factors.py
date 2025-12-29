@@ -20,7 +20,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import round_to_precision, scale_to_decimal, offset_period_eom
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    round_to_precision,
+    scale_to_decimal,
+)
 
 
 class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
@@ -96,47 +100,52 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
 
     def _read(self, data: bytes) -> pa.Table:
         """Reads the Augmented q5 factors from q-global.com"""
-        read_opts = pv.ReadOptions(column_names=self.schema.names, skip_rows=1)
-        conv_opts = pv.ConvertOptions(column_types=self.schema)
+        try:
+            read_opts = pv.ReadOptions(
+                column_names=self.schema.names, 
+                skip_rows=1,
+                block_size=1024*1024*2
+            )
+            conv_opts = pv.ConvertOptions(column_types=self.schema)
 
-        table = pv.read_csv(
-            io.BytesIO(data),
-            read_options=read_opts,
-            convert_options=conv_opts,
-        )
+            reader = pv.open_csv(
+                io.BytesIO(data),
+                read_options=read_opts,
+                convert_options=conv_opts,
+            )
+            table = pa.Table.from_batches(reader)
 
-        # join m/q's 'year' and 'period'
-        if self.frequency in ["m", "q"]:
-            _year = table.column("year").cast(pa.string())
-            _period = table.column("period").cast(pa.int32())
+            if self.frequency in ["m", "q"]:
+                _year = table.column("year")
+                _period = table.column("period").cast(pa.int32())
 
-            if self.frequency == "q":
-                _period = pc.multiply(_period, 3)
-            
-            _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
-            date_str = pc.binary_join_element_wise(_year, _p_clean, "")
-            
-            table = table.set_column(0, "date", date_str).remove_column(1)
-        else:
-            date_raw = table.column(0).cast(pa.string())
-            date_str = pc.binary_join_element_wise(date_raw, pa.scalar("1231"), "") if self.frequency == "y" \
-                       else pc.utf8_lpad(date_raw, width=8, padding="0")
-            table = table.set_column(0, "date", date_str)
+                if self.frequency == "q":
+                    _period = pc.multiply(_period, 3) # Q1 to 03
 
-        table = offset_period_eom(table, self.frequency)
-        
-        rename_map = {"R_F": "RF",
-                      "R_MKT": "Mkt-RF"}
-        table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
+                _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
+                date_str = pc.binary_join_element_wise(_year, _p_clean, "")
+                table = table.set_column(0, "date", date_str).remove_column(1)
+            else:
+                # YYYY for annual or pad daily/weekly
+                date_raw = table.column(0)
+                date_str = pc.binary_join_element_wise(date_raw, pa.scalar("1231"), "") if self.frequency == "y" \
+                else pc.utf8_lpad(date_raw, width=8, padding="0")
+                table = table.set_column(0, "date", date_str)
 
-        table = scale_to_decimal(table)
-        #table = round_to_precision(table, self._precision)
+            table = offset_period_eom(table, self.frequency)
+            table = scale_to_decimal(table)
+            table = round_to_precision(table, self._precision)
 
-        rename_map = {"R_F": "RF", "R_MKT": "Mkt-RF"}
-        table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
+            rename_map = {"R_F": "RF", "R_MKT": "Mkt-RF"}
+            table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
 
-        col_order = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  
-        if not self.classic:
-            col_order.insert(5, 'R_EG')
-                
-        return table.select(col_order).combine_chunks()
+            col_order = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  
+            if not self.classic:
+                col_order.insert(4, 'R_EG') # Augmented q5 factor
+
+            return table.select(col_order).combine_chunks()
+
+        except (pa.ArrowIOError, pa.ArrowInvalid) as e:
+            msg = f"{self.__class__.__name__}: reading failed: {e}"
+            self.log.error(msg)
+            raise ValueError(msg) from e

@@ -90,41 +90,41 @@ class ICRFactors(FactorModel):
     def _read(self, data: bytes):
         """Reads the source ICR factor data from zhiguohe.net."""
         try:
-            table = pv.read_csv(
+            reader = pv.open_csv(
                 io.BytesIO(data),
+                read_options=pv.ReadOptions(block_size=1024*1024*2),
                 convert_options=pv.ConvertOptions(
-                    column_types=self.schema, 
+                    column_types=self.schema,
                     include_columns=self.schema.names,
-                    null_values=[".", "NA", "nan", ""],
-                    check_utf8=True,
-                ),
+                    null_values=[".", "NA", "nan", ""]
+                )
             )
-        except (pa.ArrowInvalid, KeyError) as e:
-            raise ValueError(f"Error reading csv for {self.__class__.__name__}: {e}") from e
+            table = pa.Table.from_batches(reader)
 
-        if self.frequency == "q":
-            dates = table.column(0).cast(pa.string())
-            years = pc.utf8_slice_codeunits(dates, start=0, stop=4)
-            _q = pc.utf8_slice_codeunits(dates, start=4, stop=5).cast(pa.int32()) 
-            # months: q * 3
-            _months = pc.multiply(_q, 3).cast(pa.string())
-            months = pc.utf8_lpad(_months, width=2, padding="0")
-            # adds '01', relies on offset util.
-            day = pa.array(["01"] * table.num_rows, type=pa.string())
-            date_str = pc.binary_join_element_wise(years, months, day, "-")
+            if self.frequency == "q":
+                dates = table.column(0).cast(pa.string())
+                years = pc.utf8_slice_codeunits(dates, start=0, stop=4)
+                _q = pc.utf8_slice_codeunits(dates, start=4, stop=5).cast(pa.int32()) 
+                # months: q * 3
+                _months = pc.multiply(_q, 3).cast(pa.string())
+                months = pc.utf8_lpad(_months, width=2, padding="0")
+                # adds '01', relies on offset util.
+                day = pa.array(["01"] * table.num_rows, type=pa.string())
+                date_str = pc.binary_join_element_wise(years, months, day, "-")
+                
+                table = table.set_column(0, "date", pc.cast(date_str, pa.timestamp('ns')))
             
-            table = table.set_column(0, "date", pc.cast(date_str, pa.timestamp('ns')))
-        
-        #offset util 
-        table = offset_period_eom(table, self.frequency)
-        
-        # TODO: base should report any repeats in date col 
-        # TODO: possibly check if last row is a duplicate quarter and drop it 
-        
-        output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"] # renamed.
+            #offset util 
+            table = offset_period_eom(table, self.frequency)
+            
+            # TODO: base should report any repeats in date col 
+            # TODO: possibly check if last row is a duplicate quarter and drop it 
+            
+            output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"]
+            #table.validate(full=True)
+            return table.rename_columns(output_cols)
 
-        if len(table.column_names) == len(output_cols):
-            table = table.rename_columns(output_cols)
-
-        table.validate()
-        return table
+        except (pa.ArrowIOError, pa.ArrowInvalid) as e:
+                msg = f"{self.__class__.__name__}: reading failed: {e}"
+                self.log.error(msg)
+                raise ValueError(msg) from e

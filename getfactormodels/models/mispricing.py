@@ -56,7 +56,7 @@ class MispricingFactors(FactorModel):
         super().__init__(**kwargs)
 
     @property   # decimalized already. d/m: MKTRF=6,[FACTORS]=10, RF=5.
-    def _precision(self) -> int: return 12
+    def _precision(self) -> int: return 10
         
     @property
     def schema(self) -> pa.Schema:
@@ -78,46 +78,36 @@ class MispricingFactors(FactorModel):
         return f"{base_url}/{file_name}.csv"
 
 
-    def _read(self, data):
+    def _read(self, data: bytes) -> pa.Table:
         """Reads the Mispricing factors CSV."""
         try:
-            read_opts = pv.ReadOptions(
-                #  skip_rows=1,
-                # column_names=self.schema.names,
-                autogenerate_column_names=False)
-
-            parse_opts = pv.ParseOptions(
-                delimiter=',',
-                ignore_empty_lines=True,
-            )
-
-            convert_opts = pv.ConvertOptions(
-                column_types=self.schema,
-                # timestamp_parsers=["%Y%m%d", "%Y%m"],
-                include_columns=self.schema.names,
-            )
-
-            table = pv.read_csv(
+            reader = pv.open_csv(
                 io.BytesIO(data),
-                read_options=read_opts,
-                parse_options=parse_opts,
-                convert_options=convert_opts,
+                read_options=pv.ReadOptions(
+                    block_size=1024*1024*2
+                ),
+                parse_options=pv.ParseOptions(delimiter=','),
+                convert_options=pv.ConvertOptions(
+                    column_types=self.schema,
+                    include_columns=self.schema.names,
+                )
             )
+            table = pa.Table.from_batches(reader)
 
-            table = offset_period_eom(table, self.frequency) 
-            table = table.rename_columns([
-                'date',     # YYYYMM
-                'Mkt-RF',   # MKTRF
-                'SMB_SY',   # SMB
-                'MGMT', 
-                'PERF',
-                'RF',
-            ])
+            rename_map = {
+                self.schema.names[0]: 'date', 
+                'MKTRF': 'Mkt-RF', 
+                'SMB': 'SMB_SY',
+            }
+            renames = [rename_map.get(name, name) for name in table.column_names]
 
-            table.validate()
-            return table
+            table = table.rename_columns(renames)
+            table = offset_period_eom(table, self.frequency)
 
+            return table.combine_chunks()
+
+        # no more empty table, raise
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            errmsg = f"Reading table failed: {e}"
-            self.log.error(errmsg)
-            return pa.Table.from_batches([], schema=self.schema)
+            msg = f"{self.__class__.__name__}: reading failed: {e}"
+            self.log.error(msg)
+            raise ValueError(msg) from e
