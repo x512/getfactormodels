@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import sys
+import os
 from pathlib import Path
 from typing import Any
 import pyarrow.csv as pv
@@ -138,14 +139,18 @@ def main():
                 actual_path = actual_path / _generate_filename(model_obj)
 
             print(f"Data saved to: {actual_path.resolve()}", file=sys.stderr)
-
-    if not sys.stdout.isatty():
+    
+    # fix: jupyter runs "%%bash" commands in a subprocess (not 
+    # interactive), and output is the entire arrow table.
+    nb_env = 'ipykernel' in sys.modules or 'JPY_PARENT_PID' in os.environ
+    
+    if not sys.stdout.isatty() and not nb_env:
         # for pipe/redirects, uses the raw table to csv stream, writes to buffer
         table = model_obj._get_table()
         sliced = filter_table_by_date(table, model_obj.start_date, model_obj.end_date)
         pv.write_csv(sliced, sys.stdout.buffer)
     
-    else: #we're interactive: write to stdout
+    else: #we're interactive, or in a jupyter notebook: write df preview to stdout
         if not args.quiet:
             print(model_obj.data) #uses pandas 
 
