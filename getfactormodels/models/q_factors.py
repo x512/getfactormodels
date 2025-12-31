@@ -22,7 +22,7 @@ import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.data_utils import (
     offset_period_eom,
-    round_to_precision,
+    round_to_precision, parse_quarterly_dates,
     scale_to_decimal,
 )
 
@@ -104,7 +104,7 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
             read_opts = pv.ReadOptions(
                 column_names=self.schema.names, 
                 skip_rows=1,
-                block_size=1024*1024*2
+                block_size=1024*1024*2,
             )
             conv_opts = pv.ConvertOptions(column_types=self.schema)
 
@@ -115,22 +115,14 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
             )
             table = pa.Table.from_batches(reader)
 
-            if self.frequency in ["m", "q"]:
-                _year = table.column("year")
-                _period = table.column("period").cast(pa.int32())
-
-                if self.frequency == "q":
-                    _period = pc.multiply(_period, 3) # Q1 to 03
-
-                _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
-                date_str = pc.binary_join_element_wise(_year, _p_clean, "")
-                table = table.set_column(0, "date", date_str).remove_column(1)
-            else:
-                # YYYY for annual or pad daily/weekly
-                date_raw = table.column(0)
-                date_str = pc.binary_join_element_wise(date_raw, pa.scalar("1231"), "") if self.frequency == "y" \
-                else pc.utf8_lpad(date_raw, width=8, padding="0")
-                table = table.set_column(0, "date", date_str)
+            if self.frequency == "q":
+                table = parse_quarterly_dates(table=table)
+            elif self.frequency in ["m"]:
+                    _year = table.column("year")
+                    _period = table.column("period").cast(pa.int32())
+                    _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
+                    date_str = pc.binary_join_element_wise(_year, _p_clean, "")
+                    table = table.set_column(0, "date", date_str).remove_column(1)
 
             table = offset_period_eom(table, self.frequency)
             table = scale_to_decimal(table)
