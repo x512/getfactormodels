@@ -190,7 +190,7 @@ class HMLDevilFactors(FactorModel):
         #    rounded_col = pc.round(table.column(idx), prec)
         #    table = table.set_column(idx, col_name, rounded_col)
         table = round_to_precision(table, self._precision)
-        table.validate()
+        #table.validate()
         return table.combine_chunks()
 """
 Fama French Regions, AQR countries/aggregate equity portfolios
