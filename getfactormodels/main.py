@@ -14,16 +14,18 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import sys
 import os
+import sys
 from pathlib import Path
 from typing import Any
 import pyarrow.csv as pv
+from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.data_utils import filter_table_by_date
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 from .models import (
+    BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
     DHSFactors,
@@ -33,8 +35,22 @@ from .models import (
     LiquidityFactors,
     MispricingFactors,
     QFactors,
+    QMJFactors,
 )
 
+_MODEL_MAP = {
+    "3": FamaFrenchFactors, "4": CarhartFactors,
+    "5": FamaFrenchFactors, "6": FamaFrenchFactors,
+    "Q": QFactors, "Qclassic": QFactors,
+    "Mispricing": MispricingFactors,
+    "Liquidity": LiquidityFactors,
+    "ICR": ICRFactors,
+    "DHS": DHSFactors,
+    "HMLDevil": HMLDevilFactors,
+    "BarillasShanken": BarillasShankenFactors,
+    "BettingAgainstBeta": BABFactors,
+    "QualityMinusJunk": QMJFactors, 
+}
 
 def get_factors(model: str | int = 3,
                 frequency: str = "m",
@@ -63,22 +79,10 @@ def get_factors(model: str | int = 3,
     """
     model_key = _get_model_key(model)
 
-    model_map = {
-        "3": FamaFrenchFactors, "4": CarhartFactors,
-        "5": FamaFrenchFactors, "6": FamaFrenchFactors,
-        "Q": QFactors, "Qclassic": QFactors,
-        "Mispricing": MispricingFactors,
-        "Liquidity": LiquidityFactors,
-        "ICR": ICRFactors,
-        "DHS": DHSFactors,
-        "HMLDevil": HMLDevilFactors,
-        "BarillasShanken": BarillasShankenFactors,
-    }
-
-    if model_key not in model_map:
+    if model_key not in _MODEL_MAP:
         raise ValueError(f"Unknown model: '{model}' (mapped to '{model_key}')")
 
-    factorclass = model_map[model_key]
+    factorclass = _MODEL_MAP.get(model_key)
 
     if not factorclass:
         raise ValueError(f"Unknown model '{model}' (mapped to '{model_key}').")
@@ -91,6 +95,7 @@ def get_factors(model: str | int = 3,
         **kwargs, # cache_ttl, country, region, etc
     }
 
+    
     if factorclass is FamaFrenchFactors:
         params.update({"model": model_key, "region": region})
     elif factorclass is CarhartFactors:
@@ -111,6 +116,18 @@ def main():
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
         #return
+    
+    model_key = _get_model_key(args.model)
+    factor_class = _MODEL_MAP.get(model_key)
+
+    if not factor_class:
+        print(f"Error: Unknown model '{args.model}'", file=sys.stderr)
+        sys.exit(1)
+
+    if args.country:
+        if not issubclass(factor_class, _AQRModel):
+            print(f"Error: '{args.model}' doesn't support --country, only AQR models do.", file=sys.stderr)
+            sys.exit(1)
 
     model_obj = get_factors(
         model=args.model,
