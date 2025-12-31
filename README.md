@@ -21,7 +21,9 @@ A command-line tool to retrieve data for multi-factor asset pricing models.
 - *Intermediary Capital Ratio* (ICR) of He, Kelly & Manela<sup>[[9]](#9)</sup>
 - The *DHS behavioural factors* of Daniel, Hirshleifer & Sun<sup>[[10]](#10)</sup>
 - The *HML* $^{DEVIL}$ factor of Asness & Frazzini<sup>[[11]](#11)</sup>
-- The 6-factor model of Barillas and Shanken<sup>[[12]](#12)</sup>
+- *Betting Against beta*, A. Frazzini, L. Pedersen (2014) <sup>[[12]](#12)</sup>
+- *Quality Minus Junk*, Asness, Frazzini & Pedersen (2017)<sup>[[13]](#13)</sup>
+- The 6-factor model of Barillas and Shanken<sup>[[14]](#14)</sup>
 
 
 _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they provide._
@@ -62,6 +64,8 @@ getfactormodels -m icr -f d -s 2015-01-01 -o data.parquet
 # Fama-French 6-Factor (Europe) with factor dropping
 getfactormodels -m ff6 -f m --region europe --drop "RF" -o europe_factors.csv
 
+getfactormodels -m qmj -f -m --country JPN
+getfactormodels -m bab -f d -c AUS -s 1990 -o aus_betting-against-beta.ipc
 ```
 ### Python
 **`get_factors`**
@@ -86,13 +90,18 @@ model.to_file("factors.md")
 ```py
 from getfactormodels import FamaFrenchFactors, DHSFactors, BarillasShankenFactors, QFactors
 
-# Fama-French 3-Factor
+# Fama-French 3-Factors
 ff3 = FamaFrenchFactors(model='3', frequency='m', region='developed', start_date='2020-01-01')
-
 ff3.end_date = '2020'
 ff3.frequency = 'd'
-
 df_ff3 = ff3.data
+
+
+# AQR Models for different countries:
+qmj_nor = QMJFactors(frequency='m', country='nor')
+bab_jpn = BABFactors(frequency='d', country='JPN', start='2000-02-20', end '2010').data
+aus_devil = HMLDevil(frequency='m', country='Aus', end='2020').data
+
 
 # Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
 q = QFactors(classic=True, frequency='w').data
@@ -111,7 +120,8 @@ df = misp.data
  - `MispricingFactors`
  - `HMLDevilFactors`
  - `BarillasShankenFactors`
-
+ - `BABFactors`
+ - `QMJFactors`
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -126,13 +136,19 @@ contains the shortest identifier for each model. These should all work in python
 |`4`| Carhart 4      | 1926-11-03 | ✓ |              | ✓ |     | ✓ |     -    |
 |`5`| Fama-French 5  | 1963-07-01 | ✓ |              | ✓ |    | ✓ |     -     |
 |`6`| Fama-French 6 | 1963-07-01 | ✓ |              | ✓ |       | ✓ |      -  |
-|`hmld`| HML $^{DEVIL}$ | 1990-07-02  | ✓ |         | ✓ |        |       |-|
-|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |     |      | 2023-12-29 |
-|`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | ✓ ||✓| ✓ | | 2025-06-27 |
-|`mis`| Mispricing    | 1963-01-02 | ✓ |            | ✓ |              |              | 2016-12-30 |
-|`liq`| Liquidity     | 1962-08-31 |   |      | ✓ |      |    | 2024-12-31 |
-|`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2022-12-30|
-|`bs`| Barillas-Shanken | 1967-01-03 | ✓ |           |✓ |      |       | 2024-12-31 |
+|`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | ✓ ||✓| ✓ |    | 2025-06-27 |
+|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |     |                       | 2023-12-29 |
+|`mis`| Mispricing    | 1963-01-02 | ✓ |            | ✓ |              |             | 2016-12-30 |
+|`liq`| Liquidity     | 1962-08-31 |   |      | ✓ |      |                           | 2024-12-31 |
+|`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2024-12-31 |
+|`bs`| Barillas-Shanken 6 | 1967-01-03       | ✓ |           |✓ |      |             | 2024-12-31 |
+|`hmld`| HML $^{DEVIL}$ | 1926-07-01       | ✓ |         | ✓ |       |               | 2025-10-31 |
+|`qmj`| Quality Minus Junk | 1957-07-01    | ✓ |         | ✓ |       |               | 2025-10-31 |
+|`bab`| Betting Against beta | 1930-12-01  | ✓ |         | ✓ |       |               | 2025-10-31 |
+
+* Fama-French: data up until until end of prior month.
+* Fama-French: most international/emerging factors (accessed with the region param) begin between 1985-1990.
+* AQR models: non-US data begins around 1990 (accessed with the country param).
 
 
 ## References
@@ -150,7 +166,9 @@ contains the shortest identifier for each model. These should all work in python
 9. <a id="9"></a>Z. He, B. Kelly, and A. Manela, ‘Intermediary asset pricing: New evidence from many asset classes’, *Journal of Financial Economics*, vol. 126, no. 1, pp. 1–35, 2017. [PDF](https://cpb-us-w2.wpmucdn.com/voices.uchicago.edu/dist/6/2325/files/2019/12/jfepublishedversion.pdf)
 10. <a id="10"></a>K. Daniel, D. Hirshleifer, and L. Sun, ‘Short- and Long-Horizon Behavioral Factors’, *Review of Financial Studies*, vol. 33, no. 4, pp. 1673–1736, 2020. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=3086063)
 11. <a id="11"></a>C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, *The Journal of Portfolio Management*, vol. 39, pp. 49–68, 2013. [PDF](https://stockmarketmba.com/docs/Asness_Frazzini_AdjustHML.pdf)
-12. <a id="12"></a>F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, *Journal of Finance*, vol. 73, no. 2, pp. 715–754, 2018. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2700000)
+12. <a id="12"></a>A. Frazzini and L. H. Pedersen, “Betting Against Beta,” Journal of Financial Economics, vol. 111, no. 1, pp. 1–25, Jan. 2014. [EconPapers](https://econpapers.repec.org/paper/nbrnberwo/16601.htm)[PDF (working paper)](https://www.nber.org/system/files/working_papers/w16601/w16601.pdf) 
+13. <a id="13"></a>C. S. Asness, A. Frazzini, and L. H. Pedersen, “Quality Minus Junk,” Review of Accounting Studies, vol. 24, no. 1, pp. 34–112, Nov. 2019. [EconPapers](https://econpapers.repec.org/article/sprreaccs/v_3a24_3ay_3a2019_3ai_3a1_3ad_3a10.1007_5fs11142-018-9470-2.htm) [PDF](https://link.springer.com/content/pdf/10.1007/s11142-018-9470-2.pdf)
+14. <a id="14"></a>F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, *Journal of Finance*, vol. 73, no. 2, pp. 715–754, 2018. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2700000)
 
 **Data sources:**
 
@@ -170,7 +188,7 @@ contains the shortest identifier for each model. These should all work in python
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
 ### Known issues
-* HML Devil: initial download is slow, particulary for daily data.
+* AQR Models (HML Devil, Betting Against Beta, Quality Minus Junk) download slowly, particulary daily datasets. Need to implement a progress bar.
 
 ##### Todo
 - Documentation

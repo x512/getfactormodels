@@ -17,13 +17,12 @@
 from typing import Any, override
 import pyarrow as pa
 from getfactormodels.utils.data_utils import (
-    filter_table_by_date,
     rearrange_columns,
     round_to_precision,
 )
+from .aqr_models import HMLDevilFactors
 from .base import FactorModel
 from .fama_french import FamaFrenchFactors
-from .hml_devil import HMLDevilFactors
 from .q_factors import QFactors
 
 
@@ -75,7 +74,7 @@ class BarillasShankenFactors(FactorModel):
             ('R_IA', pa.float64()),
             ('R_ROE', pa.float64()),
             ('UMD', pa.float64()),
-            ('AQR_RF', pa.float64()),
+            ('RF', pa.float64()),
         ])
 
     @override
@@ -101,7 +100,7 @@ class BarillasShankenFactors(FactorModel):
         # change: using _extract_as_table to stay in pa (keeps extract user facing)
         _q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
         _ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
-        _devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'AQR_RF'])
+        _devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF'])
 
         table = _ff.join(_q, keys='date', join_type='inner')
         table = table.join(_devil, keys='date', join_type='inner')

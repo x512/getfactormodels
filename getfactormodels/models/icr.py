@@ -19,7 +19,10 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import offset_period_eom, parse_quarterly_dates
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    parse_quarterly_dates,
+)
 
 
 class ICRFactors(FactorModel):
