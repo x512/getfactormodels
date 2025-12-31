@@ -55,12 +55,11 @@ class MispricingFactors(FactorModel):
         """Initialize the MispricingFactors model."""
         super().__init__(**kwargs)
 
-    @property   # decimalized already. d/m: MKTRF=6,[FACTORS]=10, RF=5.
+    @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
     def _precision(self) -> int: return 10
         
     @property
     def schema(self) -> pa.Schema:
-        # fix: schema wasn't enforced, M4d/M4 have differen't date columns.
         date_col = "DATE" if self.frequency == "d" else "YYYYMM"
         return pa.schema([
             (date_col, pa.string()),
@@ -84,13 +83,13 @@ class MispricingFactors(FactorModel):
             reader = pv.open_csv(
                 io.BytesIO(data),
                 read_options=pv.ReadOptions(
-                    block_size=1024*1024*2
+                    block_size=1024*1024*2,
                 ),
                 parse_options=pv.ParseOptions(delimiter=','),
                 convert_options=pv.ConvertOptions(
                     column_types=self.schema,
                     include_columns=self.schema.names,
-                )
+                ),
             )
             table = pa.Table.from_batches(reader)
 

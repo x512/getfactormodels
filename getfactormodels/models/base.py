@@ -66,11 +66,12 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
-        self._selected_factors: list[str] | None = None  # for eg drop/extract
 
+        self._selected_factors: list[str] | None = None  # for eg drop/extract
         super().__init__()
     
     def __repr__(self) -> str:
+        # TODO: df repr, without pd, for pa. 
         params = [
             f"frequency='{self.frequency}'",
             f"start_date='{self.start_date}'",

@@ -41,7 +41,9 @@ __model_input_map = MappingProxyType({
     "ICR": r"icr|hkm",
     "DHS": r"^(\bdhs\b|behav.*)$",
     "HMLDevil": r"\bhml(_)?d(evil)?|hmld\b",
-    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b" })
+    "QualityMinusJunk": r"\b(qmj|aqr_qmj|qualityminusjunk|quality)\b",
+    "BettingAgainstBeta": r"\b(bab|aqr_bab|bettingagainstbeta|betting)\b",
+    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b", })
 
 def _get_model_key(model: str | int) -> str:
     """Private helper: Convert a model name to a model key.

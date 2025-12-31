@@ -92,8 +92,8 @@ class LiquidityFactors(FactorModel):
                 parse_options=pv.ParseOptions(delimiter='\t'),
                 convert_options=pv.ConvertOptions(
                     column_types=self.schema,
-                    null_values=["-99", "-99.0", "-99.000000"]
-                )
+                    null_values=["-99", "-99.0", "-99.000000"],
+                ),
             )
 
             # Batch processing
@@ -106,7 +106,7 @@ class LiquidityFactors(FactorModel):
             table = offset_period_eom(table, self.frequency)
             #table.validate()
             return table.rename_columns(['date', 'AGG_LIQ', 
-                                         'INNOV_LIQ', 'TRADED_LIQ'])
+                                         'INNOV_LIQ', 'TRADED_LIQ'])   #TODO: fix, not enforcing schema...
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
                 msg = f"{self.__class__.__name__}: reading failed: {e}"

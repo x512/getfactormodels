@@ -51,7 +51,11 @@ class _AQRModel(FactorModel):
     aggregate equity portfolios.
     
     """
-   # TODO: Progress bar for AQR models!
+    # TODO: Progress bar for AQR models!
+    # TODO: cache_ttl improved for AQR, use file's last modified date in header. 
+    # TODO: keep old file before download finishes/make sure it can 
+    #   retry on failure, with reconnection. (i.e., AQR's cache holds 2 copies). 
+
     def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, country: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
         self.country = country

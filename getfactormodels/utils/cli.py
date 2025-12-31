@@ -17,8 +17,6 @@
 import argparse
 from importlib.metadata import PackageNotFoundError, version
 
-from getfactormodels.models import hml_devil
-
 
 # This avoids importing __init__ just for the ver
 def _get_version():
@@ -44,7 +42,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
 
-    parser.add_argument('-m', '--model', type=str, required=True, metavar="MODEL",
+    parser.add_argument('-m', '--model', 
+                        #'model',    # no dash, makes it positional. Still enforced in main (if model's missing, after eg, --list)
+                        nargs="?",   # makes it optional 
+                        metavar="MODEL",
                         help="the model to use, e.g., 'ff3', 'q'."
                         " Accepts 3, 4, 5, 6 in place of ff3, carhart, ff5, ff6.")
 
@@ -85,7 +86,7 @@ def parse_args() -> argparse.Namespace:
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
         parser.error(f"'w2w' frequency is not supported by '{args.model}'.")
 
-    if args.country and args.model.lower() not in ['hmld', 'hml_devil', 'hmldevil']:
-        parser.error(f"'{args.model}' doesn't support the --country param. Only HML Devil factors do.")
+    #if args.country and args.model.lower() not in ['hmld', 'hml_devil', 'hmldevil']:
+    #    parser.error(f"'{args.model}' doesn't support the --country param. Only HML Devil factors do.")
 
     return args

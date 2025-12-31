@@ -220,7 +220,7 @@ class FamaFrenchFactors(FactorModel):
             convert_options=pv.ConvertOptions(
                 null_values=["-99.99", "-999", "-99.990", "-0.9999"],
                 strings_can_be_null=True,
-                column_types=_schema
+                column_types=_schema,
             ),
         )   
     
