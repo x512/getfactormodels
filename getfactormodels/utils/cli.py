@@ -37,11 +37,15 @@ def parse_args() -> argparse.Namespace:
     getfactormodels -m liquidity -f m --start 2000-01-01 --end 2009-12-31
     getfactormodels -m 5 -f m -e 2009-12-31 --extract SMB RF -o '~/file.csv'
     getfactormodels -m Carhart -f d -s 2000-01-01 -x MOM -o file
+    getfactormodels -m hml_devil --country jpn
         ''', 
     )
     parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
 
-    parser.add_argument('-m', '--model', type=str, required=True, metavar="MODEL",
+    parser.add_argument('-m', '--model', 
+                        #'model',    # no dash, makes it positional. Still enforced in main (if model's missing, after eg, --list)
+                        nargs="?",   # makes it optional 
+                        metavar="MODEL",
                         help="the model to use, e.g., 'ff3', 'q'."
                         " Accepts 3, 4, 5, 6 in place of ff3, carhart, ff5, ff6.")
 
@@ -72,9 +76,17 @@ def parse_args() -> argparse.Namespace:
                         " and international markets. Defaults to 'us'.")
 
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
+
+    parser.add_argument('-c', '--country', type=str, metavar="COUNTRY",
+                        help="(HML Devil only) Specify the country or region code (e.g., 'jpn', 'aus', 'global').")
+
+
     args = parser.parse_args()
 
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
         parser.error(f"'w2w' frequency is not supported by '{args.model}'.")
+
+    #if args.country and args.model.lower() not in ['hmld', 'hml_devil', 'hmldevil']:
+    #    parser.error(f"'{args.model}' doesn't support the --country param. Only HML Devil factors do.")
 
     return args

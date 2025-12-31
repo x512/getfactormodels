@@ -63,15 +63,17 @@ class DHSFactors(FactorModel):
     def _precision(self) -> int:
         return 12
 
-    @property  # note: DHS factors swap cols between frequencies.
+    @property  
     def schema(self) -> pa.Schema:
         """DHS schema"""
-        _date = [('Date', pa.string())]   # 197202, err as int64.
+        _date = [('Date', pa.string())]   # 197202
         _fin = [('FIN', pa.float64())]
         _pead = [('PEAD', pa.float64())]
         
+        # FIN and PEAD, swap cols between frequencies.
         if self.frequency == 'd':
             return pa.schema(_date + _fin + _pead)
+
         return pa.schema(_date + _pead + _fin)
 
     def _get_url(self) -> str:
@@ -79,60 +81,46 @@ class DHSFactors(FactorModel):
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
-            gsheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
+            sheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
             #info_id =
         else:
-            gsheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
+            sheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
             #info_sheet_id = '#gid=96292754'  # Construction, Universe, Period, More Details
 
-        return  f'{base_url}{gsheet_id}/export?format=xlsx'  # back to xlsx with calamine. need those decimals!
+        return  f'{base_url}{sheet_id}/export?format=xlsx'
 
-    # Uses calamine to read a xlsx.
+    # Exported as .xlsx from Google, then read with Calamine. 
+    # CSV export would only give 2 decimals.
+
     def _read(self, data: bytes) -> pa.Table:
-        workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
-        rows = workbook.get_sheet_by_name(workbook.sheet_names[0]).to_python()
+        wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
 
+        rows = wb.get_sheet_by_name(wb.sheet_names[0]).to_python()
         headers = [str(h).strip() for h in rows[0]]
+
         _dict = {name: [row[i] for row in rows[1:]] for i, name in enumerate(headers)}
 
-        # fix: load without schema 
+        # fix: load without schema here
         table = pa.Table.from_pydict(_dict)
 
-        # force date to str (eom expects str)
-        table = table.set_column(0, "Date", table.column(0).cast(pa.string()))
-        table = offset_period_eom(table, self.frequency)
-
-        if "date" in table.column_names:
-            table = table.rename_columns(["Date"] + table.column_names[1:])
-
-        # selecting to avoid the extra col error when Year Month present
-        table = table.select(self.schema.names).cast(self.schema)
+        # Enforce schema here
+        table = table.select(self.schema.names).cast(self.schema)  # casts date to str here
         
-        # requires scaling
+        # Requires scaling, source in pct
         table = scale_to_decimal(table)
-        #table = round_to_precision(table, self._precision)
 
-        # m/d swap PEAD/FIN cols, this returns them in same orders
-        output_names = ['date', 'PEAD', 'FIN']
-        table = table.select(['Date', 'PEAD', 'FIN']).rename_columns(output_names)
-
-        table.validate(full=True)  #TODO remove full when base does this
-
-        # wrap in FF Mkt-RF and RF
+        # Offset, before FF
         table = offset_period_eom(table, self.frequency)
-        ff_model = FamaFrenchFactors(
-            model="3", 
-            frequency=self.frequency,
-            start_date=self.start_date, 
-            end_date=self.end_date,
-        )
-        ff_table = ff_model._get_table()
+        
+        if "Date" in table.column_names:
+            table = table.rename_columns(["date"] + table.column_names[1:])
+
+        # Wrap in FF Mkt-RF and RF
+        _ff = FamaFrenchFactors(model='3', 
+                                frequency=self.frequency)._extract_as_table(['Mkt-RF', 'RF'])
+
         # join, then combine_chunks!
-        table = table.join(ff_table, keys="date", join_type="inner")
-        table = table.combine_chunks() #.sort_by([("date", "descending")])
+        table = table.join(_ff, keys="date", join_type="inner")
+        
+        return table.combine_chunks() #.sort_by([("date", "descending")])
 
-        final_cols = ['date', 'Mkt-RF', 'PEAD', 'FIN', 'RF']
-        table = table.select(final_cols)
-
-        table.validate()
-        return table

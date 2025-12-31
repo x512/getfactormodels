@@ -17,10 +17,12 @@
 import io
 from typing import Any
 import pyarrow as pa
-import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import offset_period_eom
+from getfactormodels.utils.data_utils import (
+    offset_period_eom,
+    parse_quarterly_dates,
+)
 
 
 class ICRFactors(FactorModel):
@@ -49,13 +51,13 @@ class ICRFactors(FactorModel):
       for 2025Q1.
     - NaNs: daily IC_RISK factor doesn't begin until 2008.
     - Precision: Quarterly: 4 decimals before 2013, 18 after.
-    
+
     Factors
     - IC_RATIO: Intermediary Capital Ratio 
     - IC_RISK: Intermediary Capital Risk Factor 
     - VW_IR: Intermediary Value Weighted Investment Return
     - LEV_SQ: Intermediary Leverage Ratio Squared
-    
+
     """
     # Data source: https://zhiguohe.net
 
@@ -66,26 +68,29 @@ class ICRFactors(FactorModel):
     def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
         """Initialize the ICR Factor model."""
         super().__init__(frequency=frequency, **kwargs)
-    
+
     @property
     def _precision(self) -> int: return 8 if self.frequency == 'd' else 4  # TODO: check 
 
     @property
     def schema(self) -> pa.Schema:
-        _date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(self.frequency, 'yyyyq')
+        date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(self.frequency, 'yyyyq')
+
         return pa.schema([
-            (_date_col, pa.string()),
+            (date_col, pa.string()),
             ('intermediary_capital_ratio', pa.float64()),
             ('intermediary_capital_risk_factor', pa.float64()),
             ('intermediary_value_weighted_investment_return', pa.float64()),
             ('intermediary_leverage_ratio_squared', pa.float64()),
         ])
 
+
     def _get_url(self) -> str:
-        _file = {"d": "daily", 
-                 "m": "monthly", 
+        _file = {"d": "daily", "m": "monthly", 
                  "q": "quarterly"}.get(self.frequency)
+
         return f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
+
 
     def _read(self, data: bytes):
         """Reads the source ICR factor data from zhiguohe.net."""
@@ -96,35 +101,21 @@ class ICRFactors(FactorModel):
                 convert_options=pv.ConvertOptions(
                     column_types=self.schema,
                     include_columns=self.schema.names,
-                    null_values=[".", "NA", "nan", ""]
-                )
+                    null_values=[".", "NA", "nan", ""],
+                ),
             )
             table = pa.Table.from_batches(reader)
 
             if self.frequency == "q":
-                dates = table.column(0).cast(pa.string())
-                years = pc.utf8_slice_codeunits(dates, start=0, stop=4)
-                _q = pc.utf8_slice_codeunits(dates, start=4, stop=5).cast(pa.int32()) 
-                # months: q * 3
-                _months = pc.multiply(_q, 3).cast(pa.string())
-                months = pc.utf8_lpad(_months, width=2, padding="0")
-                # adds '01', relies on offset util.
-                day = pa.array(["01"] * table.num_rows, type=pa.string())
-                date_str = pc.binary_join_element_wise(years, months, day, "-")
-                
-                table = table.set_column(0, "date", pc.cast(date_str, pa.timestamp('ns')))
-            
-            #offset util 
+                table = parse_quarterly_dates(table)   # TEST: new util for icr, q. 
+
             table = offset_period_eom(table, self.frequency)
-            
             # TODO: base should report any repeats in date col 
             # TODO: possibly check if last row is a duplicate quarter and drop it 
-            
             output_cols = ["date", "IC_RATIO", "IC_RISK", "VW_IR", "LEV_SQ"]
-            #table.validate(full=True)
-            return table.rename_columns(output_cols)
+            return table.rename_columns(output_cols).combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-                msg = f"{self.__class__.__name__}: reading failed: {e}"
-                self.log.error(msg)
-                raise ValueError(msg) from e
+            msg = f"{self.__class__.__name__}: reading failed: {e}"
+            self.log.error(msg)
+            raise ValueError(msg) from e

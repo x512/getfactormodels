@@ -22,12 +22,13 @@ import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.data_utils import (
     offset_period_eom,
+    parse_quarterly_dates,
     round_to_precision,
     scale_to_decimal,
 )
 
 
-class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
+class QFactors(FactorModel): 
     """
     Download and process q-factor data from global-q.org.
 
@@ -47,8 +48,6 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
       investment approach, Review of Financial Studies 28 (3), 650-705.
 
     """
-    # Data Source: https://global-q.org/factors.html
-
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
@@ -94,7 +93,7 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
                 }.get(self.frequency)
 
         url = 'https://global-q.org/uploads/1/2/2/6/122679606'
-        url += f'/q5_factors_{file}_2024.csv' # TODO: YEAR
+        url += f'/q5_factors_{file}_2024.csv'
         return url
 
 
@@ -104,7 +103,7 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
             read_opts = pv.ReadOptions(
                 column_names=self.schema.names, 
                 skip_rows=1,
-                block_size=1024*1024*2
+                block_size=1024*1024*2,
             )
             conv_opts = pv.ConvertOptions(column_types=self.schema)
 
@@ -115,22 +114,13 @@ class QFactors(FactorModel):  #TODO: docstr in base init, class docstrs
             )
             table = pa.Table.from_batches(reader)
 
-            if self.frequency in ["m", "q"]:
-                _year = table.column("year")
-                _period = table.column("period").cast(pa.int32())
-
-                if self.frequency == "q":
-                    _period = pc.multiply(_period, 3) # Q1 to 03
-
-                _p_clean = pc.utf8_lpad(_period.cast(pa.string()), width=2, padding="0")
-                date_str = pc.binary_join_element_wise(_year, _p_clean, "")
-                table = table.set_column(0, "date", date_str).remove_column(1)
-            else:
-                # YYYY for annual or pad daily/weekly
-                date_raw = table.column(0)
-                date_str = pc.binary_join_element_wise(date_raw, pa.scalar("1231"), "") if self.frequency == "y" \
-                else pc.utf8_lpad(date_raw, width=8, padding="0")
-                table = table.set_column(0, "date", date_str)
+            if self.frequency == "q":
+                table = parse_quarterly_dates(table=table)
+            elif self.frequency in ["m"]:
+                y = table.column("year").cast(pa.string())
+                m = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
+                # Combines 2 cols, util handles the padding etc.
+                table = table.add_column(0, "date", pc.binary_join_element_wise(y, m, "")).drop(["year", "period"])
 
             table = offset_period_eom(table, self.frequency)
             table = scale_to_decimal(table)

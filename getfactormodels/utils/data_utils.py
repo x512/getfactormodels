@@ -17,6 +17,8 @@
 import pyarrow as pa
 import pyarrow.compute as pc
 
+"""Modules for working with pyarrow."""
+
 
 def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) -> pa.Table:
     """Slices a table to a start-end range."""
@@ -42,20 +44,18 @@ def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) ->
 
 def rearrange_columns(table: pa.Table) -> pa.Table:
     """Internal helper: Standardize column orders.
-    
-    The order should always be: 
-      date, Mkt-RF, [FACTORS...], RF.
+    * Always returns the pa.Table as: 'date', [FACTORS...], 'RF'
     """
     cols = table.column_names
 
     if 'date' not in cols:
-        # if 'date' isn't col 0 by now the subclass/model is bad. It's not the user's input.
-        raise RuntimeError(
-            f"Error: model does not have a 'date' column! (cols: {cols})",
-        )
+        errmsg = f"Error: model does not have a 'date' column! (cols: {cols})"
+        raise RuntimeError(errmsg)
+
     front = [c for c in ['date', 'Mkt-RF'] if c in cols]
     back = [c for c in ['RF', 'AQR_RF'] if c in cols]
     mid = [c for c in cols if c not in set(front + back)]
+    
     return table.select(front + mid + back)
 
 
@@ -113,6 +113,7 @@ def aqr_dt_fix(d) -> str:
         return d.strftime("%Y%m%d")
     return str(d)
 
+
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     """
     Private helper to offset a pa.Table's col 0 to EOM.
@@ -131,32 +132,70 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     clean_str = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
 
     lengths = pc.utf8_length(clean_str)
-    is_year = pc.equal(lengths, 4)   # YYYY
-    is_month = pc.equal(lengths, 6)  # YYYYMM
+    #is_year = pc.equal(lengths, 4)   # YYYY
+    #is_month = pc.equal(lengths, 6)  # YYYYMM
 
-    # chain logic: year adds '0101', month adds '01'
+    # use pc.if_else to build a YYYYMMDD string
+    # chain logic: year adds '1231', month adds '01'
     date_str = pc.if_else(
-        is_year,
-        pc.binary_join_element_wise(clean_str, pa.array(["1231"] * len(table)), ""),
+        pc.equal(lengths, 4),
+        pc.binary_join_element_wise(clean_str, pa.repeat(pa.scalar("1231"), table.num_rows), ""),
         pc.if_else(
-            is_month,
-            pc.binary_join_element_wise(clean_str, pa.array(["01"] * len(table)), ""),
-            clean_str,
-        ),
-    )
+            pc.equal(lengths, 6),
+            pc.binary_join_element_wise(clean_str, pa.repeat(pa.scalar("01"), table.num_rows), ""),
+            clean_str
+        )
+    )    
     dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
 
     if frequency in ['m', 'q']:
         _next_mth = pc.ceil_temporal(dates, 1, unit='month')
         _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
-        processed_dates = pc.subtract(_next_mth, _one_day_ms)
+        eom_dates = pc.subtract(_next_mth, _one_day_ms)
     else:
-        processed_dates = dates
+        eom_dates = dates
 
-    # fix: to date32, to 'ns'
-    eom_dates = processed_dates.cast(pa.date32())
-    _dt = eom_dates.cast(pa.timestamp('ns'))
-    table.validate()
+    return table.set_column(0, orig_name, eom_dates.cast(pa.date32()))
 
-    return table.set_column(0, orig_name, _dt)
+def parse_quarterly_dates(table: pa.Table) -> pa.Table:
+    """Internal: converts a single 'yyyyq' col, or 
+    'year' and 'period' cols to a iso datestr (yyyymmdd).
+    ---
+    Note
+    - Private helper, used by ICRFactors() and QFactors().
+    """
+    if table.num_rows == 0:
+        return table
 
+    # q-factors, 2 col, year and period:
+    if "year" in table.column_names and "period" in table.column_names:
+        year = table.column("year").cast(pa.string())
+        qtr  = table.column("period").cast(pa.int32())
+        table = table.drop(["year", "period"])
+    else:
+        # ICR factors: 20231
+        dates = table.column(0).cast(pa.string())
+        year  = pc.utf8_slice_codeunits(dates, 0, 4)
+        qtr   = pc.utf8_slice_codeunits(dates, 4, 5).cast(pa.int32())
+        table = table.remove_column(0)
+    # multiply 'q' to it's month.
+    m_ints = pc.multiply(qtr, 3).cast(pa.string())
+    # pad month if needed
+    months = pc.utf8_lpad(m_ints, width=2, padding="0")
+    # add '01' for yyyymmdd (relies on offset_period_eom to shift to eom)
+    days   = pa.array(["01"] * table.num_rows, type=pa.string())
+    
+    # make a yyyymmdd str
+    datestr = pc.binary_join_element_wise(year, months, days, "-")
+
+    try:
+        # cast to date32
+        date_col = pc.cast(datestr, pa.date32())
+        # Replaces first col, 0, date:
+        table = table.add_column(0, "date", date_col)
+        #offset
+        return offset_period_eom(table, "q")
+    except pa.ArrowInvalid as e:
+        raise ValueError(f"Failed to parse quarterly dates: {e}")
+
+# preview.

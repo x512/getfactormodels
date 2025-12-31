@@ -16,7 +16,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from .main import get_factors
-from .models import (
+from .models import (  # NEW
+    BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
     DHSFactors,
@@ -26,11 +27,12 @@ from .models import (
     LiquidityFactors,
     MispricingFactors,
     QFactors,
+    QMJFactors,
 )
 
 logging.getLogger('getfactormodels').setLevel(logging.ERROR)
 
-__version__ = "0.0.11"
+__version__ = "0.0.12"
 __all__ = [ "MispricingFactors",
            "DHSFactors",
            "ICRFactors",
@@ -41,5 +43,7 @@ __all__ = [ "MispricingFactors",
            "FamaFrenchFactors",
            "BarillasShankenFactors",
            "get_factors",
+           "QMJFactors",
+           "BABFactors",
            ]
 
