@@ -153,10 +153,10 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     else:
         processed_dates = dates
 
-    # fix: to date32, to 'ns'
+    # date32 
     eom_dates = processed_dates.cast(pa.date32())
-    _dt = eom_dates.cast(pa.timestamp('ns'))
-    table.validate()
+    #_dt = eom_dates.cast(pa.timestamp('ns'))
+    #table.validate()   #start relying on base doing a full validation at boundary
 
-    return table.set_column(0, orig_name, _dt)
+    return table.set_column(0, orig_name, eom_dates)
 

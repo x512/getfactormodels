@@ -14,9 +14,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import sys
+from pathlib import Path
 from typing import Any
+import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
+from getfactormodels.utils.data_utils import filter_table_by_date
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 from .models import (
     BarillasShankenFactors,
@@ -97,13 +101,15 @@ def get_factors(model: str | int = 3,
 
     return factorclass(**params)
 
+
 def main():
     args = parse_args()
     # TODO: list models
 
     if not args.model:
-        print("Error: The -m/--model argument is required.")
-        return
+        print("Error: The -m/--model argument is required.", file=sys.stderr)
+        sys.exit(1)
+        #return
 
     model_obj = get_factors(
         model=args.model,
@@ -119,19 +125,28 @@ def main():
     elif args.drop:
         model_obj.drop(args.drop)
 
+    table = model_obj._data
+
     # Save table, not the display df
     if args.output:
         model_obj.to_file(args.output)
-        
+
         if not args.quiet:
-            from pathlib import Path
             actual_path = Path(args.output).expanduser()
             if actual_path.is_dir():
                 actual_path = actual_path / _generate_filename(model_obj)
-            
-            print(f"Data saved to: {actual_path.resolve()}")
-    if not args.quiet:
-        print(model_obj.data) #uses pandas
-        
+
+            print(f"Data saved to: {actual_path.resolve()}", file=sys.stderr)
+
+    if not sys.stdout.isatty():
+        # for pipe/redirects, uses the raw table to csv stream, writes to buffer
+        table = model_obj._get_table()
+        sliced = filter_table_by_date(table, model_obj.start_date, model_obj.end_date)
+        pv.write_csv(sliced, sys.stdout.buffer)
+    
+    else: #we're interactive: write to stdout
+        if not args.quiet:
+            print(model_obj.data) #uses pandas 
+
 if __name__ == "__main__":
     main()
