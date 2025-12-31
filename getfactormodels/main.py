@@ -87,7 +87,7 @@ def get_factors(model: str | int = 3,
         "start_date": start_date,
         "end_date": end_date,
         "output_file": output_file,
-        **kwargs, # cache_ttl etc
+        **kwargs, # cache_ttl, country, region, etc
     }
 
     if factorclass is FamaFrenchFactors:
@@ -117,6 +117,7 @@ def main():
         start_date=args.start,
         end_date=args.end,
         region=args.region,
+        country=args.country,
     )
 
     # These update model_obj._data and model_obj._df = None

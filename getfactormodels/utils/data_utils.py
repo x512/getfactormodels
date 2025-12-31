@@ -42,20 +42,18 @@ def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) ->
 
 def rearrange_columns(table: pa.Table) -> pa.Table:
     """Internal helper: Standardize column orders.
-    
-    The order should always be: 
-      date, Mkt-RF, [FACTORS...], RF.
+    * Always returns the pa.Table as: 'date', [FACTORS...], 'RF'
     """
     cols = table.column_names
 
     if 'date' not in cols:
-        # if 'date' isn't col 0 by now the subclass/model is bad. It's not the user's input.
-        raise RuntimeError(
-            f"Error: model does not have a 'date' column! (cols: {cols})",
-        )
+        errmsg = f"Error: model does not have a 'date' column! (cols: {cols})"
+        raise RuntimeError(errmsg)
+
     front = [c for c in ['date', 'Mkt-RF'] if c in cols]
     back = [c for c in ['RF', 'AQR_RF'] if c in cols]
     mid = [c for c in cols if c not in set(front + back)]
+    
     return table.select(front + mid + back)
 
 
@@ -113,6 +111,7 @@ def aqr_dt_fix(d) -> str:
         return d.strftime("%Y%m%d")
     return str(d)
 
+
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     """
     Private helper to offset a pa.Table's col 0 to EOM.
@@ -153,10 +152,7 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     else:
         processed_dates = dates
 
-    # date32 
     eom_dates = processed_dates.cast(pa.date32())
-    #_dt = eom_dates.cast(pa.timestamp('ns'))
-    #table.validate()   #start relying on base doing a full validation at boundary
 
-    return table.set_column(0, orig_name, eom_dates)
+    return table.set_column(0, orig_name, eom_dates).combine_chunks()
 

@@ -17,13 +17,14 @@
 # TODO: break this all up into models/*.py !
 # TODO: httpx, a client class, model classes... (done done and done)
 import io
+from unittest import result
 import pyarrow as pa
 import pyarrow.compute as pc
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.data_utils import (
     offset_period_eom,
-    round_to_precision,
+    round_to_precision, rearrange_columns
 )
 
 
@@ -65,9 +66,11 @@ class HMLDevilFactors(FactorModel):
     def __init__(self, frequency: str = 'm', *, cache_ttl: int = 43200, country: str = 'usa', **kwargs):
         self.country = country.upper()
         self.cache_ttl = cache_ttl
-        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs) 
+        
         # TESTING, ROUGH
-        self.country = country.upper() # 'USA', 'AUS', 'JPN', etc.
+        self.country = country 
+        self._validate_country() #will fix casing
+        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs) 
 
     @property 
     def _precision(self) -> int:
@@ -90,7 +93,29 @@ class HMLDevilFactors(FactorModel):
         file = 'daily' if self.frequency == 'd' else 'monthly'
         base_url = 'https://www.aqr.com/-/media/AQR/Documents/Insights/'
         return f'{base_url}Data-Sets/The-Devil-in-HMLs-Details-Factors-{file}.xlsx'
+    
+    def _validate_country(self):
+        """Checks if the requested country/region is supported by AQR."""
+        requested = str(self.country).strip().upper()
+        valid = [
+            # countries
+            'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'DEU', 'DNK', 'ESP', 
+            'FIN', 'FRA', 'GBR', 'GRC', 'HKG', 'IRL', 'ISR', 'ITA', 
+            'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
+            # regions. TODO: Merge with FF regions... 
+            'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 
+            'GLOBAL EX USA'    
+        ]
 
+        if requested in valid:
+            self.country = requested
+        elif not self.country:
+            self.country = 'USA'  #fallback to default
+
+        else:
+            raise ValueError(f"Unsupported country/region: '{self.country}'. "
+                f"Must be one of: {valid}")
+            
 
     def _aqr_dt_fix(self, d) -> str:
         """Fixes AQR's 'MM/DD/YYYY' format."""
@@ -101,97 +126,92 @@ class HMLDevilFactors(FactorModel):
             # for the dt objects from Calamine
             return d.strftime("%Y%m%d")
         return str(d)
-    
+   
     def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
         rows = wb.get_sheet_by_name(sheet_name).to_python()
-        headers = [str(h).strip() for h in rows[18]]
-        data_rows = rows[19:]
+        header_row = None
+       
+        # Finds the header row (contains 'DATE'). One row was 17, others 18.
+        for i, row in enumerate(rows):
+            if row and str(row[0]).strip().upper() == 'DATE':
+                header_row = i
+                break
+
+        if header_row is None:
+            raise ValueError(f"Couldn't find the header row")
         
-        try:
-            col_idx = headers.index(self.country)
-        except ValueError:
-            # Fallback to USA or raise error if the region doesn't exist in this tab   #TODO: FIXME: countries non-HML devils
-            col_idx = self.country.index('USA') if 'USA' in headers else 1
+        headers = [str(h).strip().upper() for h in rows[header_row]]
+        data_rows = rows[header_row + 1:]
+
+        if sheet_name == 'RF':
+            col_idx = 1
+        else:
+            country_col = self.country.upper() if self.country not in [None, 'USA'] else 'USA'
+            
+            if country_col in headers:
+                col_idx = headers.index(country_col)
+            else: # fix: Don't return col 1 (AUS in factors!!)... raise error instead.
+                raise ValueError(f"'{country_col}' not found.")
 
         dates, values = [], []
-        # TODO: countries
-        # Looking at the dataset, can extend FF's region param fully into HML Devil!!
-        # AUS  AUT	BEL	CAN	CHE	DEU	DNK	ESP	FIN	FRA	GBR	GRC	HKG	IRL	
-        #   ISR	ITA	JPN	NLD	NOR	NZL	PRT	SGP	SWE	USA
-        #
-        # v rough, implemented, must be one of above, not user friendly at all. 
-        # Aggregates won't work as uppercase... 
-        # TODO: PROPERLY! with ff's regions
         for r in data_rows:
             if not r or r[0] is None or r[col_idx] == '': 
-                continue # skip rows where USA has no data? Nans?
+                continue # skip empty rows/rows without a date 
                 
-            dates.append(self._aqr_dt_fix(r[0]))
-            values.append(float(r[col_idx]))  # NOTE: EVERY FACTOR GETS PREPENDED WITH {country}_
+            dt_val = self._aqr_dt_fix(r[0])
+            val = float(r[col_idx])
+
+            dates.append(dt_val)
+            values.append(val) # NOTE: EVERY FACTOR GETS PREPENDED WITH {country}_
 
         return pa.Table.from_pydict({"date": dates, sheet_name: values})
     
+
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
-        
+
+        # sheet name : output name 
         sheet_map = {
             'HML Devil': 'HML_Devil',
-            'MKT': 'Mkt-RF',
-            'SMB': 'SMB_AQR',
-            'UMD': 'AQR_UMD',
-            'RF': 'AQR_RF',
+            'MKT': 'Mkt-RF',           
+            'SMB': 'SMB',          
+            'UMD': 'UMD',          
+            'RF': 'AQR_RF',                
         }
 
-        # Extract and align
         tables = []
-        for sheet in sheet_map:
-            t = self._process_sheet(sheet, wb)
-            t = offset_period_eom(t, self.frequency)
-            tables.append(t)
+        prefix = f"{self.country}_" if self.country not in [None, 'USA'] else ""
 
-        # 'left outer' join using HML Devil col 
-        table = tables[0]
-        for t in tables[1:]:
-            table = table.join(t, keys='date', join_type='left outer')
-            # consolidate memory after join
-            table = table.combine_chunks() 
+        for sheet, col_name in sheet_map.items():
+            try:
+                t = self._process_sheet(sheet, wb)
+                t = offset_period_eom(t, self.frequency)
 
-        #  sort after outer joins
-        table = table.sort_by([(table.schema.names[0], "ascending")])
+                # prepend country to factors, not 'date' or 'RF' cols.
+                if col_name in ['AQR_RF', 'RF', 'date']:
+                    factor_name = col_name
+                else:
+                    factor_name = f"{prefix}{col_name}"
+                
+                t = t.rename_columns(['date', factor_name])                
+                tables.append(t)
+            
+            except Exception as e:
+                print(f"Warning: Could not process sheet {sheet}: {e}")
 
-        # Rename and prefix if country
-        is_intl = self.country not in ['US', 'USA', 'us', 'usa', None]
-        prefix = f"{self.country}_" if is_intl else ""
+        # Join all tables on the 'date' column
+        result_table = tables[0]
+        for next_table in tables[1:]:
+            result_table = result_table.join(next_table, keys='date', join_type='left outer') # left outer, uses HML Devil col
         
-        new_names = []
-        for col in table.column_names:
-            if col == 'date':
-                new_names.append('date')
-                continue
-            
-            base_name = sheet_map.get(col, col)
+        # Sort and return
+        _table = result_table.combine_chunks()
 
-            if base_name in ['RF', 'AQR_RF']:
-                new_names.append(base_name)
-            else:
-                new_names.append(f"{prefix}{base_name}")
+        # Schema ENFORCED?...
+        table = rearrange_columns(_table)
 
-        table = table.rename_columns(new_names)
+        return table   #.sort_by([("date", "ascending")])
 
-        # Rounding here 
-        # fix: _precision for factors, but 4 for RF.
-        #for col_name in table.column_names:
-        #    if col_name == 'date':
-        #        continue
-            
-        #    idx = table.schema.get_field_index(col_name)
-        #    prec = 4 if col_name in ['RF', 'AQR_RF'] else self._precision
-        #    
-        #    rounded_col = pc.round(table.column(idx), prec)
-        #    table = table.set_column(idx, col_name, rounded_col)
-        table = round_to_precision(table, self._precision)
-        #table.validate()
-        return table.combine_chunks()
 """
 Fama French Regions, AQR countries/aggregate equity portfolios
 Global	
