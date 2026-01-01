@@ -95,16 +95,7 @@ def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[st
 
     return input_list
 
-# TODO: to AQR base
-def aqr_dt_fix(d) -> str:
-    """Fixes AQR's 'MM/DD/YYYY' format."""
-    if isinstance(d, str) and '/' in d:
-        m, day, y = d.split('/')
-        return f"{y}{m.zfill(2)}{day.zfill(2)}"
-    if hasattr(d, 'strftime'):
-        # for the dt objects from Calamine
-        return d.strftime("%Y%m%d")
-    return str(d)
+
 
 
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:

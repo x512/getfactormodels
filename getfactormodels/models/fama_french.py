@@ -68,22 +68,6 @@ class FamaFrenchFactors(FactorModel):
     def _precision(self) -> int:
         return 6  
 
-    @property
-    def _ff_region_map(self) -> dict[str, str]:
-        """Private: map input to region"""
-        return {
-            'us': 'us',
-            'emerging': 'Emerging',
-            'developed': 'Developed',
-            'ex-us': 'Developed_ex_US',
-            'ex us': 'Developed_ex_US',
-            'europe': 'Europe',
-            'japan': 'Japan',
-            'asia pacific ex japan': 'Asia_Pacific_ex_Japan',
-            'na': 'North_America',
-            'north_america': 'North_America',
-        }
-
     def __init__(self, 
                  frequency: str = 'm', 
                  model: int | str = '3', 
@@ -91,11 +75,8 @@ class FamaFrenchFactors(FactorModel):
                  **kwargs: Any) -> None:
         """Initialize the Fama-French factor model."""
         self.model = str(model)
-        self.region = None if region is None else self._ff_region_map.get(region.lower(), None)
-        super().__init__(frequency=frequency, 
-                         model=model, 
-                         **kwargs)
-
+        self.region = region.lower() if region else 'us'
+        super().__init__(frequency=frequency, model=model, **kwargs)
         self._validate_ff_input()
 
     @property
@@ -131,30 +112,59 @@ class FamaFrenchFactors(FactorModel):
         """
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
+    
+    @classmethod
+    def list_regions(cls) -> list[str]:
+        """Returns the list of supported Fama-French regions (clean keys)."""
+        return [
+            'us', 'emerging', 'developed', 'ex-us', 
+            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america'
+        ]
+    
+    @property
+    def _ff_region_map(self) -> dict[str, str]:
+        """Private: maps region input to region URL str"""
+        return {
+            'us': 'US',
+            'emerging': 'Emerging',
+            'developed': 'Developed',
+            'ex-us': 'Developed_ex_US',
+            'europe': 'Europe',
+            'japan': 'Japan',
+            'asia-pacific-ex-japan': 'Asia_Pacific_ex_Japan',
+            'north-america': 'North_America',
+        }
 
     def _validate_ff_input(self) -> None:
-        if self.model not in ["3", "4", "5", "6"]:
-            raise ValueError(f"Invalid model '{self.model}'")
+        """Validates input for Fama-French models."""
+        valid_regions = self.list_regions()
 
-        if self.frequency == 'w' and self.model != "3":
-            raise ValueError("Weekly FF is only 3-Factor.")
+        if self.region and self.region not in valid_regions:
+            raise ValueError(f"Invalid region '{self.region}'. Supported: {valid_regions}")
 
-        if self.region not in ['us', None] and self.frequency == 'w':
+        if self.region != 'us' and self.frequency == 'w':
             raise ValueError(f"Weekly frequency not available for {self.region}.")
 
         if self.region == "Emerging" and self.frequency != 'm':
             raise ValueError("Emerging markets only available in monthly.")
 
+        if self.model not in ["3", "4", "5", "6"]:
+            raise ValueError(f"Invalid model '{self.model}'")
+
+        if self.frequency == 'w' and self.model != "3":
+            raise ValueError("Weekly Fama-French data is only available for the 3-factor model.")
+ 
 
     def _get_url(self) -> str:
         """Constructs the URL for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        
+        ff_url_name = self._ff_region_map.get(self.region)
+
         # Emerging: only monthly 5-factors avail
-        if self.region == 'Emerging':
+        if ff_url_name == 'Emerging':
             return f"{base_url}/Emerging_5_Factors_CSV.zip"
 
-        if self.region in ['us', None]:
+        if ff_url_name == 'US':
             _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
             freq_map = {'d': '_daily', 'w': '_weekly'}
             suffix = freq_map.get(self.frequency, "")
@@ -165,7 +175,7 @@ class FamaFrenchFactors(FactorModel):
             # regions: 3 and 4 use 3. 5 and 6 use the 5-factor file.
             base_model = '3' if self.model in ['3', '4'] else '5'
             daily = '_Daily' if self.frequency == 'd' else ''
-            filename = f"{self.region}_{base_model}_Factors{daily}_CSV.zip"
+            filename = f"{ff_url_name}_{base_model}_Factors{daily}_CSV.zip"
 
         return f"{base_url}/{filename}"
 

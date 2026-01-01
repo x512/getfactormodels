@@ -14,6 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import sys
 from typing import Any, override
 import pyarrow as pa
 from getfactormodels.utils.data_utils import (
@@ -84,10 +85,8 @@ class BarillasShankenFactors(FactorModel):
         
         table = self._construct()
         table = rearrange_columns(table)
-        #table = self._slice_to_range(table)
-        #table = round_to_precision(table, self._precision)
-        
-        table.validate(full=True)
+
+        table.validate(full=True)  # base validates here.
         table = table.combine_chunks()
 
         self._data = table
@@ -98,16 +97,20 @@ class BarillasShankenFactors(FactorModel):
         self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
 
         # change: using _extract_as_table to stay in pa (keeps extract user facing)
-        _q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
-        _ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
-        _devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF'])
+        print("Getting q factors...", file=sys.stderr)
+        q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
+        
+        print("Getting Fama-French factors...", file=sys.stderr)
+        ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
+        
+        print("Getting HML Devil factors...", file=sys.stderr)
+        devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF'])
 
-        table = _ff.join(_q, keys='date', join_type='inner')
-        table = table.join(_devil, keys='date', join_type='inner')
+        table = ff.join(q, keys='date', join_type='inner')
+        table = table.join(devil, keys='date', join_type='inner')
 
         table = table.combine_chunks()
         return table.select(self.schema.names).cast(self.schema)    
-    
 
     def _get_url(self) -> str:
         """Composite model: no remote source."""

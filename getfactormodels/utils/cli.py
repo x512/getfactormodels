@@ -16,10 +16,12 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 from importlib.metadata import PackageNotFoundError, version
+from getfactormodels.models.aqr_models import _AQRModel
+from getfactormodels.models.fama_french import FamaFrenchFactors
 
 
-# This avoids importing __init__ just for the ver
 def _get_version():
+    """Avoids importing __init__ for the ver. no."""
     try:
         return version("getfactormodels")
     except PackageNotFoundError:
@@ -27,7 +29,7 @@ def _get_version():
 
 
 def parse_args() -> argparse.Namespace:
-    """CLI arg parser."""
+    """CLI arg parser for getfactormodels."""
     parser = argparse.ArgumentParser(
         prog='getfactormodels',
         description='Download datasets for various factor models.',
@@ -40,7 +42,12 @@ def parse_args() -> argparse.Namespace:
     getfactormodels -m hml_devil --country jpn
         ''', 
     )
+
+    aqr_countries = _AQRModel.list_countries() 
+    ff_regions = FamaFrenchFactors.list_regions()
+
     parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
+    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
 
     parser.add_argument('-m', '--model', 
                         #'model',    # no dash, makes it positional. Still enforced in main (if model's missing, after eg, --list)
@@ -54,10 +61,10 @@ def parse_args() -> argparse.Namespace:
                         help="Data frequency (default: 'm'). Note: 'w2w' (Wed-to-Wed) is "
                         "only available for q-factors.")
 
-    parser.add_argument('-s', '--start', type=str, required=False, metavar="YYYY-MM-DD",
+    parser.add_argument('-s', '--start', required=False, metavar="YYYY-MM-DD",
                         help='the start date.')
 
-    parser.add_argument('-e', '--end', type=str, required=False, metavar="YYYY-MM-DD",
+    parser.add_argument('-e', '--end', required=False, metavar="YYYY-MM-DD",
                         help='the end date.')
 
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
@@ -68,19 +75,15 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
                         help='extract specific factor(s) from a model, name should match column value.')
-
-    parser.add_argument('-r', '--region', type=str, metavar="REGION_ID",
-                        choices=['us', 'developed', 'developed_ex_us', 'europe', 'japan',
-                                 'asia_pacific_ex_japan', 'north_america', 'emerging'],
-                        help="(Fama-French only) Specify the region. Get data for emerging" 
-                        " and international markets. Defaults to 'us'.")
-
-    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
-
-    parser.add_argument('-c', '--country', type=str, metavar="COUNTRY",
-                        help="(HML Devil only) Specify the country or region code (e.g., 'jpn', 'aus', 'global').")
-
-
+    # region and country will probably be combined.
+    parser.add_argument('-r', '--region', metavar='REGION',
+                        help=f"Fama-French models only: region code. Options: {', '.join(ff_regions)}")
+    
+    parser.add_argument('-c', '--country', metavar='COUNTRY',
+                        help=f"AQR models only. ISO-3 letter country code. "
+                        f"Options: {', '.join(aqr_countries)}")  
+    # list 
+    # verbose
     args = parser.parse_args()
 
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:

@@ -17,54 +17,51 @@
 """Module that provides a base class for AQR models.
 
 - HMLDevilFactors() - HML Devil
-- BABFactors - Betting against beta
-- QMJFactors - Quality Minus Junk
+- BABFactors() - Betting against beta
+- QMJFactors() - Quality Minus Junk
 """
-
+import hashlib
 import io
+import sys
+import time
 from abc import ABC, abstractmethod
+from typing import override
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.data_utils import (
-    aqr_dt_fix,
     offset_period_eom,
     rearrange_columns,
     round_to_precision,
 )
+from getfactormodels.utils.http_client import _HttpClient
 
 
 class _AQRModel(FactorModel):
     """
     Abstract base class for AQR's factor models.
-    
+
     This subclass handles parsing the AQR Excel workbook with calamine, 
     validates the country param, and has a getter/setter for country.
-    
+
     - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
-    
+
     Notes 
     - These models are slow to download. Daily datasets are 20-30 MB each,
     and the download is rate limited.
-    - AQR datasets are provided as Excel workbooks. Each factor is found on 
-    a different sheet. All sheets except 'RF' contain 24 countries and 5 
-    aggregate equity portfolios.
-    
+
     """
-    # TODO: Progress bar for AQR models!
     # TODO: cache_ttl improved for AQR, use file's last modified date in header. 
-    # TODO: keep old file before download finishes/make sure it can 
-    #   retry on failure, with reconnection. (i.e., AQR's cache holds 2 copies). 
+    @property
+    def _frequencies(self) -> list[str]:
+        return ["d", "m"]
+
 
     def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, country: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
         self.country = country
         self._validate_country(country) #will fix casing
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
-
-    @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m"]
 
     @property
     def _precision(self) -> int:
@@ -75,8 +72,7 @@ class _AQRModel(FactorModel):
     def sheet_map(self) -> dict:
         """Mapping of Excel sheet names to internal factor names."""
         pass
-    
-    # country getter/setter: TODO: region for FF, when decided if just 'region' param...
+
     @property
     def country(self) -> str:
         return self._country
@@ -88,25 +84,93 @@ class _AQRModel(FactorModel):
             self._data = None  # Reset caches
             self._df = None
 
-    def _validate_country(self, value: str) -> str:
-        """Validates and returns the standardized country string."""
-        if value is None:
-            return 'USA'
-            
-        requested = str(value).strip().upper()
-        valid = [
+
+    # NEW. TODO: FIXME: good enough for now.
+    @classmethod
+    def list_countries(cls) -> list[str]:
+        """Returns the list of supported AQR countries/regions."""
+        return [
             'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'DEU', 'DNK', 'ESP', 
             'FIN', 'FRA', 'GBR', 'GRC', 'HKG', 'IRL', 'ISR', 'ITA', 
             'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
             'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA'
         ]
 
+    def _validate_country(self, value: str) -> str:
+        """Standardizes and validates country input for AQR models."""
+        requested = str(value).strip().upper()
+        valid = self.list_countries() #class method
+
         if requested in valid:
             return requested
-        
-        raise ValueError(f"Unsupported country/region: '{value}'. "
-                         f"Must be one of: {valid}")
 
+        raise ValueError(f"Unsupported country/region: '{value}'. "
+            f"Must be one of: {valid}")
+
+    @override
+    def _download(self) -> bytes:
+        """Override to the base model's _download. Current _HttpClient doesn't 
+        stream the response, required for the progress bar."""
+        # TODO: move this to httpclient eventually, allow stream or get.
+        url = self._get_url()
+        cache_key = hashlib.sha256(url.encode('utf-8')).hexdigest()
+
+        with _HttpClient(timeout=15.0) as client:
+            cached_data = client.cache.get(cache_key)
+            if cached_data is not None:
+                return cached_data
+
+            try:
+                with client._client.stream("GET", url) as r:
+                    r.raise_for_status()
+                    data = self._aqr_progress_bar(r)
+
+                client.cache.set(cache_key, data, expire_secs=self.cache_ttl)
+                return data
+
+            except Exception as e:
+                self.log.error(f"Streaming failed, falling back: {e}")
+                return client.download(url, self.cache_ttl)
+
+
+    def _aqr_dt_fix(self, d) -> str:
+        """Fixes AQR's 'MM/DD/YYYY' format."""
+        if isinstance(d, str) and '/' in d:
+            m, day, y = d.split('/')
+            return f"{y}{m.zfill(2)}{day.zfill(2)}"
+        if hasattr(d, 'strftime'):
+            # for the dt objects from Calamine
+            return d.strftime("%Y%m%d")
+        return str(d)
+
+
+    # TODO: move to utils
+    def _aqr_progress_bar(self, response) -> bytes:
+        """A progress bar for AQR downloads."""
+        buffer = io.BytesIO()
+        total = int(response.headers.get("Content-Length", 0))
+        downloaded = 0
+        start_time = time.time()
+        label = f"({self.__class__.__name__}) Downloading data"
+
+        chunk_size = 128 * 1024
+        for chunk in response.iter_bytes(chunk_size=chunk_size):
+            buffer.write(chunk)
+            downloaded += len(chunk)
+
+            if total > 0:
+                percent = (downloaded / total) * 100
+                elapsed = time.time() - start_time
+                speed = (downloaded / 1024) / elapsed if elapsed > 0 else 0
+
+                bar = ('#' * int(percent // 5)).ljust(20, '.')
+
+                sys.stderr.write(f"\r{label}: [{bar}] {percent:3.0f}% ({speed:3.2f} kb/s) ")
+                sys.stderr.flush()
+
+        sys.stderr.write("\n")
+        return buffer.getvalue()
+    
     
     def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
         rows = wb.get_sheet_by_name(sheet_name).to_python()
@@ -139,7 +203,7 @@ class _AQRModel(FactorModel):
             if not r or r[0] is None or r[col_idx] == '': 
                 continue # skip empty rows/rows without a date 
                 
-            dt_val = aqr_dt_fix(r[0])
+            dt_val = self._aqr_dt_fix(r[0])
             val = float(r[col_idx])
 
             dates.append(dt_val)
@@ -238,6 +302,7 @@ class QMJFactors(_AQRModel):
             ('QMJ Factors', pa.float64()),
             ('MKT', pa.float64()),
             ('SMB', pa.float64()),
+            ('HML FF', pa.float64()),
             ('UMD', pa.float64()),
             ('RF', pa.float64()),
         ])
@@ -248,6 +313,8 @@ class QMJFactors(_AQRModel):
         return {'QMJ Factors': 'QMJ',
                 'MKT': 'Mkt-RF',
                 'SMB': 'SMB',
+                'HML FF': 'HML',
+                'UMD': 'UMD',
                 'RF': 'RF'}
 
     def _get_url(self):
@@ -264,12 +331,16 @@ class BABFactors(_AQRModel):
     """
     @property
     def schema(self) -> pa.Schema:
-        """Schema for HML Devil."""
+        """Schema for Betting Against Beta factor model.
+        - see: Asness & Frazzini (2013): BAB model uses FF's 
+        HML, SMB and UMD.
+        """
         return pa.schema([  
             ('date', pa.string()),
             ('BAB Factors', pa.float64()),
             ('MKT', pa.float64()),
             ('SMB', pa.float64()),
+            ('HML FF', pa.float64()),
             ('UMD', pa.float64()),
             ('RF', pa.float64()),
         ])
@@ -277,26 +348,16 @@ class BABFactors(_AQRModel):
     @property
     def sheet_map(self):
         return {'BAB Factors': 'BAB',
-                'MKT': 'Mkt-RF', 'SMB': 'SMB', 'RF': 'RF_AQR'}  #SMB_AQR?
+                'MKT': 'Mkt-RF', 'SMB': 'SMB', 'HML FF': 'HML', 'RF': 'RF_AQR'}  #SMB_AQR?
 
     def _get_url(self):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
 
-#aqr utils: 
-# - aqr_dt_fix
-# - need a progress bar for AQR d/ls only. 
 # NOTE: Countries that == FF regions: JPN, USA 
-# Regions that match FF regions: 
-# global 
-# Global Ex USA
-#Europe 
-#North America 
-#Pacific #ex Japan? APEJ?
-# No RF's per country provided
-#List countries func needed
+# Regions that match FF regions: global, Global Ex USA, Europe, North America, 
+#Pacific if ex japan
+#No RF's per country provided
 #Add error handling/validations
 #Output to CLI then needs titles, FF and AQR specifics...
-
-# TODO: return UMD, HML Devil (or HML FF) on all? Depends what models use.
