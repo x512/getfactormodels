@@ -24,7 +24,6 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from dateutil import parser
-from .data_utils import round_to_precision
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
@@ -128,17 +127,6 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
 
     table = table.combine_chunks()
 
-    # FIXME: TODO:
-    # temp fix. RF cols are 4 decimals from every source.
-    # TODO: should be done, test with rounding util.
-    # Avoids returning any rounding errors in RF cols in all models
-    _rfs = {'RF', 'R_F', 'AQR_RF'}
-    for i, name in enumerate(table.schema.names):
-        clean_name = name.upper().strip()
-        if clean_name in _rfs:
-            rounded_col = pc.round(table.column(name), ndigits=4)
-            table = table.set_column(i, name, rounded_col)
-
     try:
         if ext == '.parquet':
             import pyarrow.parquet as pq
@@ -177,38 +165,33 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
         raise OSError(f"Failed to write {ext} file to {full_path}: {e}") from e
 
 
-def _stream_table_to_md(table, precision=4):  # TODO: use model's _precision
+def _stream_table_to_md(table: pa.Table, precision: int = 4):
     """Generator that yields markdown rows.
-    
     - Reduces memory usage for writing larger tables.
     """
     yield "| " + " | ".join(table.column_names) + " |"
-    yield "| " + " | ".join(["-----"] * len(table.column_names)) + " |"
+    yield "| " + " | ".join(["----"] * len(table.column_names)) + " |"
 
     str_columns = []
     rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} 
 
+    # clean floats, col presentation
     for name in table.column_names:
-        col = table.column(name)
-        clean_name = name.upper().strip()
-        
-        # set precision per col
-        curr_prec = 4 if clean_name in rfs else precision
-
-        if pa.types.is_timestamp(col.type) or pa.types.is_date(col.type):
-            clean_col = col.cast(pa.date32()).cast(pa.string()).to_pylist()
-        
-        elif pa.types.is_floating(col.type):
-            # f-strings to force decimals
+        col = table.column(name)  
+        if pa.types.is_floating(col.type):
+            prec = 4 if name.upper() in rfs else precision
             data = col.to_pylist()
-            clean_col = [
-                f"{x:.{curr_prec}f}" if x is not None else "" 
-                for x in data
-            ]
+            # f-strings to force decimals.
+            # fix: prepend positives with an empty space.
+            # - a space bef the f-string dot: space for positive, '-' for neg.
+            # fix: alignment when col is all positives, rm the double spaces.
+            contains_negs = pc.any(pc.less(col.fill_null(0), 0)).as_py()
+            fmt = f" .{prec}f" if contains_negs else f".{prec}f"
+            clean_col = [f"{x:{fmt}}" if x is not None else "" for x in data]
         else:
             clean_col = col.cast(pa.string()).to_pylist()
-
         str_columns.append(clean_col)
+
     for row in zip(*str_columns):
         yield "| " + " | ".join(row) + " |"
 

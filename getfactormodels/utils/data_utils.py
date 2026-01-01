@@ -17,7 +17,43 @@
 import pyarrow as pa
 import pyarrow.compute as pc
 
-"""Modules for working with pyarrow."""
+"""Utilities for working with pyarrow."""
+
+
+def scale_to_decimal(table: pa.Table) -> pa.Table:
+    """Standardize float cols to decimal (5.2 -> 0.052)."""
+    for i, field in enumerate(table.schema):
+        if pa.types.is_floating(field.type):
+            scaled_col = pc.divide(table.column(i), 100.0)
+            table = table.set_column(i, field.name, scaled_col)
+    return table
+
+
+def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
+    """Rounds all float cols in a pa.Table to precision, and RF to 4."""
+    new_cols = []
+    rf_cols = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'}
+
+    for field in table.schema:
+        col = table.column(field.name)
+        if pa.types.is_floating(field.type):
+            prec = 4 if field.name.upper() in rf_cols else precision
+            new_cols.append(pc.round(col, prec))
+        else:
+            new_cols.append(col)
+
+    return pa.Table.from_arrays(new_cols, schema=table.schema)
+
+
+def rearrange_columns(table: pa.Table) -> pa.Table:
+    """Internal helper: Standardize column orders.
+    * Always returns: 'date', [FACTORS...], 'RF'
+    """
+    cols = table.column_names
+    front = [c for c in ['date', 'Mkt-RF'] if c in cols]
+    back = [c for c in ['RF', 'AQR_RF'] if c in cols]
+    mid = [c for c in cols if c not in set(front + back)]
+    return table.select(front + mid + back)
 
 
 def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) -> pa.Table:
@@ -30,33 +66,14 @@ def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) ->
     target_type = table.schema.field(date_col).type
     expr = pc.field(date_col)
 
-    # Build the combined expression
     mask = None
     if start:
         mask = (expr >= pc.scalar(start).cast(target_type))
-    
     if end:
         end_mask = (expr <= pc.scalar(end).cast(target_type))
         mask = (mask & end_mask) if mask is not None else end_mask
 
     return table.filter(mask) if mask is not None else table
-
-
-def rearrange_columns(table: pa.Table) -> pa.Table:
-    """Internal helper: Standardize column orders.
-    * Always returns the pa.Table as: 'date', [FACTORS...], 'RF'
-    """
-    cols = table.column_names
-
-    if 'date' not in cols:
-        errmsg = f"Error: model does not have a 'date' column! (cols: {cols})"
-        raise RuntimeError(errmsg)
-
-    front = [c for c in ['date', 'Mkt-RF'] if c in cols]
-    back = [c for c in ['RF', 'AQR_RF'] if c in cols]
-    mid = [c for c in cols if c not in set(front + back)]
-    
-    return table.select(front + mid + back)
 
 
 def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[str]:
@@ -78,31 +95,7 @@ def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[st
 
     return input_list
 
-
-def scale_to_decimal(table: pa.Table) -> pa.Table:
-    """Standardize float cols to decimal (5.2 -> 0.052)."""
-    for i, field in enumerate(table.schema):
-        if pa.types.is_floating(field.type):
-            scaled_col = pc.divide(table.column(i), 100.0)
-            table = table.set_column(i, field.name, scaled_col)
-    return table
-
-
-def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
-    """Apply a model's _precision to all float cols 
-    and a precision of 4 to all RF columns.
-    """
-    new_arrays = []
-    for field in table.schema:
-        col = table.column(field.name)
-        if pa.types.is_floating(field.type):
-            prec = 4 if field.name in ['RF', 'AQR_RF', 'RF_AQR'] else precision
-            new_arrays.append(pc.round(col, prec))
-        else:
-            new_arrays.append(col)
-    return pa.Table.from_arrays(new_arrays, schema=table.schema)
-
-
+# TODO: to AQR base
 def aqr_dt_fix(d) -> str:
     """Fixes AQR's 'MM/DD/YYYY' format."""
     if isinstance(d, str) and '/' in d:
@@ -156,6 +149,7 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
         eom_dates = dates
 
     return table.set_column(0, orig_name, eom_dates.cast(pa.date32()))
+
 
 def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     """Internal: converts a single 'yyyyq' col, or 
