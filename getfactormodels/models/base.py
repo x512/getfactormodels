@@ -138,7 +138,6 @@ class FactorModel(ABC):
             return self._df
 
         table = self._get_table()
-
         sliced_table = filter_table_by_date(table, self.start_date, self.end_date)
 
         # pd containment zone ------------------------------ # 
@@ -156,14 +155,10 @@ class FactorModel(ABC):
         """Internal helper: Extracts factors (columns) and returns 
         a pa.Table."""
         table = self._get_table()
-        _sliced = filter_table_by_date(table, self.start_date, self.end_date)
-        
         factors = [factor] if isinstance(factor, str) else factor
-        
-        _factors = verify_cols_exist(table, factors)
-        selection = list(dict.fromkeys(['date'] + _factors))
-
-        return _sliced.select(selection)
+        table = filter_table_by_date(table, self.start_date, self.end_date)
+        # don't need to verify. Trust in the schema...
+        return table.select(['date'] + factors)
 
 
     def extract(self, factor: str | list[str]) -> pd.DataFrame | pd.Series:
@@ -300,4 +295,3 @@ class FactorModel(ABC):
     def _read(self, data: bytes) -> pa.Table:
         """Read bytes into a pa.Table."""
         pass
-

@@ -169,7 +169,6 @@ def main():
     
     else: #we're interactive, or in a jupyter notebook: write df preview to stdout
         if not args.quiet:
-            print(model_obj.data) #uses pandas 
-
+            print(model_obj.data) #uses pandas
 if __name__ == "__main__":
     main()

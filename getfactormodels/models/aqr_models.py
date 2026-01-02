@@ -98,6 +98,9 @@ class _AQRModel(FactorModel):
 
     def _validate_country(self, value: str) -> str:
         """Standardizes and validates country input for AQR models."""
+        if value is None or str(value).strip().lower() in ['', 'none', 'us']:
+            return 'USA'
+
         requested = str(value).strip().upper()
         valid = self.list_countries() #class method
 
