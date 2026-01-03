@@ -96,14 +96,9 @@ class BarillasShankenFactors(FactorModel):
     def _construct(self) -> pa.Table:
         self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
 
-        # change: using _extract_as_table to stay in pa (keeps extract user facing)
-        print("Getting q factors...", file=sys.stderr)
         q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
-        
-        print("Getting Fama-French factors...", file=sys.stderr)
         ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
-        
-        print("Getting HML Devil factors...", file=sys.stderr)
+        print("Getting HML Devil factors...", file=sys.stderr) #if not cached TODO
         devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF'])
 
         table = ff.join(q, keys='date', join_type='inner')

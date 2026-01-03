@@ -22,7 +22,7 @@ import pyarrow.csv as pv
 from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.data_utils import filter_table_by_date
+from getfactormodels.utils.data_utils import filter_table_by_date, print_table_preview
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 from .models import (
     BABFactors,
@@ -66,10 +66,10 @@ def get_factors(model: str | int = 3,
     param the specific FactorModel subclass and initializes it with the 
     requested parameters.
 
-    Args:
+    Args
         model (str, int): the name of the factor model.
             one of: '3', '4', '5', '6', 'carhart', 'liq', 'misp', 'icr',
-            'dhs', 'qclassic', 'q', 'hml_d'.
+            'dhs', 'qclassic', 'q', 'hml_d', 'bab', 'qmj'.
         frequency  (str, optional): the frequency of the data. Default: 'm'.
             'd' 'w' 'w2w' 'm' 'q' or 'y'
         start_date (str, optional): start date, YYYY-MM-DD.
@@ -138,7 +138,7 @@ def main():
         country=args.country,
     )
 
-    # These update model_obj._data and model_obj._df = None
+    # These update model_obj._data and model_obj._view = None
     if args.extract:
         model_obj.extract(args.extract)
     elif args.drop:
@@ -146,7 +146,7 @@ def main():
 
     table = model_obj._data
 
-    # Save table, not the display df
+    # Saves view not table
     if args.output:
         model_obj.to_file(args.output)
 
@@ -169,6 +169,11 @@ def main():
     
     else: #we're interactive, or in a jupyter notebook: write df preview to stdout
         if not args.quiet:
-            print(model_obj.data) #uses pandas
+            table = model_obj.data
+            print(f"{model_obj.__class__.__name__} ({model_obj.frequency})", file=sys.stderr)
+            #new print previewer. cmonn
+            print_table_preview(table, n_rows=4)
+            # zamn
+
 if __name__ == "__main__":
     main()

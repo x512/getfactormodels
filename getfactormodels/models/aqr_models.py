@@ -56,12 +56,12 @@ class _AQRModel(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
-
     def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, country: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
         self.country = country
         self._validate_country(country) #will fix casing
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
+        self.frequency = frequency
 
     @property
     def _precision(self) -> int:
@@ -194,50 +194,55 @@ class _AQRModel(FactorModel):
         if sheet_name == 'RF':
             col_idx = 1
         else:
-            country_col = self.country.upper() if self.country not in [None, 'USA'] else 'USA'
-            
-            if country_col in headers:
-                col_idx = headers.index(country_col)
-            else: # fix: Don't return col 1 (AUS in factors!!)... raise error instead.
-                raise ValueError(f"'{country_col}' not found.")
+            country_key = self.country.upper() if self.country else 'USA'
+            if country_key not in headers:
+                raise ValueError(f"'{country_key}' not found in {sheet_name} headers.")
+            col_idx = headers.index(country_key)
 
         dates, values = [], []
         for r in data_rows:
             if not r or r[0] is None or r[col_idx] == '': 
-                continue # skip empty rows/rows without a date 
+                continue
                 
-            dt_val = self._aqr_dt_fix(r[0])
-            val = float(r[col_idx])
+            dates.append(self._aqr_dt_fix(r[0]))
+            values.append(float(r[col_idx]))
 
-            dates.append(dt_val)
-            values.append(val) # NOTE: EVERY FACTOR GETS PREPENDED WITH {country}_
+        clean_factor_name = self.sheet_map.get(sheet_name, sheet_name)
 
-        return pa.Table.from_pydict({"date": dates, sheet_name: values})
+        if clean_factor_name in ['RF', 'RF_AQR']:
+            final_col_name = 'RF_AQR'
+        elif self.country == 'USA':
+            final_col_name = clean_factor_name
+        else:
+            # prepend all but RF with country
+            final_col_name = f"{self.country}_{clean_factor_name}"
 
+        return pa.Table.from_pydict({"date": dates, final_col_name: values})
 
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
-        prefix = f"{self.country}_" if self.country != 'USA' else ""
+        #prefix = f"{self.country}_" if self.country != 'USA' else ""
 
-        for sheet, col_name in self.sheet_map.items():
+        for sheet in self.sheet_map.keys():
             t = self._process_sheet(sheet, wb)
             t = offset_period_eom(t, self.frequency)
-            
-            # Handle naming: date/RF stay same, others get country prefix
-            final_col = col_name if col_name in ['RF', 'AQR_RF'] else f"{prefix}{col_name}"
-            tables.append(t.rename_columns(['date', final_col]))
+            tables.append(t)
 
-        # Joins all sheets on 'date'
         result = tables[0]
         for next_t in tables[1:]:
             # left outer because it uses the factor each model's named for, retreives
             # its full data, and doesn't filter out any other NaNs.
             result = result.join(next_t, keys='date', join_type='left outer')
 
-        _table = rearrange_columns(result)
-        table = round_to_precision(_table, self._precision)
-            
+        #fix! Sorting on countries returning only 1 year.
+        # order's not guarenteed after a join. Might be only model affected.
+        #
+        #moved to base
+        #result = result.sort_by([("date", "ascending")])
+
+        table = rearrange_columns(result)
+        table = round_to_precision(table, self._precision)
         return table.combine_chunks()
 
 
@@ -257,12 +262,10 @@ class HMLDevilFactors(_AQRModel):
     Management, vol. 39, pp. 49–68, 2013.
     ---
     NOTES:
-    - Data contains leading NaNs.
     - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
         starts 1926-07, and RF begins 1926-08-02.
     TODO: smarter caching for HML Devil download.
-    TODO: progress bar for AQR (defeated)
-
+   
    """
     @property
     def sheet_map(self):
@@ -296,6 +299,7 @@ class QMJFactors(_AQRModel):
     References
     - Asness, Cliff S. and Frazzini, Andrea and Pedersen, Lasse Heje, 
       Quality Minus Junk (June 5, 2017). http://dx.doi.org/10.2139/ssrn.2312432
+     
      """
     @property
     def schema(self) -> pa.Schema:
@@ -331,6 +335,7 @@ class BABFactors(_AQRModel):
     References
     - Frazzini, A. and Pedersen, L. Betting against beta,
       Journal of Financial Economics, 111, issue 1, p. 1-25, 2014.
+
     """
     @property
     def schema(self) -> pa.Schema:

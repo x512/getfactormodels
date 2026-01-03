@@ -16,7 +16,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import pyarrow as pa
 import pyarrow.compute as pc
-
+import math
+import sys
 """Utilities for working with pyarrow."""
 
 
@@ -30,17 +31,21 @@ def scale_to_decimal(table: pa.Table) -> pa.Table:
 
 
 def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
-    """Rounds all float cols in a pa.Table to precision, and RF to 4."""
-    new_cols = []
-    rf_cols = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'}
+    """Rounds all float cols in a pa.Table to precision, and RF to 4.
+    - Attempts to get the _precision from the model
+    - Every model uses this
+    """
+    # auto resolve to: precision arg, else model's ._precision or '6'.
+    prec_val = precision or getattr(table, '_precision', 6)
+    rf_cols = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} # TODO: fix this up.
 
-    for field in table.schema:
-        col = table.column(field.name)
+    new_cols = []
+    for i, field in enumerate(table.schema):
+        col = table.column(i)
         if pa.types.is_floating(field.type):
-            prec = 4 if field.name.upper() in rf_cols else precision
-            new_cols.append(pc.round(col, prec))
-        else:
-            new_cols.append(col)
+            p = 4 if field.name.upper() in rf_cols else prec_val
+            col = pc.round(col, p)
+        new_cols.append(col)
 
     return pa.Table.from_arrays(new_cols, schema=table.schema)
 
@@ -52,11 +57,14 @@ def rearrange_columns(table: pa.Table) -> pa.Table:
     cols = table.column_names
     front = [c for c in ['date', 'Mkt-RF'] if c in cols]
     back = [c for c in ['RF', 'AQR_RF'] if c in cols]
-    mid = [c for c in cols if c not in set(front + back)]
+    fixed = set(front + back) #fix: don't define set in the loop! Now list comp is O(1)
+    mid = [c for c in cols if c not in fixed]
     return table.select(front + mid + back)
 
 
-def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) -> pa.Table:
+def filter_table_by_date(table: pa.Table,
+                         start: str | None,
+                         end: str | None) -> pa.Table:
     """Slices a table to a start-end range."""
     if start is None and end is None:
         return table
@@ -69,15 +77,17 @@ def filter_table_by_date(table: pa.Table, start: str | None, end: str | None) ->
     mask = None
     if start:
         mask = (expr >= pc.scalar(start).cast(target_type))
+
     if end:
         end_mask = (expr <= pc.scalar(end).cast(target_type))
         mask = (mask & end_mask) if mask is not None else end_mask
 
-    return table.filter(mask) if mask is not None else table
+    return table.filter(mask)
 
 
 def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[str]:
-    """Private helper: Checks if columns exist in a pyarrow Table by name.
+    """
+    Private helper: Checks if columns exist in a pyarrow Table by name.
     Returns the list of valid factors or raises if missing.
     """
     if table.num_rows == 0:
@@ -105,17 +115,17 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     """
     if table.num_columns == 0:
         raise ValueError("Table has no columns.")
-    
-    orig_name = table.column_names[0]
-    first_col = table.column(0)
+
+    first_col = table.column(0).cast(pa.string())
 
     # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars). 
     # HML_Devil is the only model that needs/needed this.
     d_str = pc.utf8_slice_codeunits(first_col.cast(pa.string()), 
-                                                    start=0, stop=10)
-    clean_str = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
+                                    start=0, stop=10)
 
-    lengths = pc.utf8_length(clean_str)
+    clean = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
+
+    lengths = pc.utf8_length(clean)
     #is_year = pc.equal(lengths, 4)   # YYYY
     #is_month = pc.equal(lengths, 6)  # YYYYMM
 
@@ -123,13 +133,13 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     # chain logic: year adds '1231', month adds '01'
     date_str = pc.if_else(
         pc.equal(lengths, 4),
-        pc.binary_join_element_wise(clean_str, pa.repeat(pa.scalar("1231"), table.num_rows), ""),
+        pc.binary_join_element_wise(clean, pa.scalar("1231"), ""),
         pc.if_else(
             pc.equal(lengths, 6),
-            pc.binary_join_element_wise(clean_str, pa.repeat(pa.scalar("01"), table.num_rows), ""),
-            clean_str
+            pc.binary_join_element_wise(clean, pa.scalar("01"), ""),
+            clean
         )
-    )    
+    )
     dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
 
     if frequency in ['m', 'q']:
@@ -139,12 +149,13 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     else:
         eom_dates = dates
 
-    return table.set_column(0, orig_name, eom_dates.cast(pa.date32()))
+    return table.set_column(0, table.column_names[0], dates.cast(pa.date32()))
 
 
 def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     """Internal: converts a single 'yyyyq' col, or 
     'year' and 'period' cols to a iso datestr (yyyymmdd).
+    Moved out of icr and q models and combined here. Needs rework.
     ---
     Note
     - Private helper, used by ICRFactors() and QFactors().
@@ -169,7 +180,7 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     months = pc.utf8_lpad(m_ints, width=2, padding="0")
     # add '01' for yyyymmdd (relies on offset_period_eom to shift to eom)
     days   = pa.array(["01"] * table.num_rows, type=pa.string())
-    
+
     # make a yyyymmdd str
     datestr = pc.binary_join_element_wise(year, months, days, "-")
 
@@ -183,4 +194,73 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     except pa.ArrowInvalid as e:
         raise ValueError(f"Failed to parse quarterly dates: {e}")
 
-# preview.
+
+def _format_for_preview(val, col_name, precision=6):
+    """Private helper for print_table_preview output. Rounds for display converts None to NaNs."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):   #math over pycompute just for this
+        return "NaN"
+
+    if isinstance(val, (float, int)) and col_name != "date":
+        prec = 4 if col_name.upper() in {'RF', 'RF_AQR'} else precision
+        return f"{val:.{prec}f}"
+
+    return str(val)
+
+def print_table_preview(table, n_rows=4):
+    """Prints a pa.Table like a (simplified) pd.DataFrame.
+
+    Used by the cli, and base class __repr__ (TODO).
+
+    Notes: 
+        - Hardcoded 'date' and '[...]' for the index col and gap. 
+        - Head and tails (n_rows) 4 by default. 
+        - Table size is included in the footer (might change to a nice header)
+        - Will print whole table if total is less than (n_rows * 2) + 5. 
+    """
+    total_rows = table.num_rows
+    if total_rows == 0:
+        print("Empty Table", file=sys.stderr)
+        return
+
+    # Get the model's own _precision property!
+    precision = getattr(table, '_precision', 6)
+
+    columns = table.column_names
+    # if there's a gap, then the row is None. (Below, if None, prints "[...]")
+    is_gap = total_rows <= (n_rows * 2) + 5   # +5 to prevent hiding just a few cols
+    # slice a head and tail
+    head = table.slice(0, n_rows).to_pylist() if not is_gap else table.to_pylist()
+    tail = table.slice(total_rows - n_rows, n_rows).to_pylist() if not is_gap else []
+
+    # calc width of cols
+    col_widths = {
+        col: max(
+            len(col),
+            max((len(_format_for_preview(r[col], col, precision)) for r in head + tail), default=0)
+        ) + 2 
+        for col in columns
+    }
+
+    # construct header
+    header_row = "".join(c.rjust(col_widths[c]) for c in columns[1:])
+    print(f"\t    {header_row}", file=sys.stderr)
+    print("date", file=sys.stderr) 
+
+    # print (head, gap, tail) rows. TODO: nice header, __str__ in base
+    display_rows = head + ([None] if tail else []) + tail
+    for row in display_rows:
+        if row is None:    # from above, row's None, because is_gap
+            print("  [...]", file=sys.stderr)
+            continue
+
+        # left align dates, other cols right
+        date_str = _format_for_preview(row['date'], 'date', precision).ljust(col_widths['date'])
+        factors_str = "".join(_format_for_preview(row[c], c, precision).rjust(col_widths[c]) for c in columns[1:])
+
+        print(f"{date_str}{factors_str}", file=sys.stderr)
+
+    # footer, like pandas, with size: "[rows x cols, size]"
+    buf_size = table.get_total_buffer_size()
+    size_kb = buf_size / 1024
+    print(f"\n[{total_rows} rows x {len(columns)} columns, {size_kb:.1f} kb]", file=sys.stderr)
+

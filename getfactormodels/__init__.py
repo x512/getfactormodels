@@ -15,10 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
-# Turns off scientific numbers printing to console, makes ALL 6. TODO: remove me
-import pandas as pd
 from .main import get_factors
-from .models import (  # NEW
+from .models import (
     BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
@@ -32,22 +30,22 @@ from .models import (  # NEW
     QMJFactors,
 )
 
-#pd.set_option('display.float_format', lambda x: f'{x:.6f}')
-
 logging.getLogger('getfactormodels').setLevel(logging.ERROR)
 
 __version__ = "0.0.13"
-__all__ = [ "MispricingFactors",
-           "DHSFactors",
-           "ICRFactors",
-           "QFactors",
-           "LiquidityFactors",
-           "CarhartFactors",
-           "HMLDevilFactors",
-           "FamaFrenchFactors",
-           "BarillasShankenFactors",
-           "get_factors",
-           "QMJFactors",
-           "BABFactors",
-           ]
+__all__ = [ 
+    "get_factors",
+    "BABFactors",
+    "BarillasShankenFactors",
+    "CarhartFactors",
+    "DHSFactors",
+    "FamaFrenchFactors",
+    "HMLDevilFactors",
+    "ICRFactors",
+    "LiquidityFactors",
+    "MispricingFactors",
+    "QFactors",
+    "QMJFactors",
+]
+
 
