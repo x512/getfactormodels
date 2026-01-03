@@ -20,10 +20,7 @@
 - BABFactors() - Betting against beta
 - QMJFactors() - Quality Minus Junk
 """
-import hashlib
 import io
-import sys
-import time
 from abc import ABC, abstractmethod
 from typing import override
 import pyarrow as pa
@@ -83,7 +80,11 @@ class _AQRModel(FactorModel):
             self._country = c
             self._data = None  # Reset caches
             self._df = None
-
+    
+    @override
+    def _download(self) -> bytes:
+        with _HttpClient(timeout=15.0) as client:
+            return client.stream(self._get_url(), self.cache_ttl, model_name=self.__class__.__name__)
 
     # NEW. TODO: FIXME: good enough for now.
     @classmethod
@@ -95,6 +96,7 @@ class _AQRModel(FactorModel):
             'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
             'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA'
         ]
+
 
     def _validate_country(self, value: str) -> str:
         """Standardizes and validates country input for AQR models."""
@@ -110,31 +112,6 @@ class _AQRModel(FactorModel):
         raise ValueError(f"Unsupported country/region: '{value}'. "
             f"Must be one of: {valid}")
 
-    @override
-    def _download(self) -> bytes:
-        """Override to the base model's _download. Current _HttpClient doesn't 
-        stream the response, required for the progress bar."""
-        # TODO: move this to httpclient eventually, allow stream or get.
-        url = self._get_url()
-        cache_key = hashlib.sha256(url.encode('utf-8')).hexdigest()
-
-        with _HttpClient(timeout=15.0) as client:
-            cached_data = client.cache.get(cache_key)
-            if cached_data is not None:
-                return cached_data
-
-            try:
-                with client._client.stream("GET", url) as r:
-                    r.raise_for_status()
-                    data = self._aqr_progress_bar(r)
-
-                client.cache.set(cache_key, data, expire_secs=self.cache_ttl)
-                return data
-
-            except Exception as e:
-                self.log.error(f"Streaming failed, falling back: {e}")
-                return client.download(url, self.cache_ttl)
-
 
     def _aqr_dt_fix(self, d) -> str:
         """Fixes AQR's 'MM/DD/YYYY' format."""
@@ -147,34 +124,6 @@ class _AQRModel(FactorModel):
         return str(d)
 
 
-    # TODO: move to utils
-    def _aqr_progress_bar(self, response) -> bytes:
-        """A progress bar for AQR downloads."""
-        buffer = io.BytesIO()
-        total = int(response.headers.get("Content-Length", 0))
-        downloaded = 0
-        start_time = time.time()
-        label = f"({self.__class__.__name__}) Downloading data"
-
-        chunk_size = 128 * 1024
-        for chunk in response.iter_bytes(chunk_size=chunk_size):
-            buffer.write(chunk)
-            downloaded += len(chunk)
-
-            if total > 0:
-                percent = (downloaded / total) * 100
-                elapsed = time.time() - start_time
-                speed = (downloaded / 1024) / elapsed if elapsed > 0 else 0
-
-                bar = ('#' * int(percent // 5)).ljust(20, '.')
-
-                sys.stderr.write(f"\r{label}: [{bar}] {percent:3.0f}% ({speed:3.2f} kb/s) ")
-                sys.stderr.flush()
-
-        sys.stderr.write("\n")
-        return buffer.getvalue()
-    
-    
     def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
         rows = wb.get_sheet_by_name(sheet_name).to_python()
         header_row = None
@@ -222,24 +171,17 @@ class _AQRModel(FactorModel):
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
-        #prefix = f"{self.country}_" if self.country != 'USA' else ""
 
         for sheet in self.sheet_map.keys():
             t = self._process_sheet(sheet, wb)
             t = offset_period_eom(t, self.frequency)
             tables.append(t)
-
+        # using left outer join on these models. Uses the factor the 
+        #  model's named for. Gets full data for that factor, and only 
+        #  filters that factors NaNs. 
         result = tables[0]
         for next_t in tables[1:]:
-            # left outer because it uses the factor each model's named for, retreives
-            # its full data, and doesn't filter out any other NaNs.
             result = result.join(next_t, keys='date', join_type='left outer')
-
-        #fix! Sorting on countries returning only 1 year.
-        # order's not guarenteed after a join. Might be only model affected.
-        #
-        #moved to base
-        #result = result.sort_by([("date", "ascending")])
 
         table = rearrange_columns(result)
         table = round_to_precision(table, self._precision)

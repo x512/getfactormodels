@@ -21,6 +21,9 @@ import certifi
 import httpx
 from platformdirs import user_cache_path
 from .cache import _Cache
+import sys 
+import time
+from io import BytesIO
 
 log = logging.getLogger(__name__)
 
@@ -96,10 +99,10 @@ class _HttpClient:
     def _generate_cache_key(self, url: str) -> str:
         """Generates a cache key/hash for the URL."""
         return hashlib.sha256(url.encode('utf-8')).hexdigest()
-
+    
     def download(self, url: str, cache_ttl: int | None = None) -> bytes:
         """Uses the HTTP Client to download content from a URL.
-            
+
         Args:
             url (str):
             cache_ttl (int): cache ttl in seconds.
@@ -137,6 +140,47 @@ class _HttpClient:
             err = f"Network error for {url}: {e}"
             log.error(err)
             raise ConnectionError(f"Request error: {e}") from e
+
+    # AQR models use this. Was in AQR base... minimizes the override for now.
+    def stream(self, url: str, cache_ttl: int, model_name = "Model") -> bytes:
+        # model_name is just to display the download.
+        cache_key = self._generate_cache_key(url)
+        cached_data = self.cache.get(cache_key)
+        if cached_data is not None: return cached_data
+
+        with self._client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            data = self._progress_bar(resp, model_name) # moved from aqr
+        
+        self.cache.set(cache_key, data, expire_secs=cache_ttl)
+        return data
+   
+    def _progress_bar(self, response, model_name: str = "Model") -> bytes:
+        """A progress bar for AQR downloads."""
+        buffer = BytesIO()
+        total = int(response.headers.get("Content-Length", 0))
+        downloaded = 0
+        start_time = time.time()
+        label = f"({model_name}) Downloading data"
+
+        chunk_size = 128 * 1024
+        for chunk in response.iter_bytes(chunk_size=chunk_size):
+            buffer.write(chunk)
+            downloaded += len(chunk)
+
+            if total > 0:
+                percent = (downloaded / total) * 100
+                elapsed = time.time() - start_time
+                speed = (downloaded / 1024) / elapsed if elapsed > 0 else 0
+
+                bar = ('#' * int(percent // 5)).ljust(20, '.')
+
+                sys.stderr.write(f"\r{label}: [{bar}] {percent:3.0f}% ({speed:3.2f} kb/s) ")
+                sys.stderr.flush()
+
+        sys.stderr.write("\n")
+        return buffer.getvalue() 
+
 
     def check_connection(self, url: str):
         """Simple url ping. Boolean."""
