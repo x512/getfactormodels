@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import calendar
 import logging
+import warnings
 import re
 from datetime import datetime
 from pathlib import Path
@@ -23,46 +24,48 @@ from types import MappingProxyType
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-from dateutil import parser
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
-# TODO: redo this ....
-__model_input_map = MappingProxyType({
-    "3": r"\b((f?)f)?3\b|(ff)?1993",
-    "5": r"\b(ff)?5|ff2015\b",
-    "4": r"\b(c(ar(hart)?)?4?|ff4|carhart1997|4)\b",
-    "6": r"\b(ff)?6|ff2018\b",
-    "Q": r"\b(q(5)?|hmxz)\b",
-    "Qclassic": r"q4|q_?classic|classic_q", # removed \b from inside
-    "Mispricing": r"\b(sy4?|mispricing)|misp|yuan$|m4|mis|sy\b",
-    "Liquidity": r"^(il)?liq(uidity)?|(pastor|ps|sp)$",
-    "ICR": r"icr|hkm",
-    "DHS": r"^(\bdhs\b|behav.*)$",
-    "HMLDevil": r"\bhml(_)?d(evil)?|hmld\b",
-    "QualityMinusJunk": r"\b(qmj|aqr_qmj|qualityminusjunk|quality)\b",
-    "BettingAgainstBeta": r"\b(bab|aqr_bab|bettingagainstbeta|betting)\b",
-    "BarillasShanken": r"\b(bs|bs6|barillas|shanken)\b", })
+_model_map = {
+    "3": ["3", "ff3", "famafrench3"],
+    "4": ["4", "ff4", "carhart", "car"],
+    "5": ["5", "ff5", "famafrench5"],
+    "6": ["6", "ff6", "famafrench6"],
+    "Q": ["q", "qfactors", "q-factors", "q_factors", "q5", "hmxz"],
+    "Qclassic": ["q4", "qclassic", "q-classic", "q_classic", "classic_q"],
+    "HMLDevil": ["hmld", "hmldevil", "hml_devil", "devil"],
+    "QualityMinusJunk": ["qmj", "quality", "qualityminusjunk"],
+    "BettingAgainstBeta": ["bab", "betting", "bettingainstbeta"],
+    "Mispricing": ["mispricing", "mis", "misp"],
+    "Liquidity": ["liq", "liquidity"],
+    #"ICR": ["icr", "intermediary", "hkm"],
+    #"DHS": ["dhs", "behavioural", "behaviour"],
+    "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
+}
 
-def _get_model_key(model: str | int) -> str:
-    """Private helper: Convert a model name to a model key.
+_MODEL_INPUT_MAP = MappingProxyType(_model_map)
 
-    >>> _get_model_key('ff3')
+
+def _get_model_key(model_input: str | int) -> str:
+    """Converts user input (e.g. 'ff3', 'hmld') to the model key.
+    >>> _get_model_key('3')
     '3'
+    >>> _get_model_key('ff6')
+    '6'
+    >>> _get_model_key(icr)
+    'ICR'
     >>> _get_model_key('liQ')
     'Liquidity'
-    >>> _get_model_key('q4_factors')
-    'Qclassic'
     """
-    model_str = str(model).lower().strip()
-
-    for key, pattern in __model_input_map.items():
-        wrapped_pattern = rf"({pattern})"
-        
-        if re.search(wrapped_pattern, model_str, re.IGNORECASE):
+    val = str(model_input).lower().strip()
+    
+    # Check the lists in the map
+    for key, alias in _MODEL_INPUT_MAP.items():
+        if val in alias:
             return key
-
-    return model_str
+            
+    return val
 
 
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
@@ -86,35 +89,37 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
 
 
 def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndefinedVariable]   TODO: FIXME
-    """Private helper: create filename using metadata from a model instance."""
+    """Private helper: create filename using metadata from a model instance.
+    Used if directory is provided, or just an extension, intended to be used 
+    for -o flag with no param.
+    """
     # TODO: one day add a name property to models...
     # TODO: if user used 'carhart' use carhart, if they used (ff)4, use ff.
-    _name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
 
     # 3 to "ff3", FF models only ones that accept int.
-    model_name = f"ff{_name}" if str(_name).isdigit() else _name
+    raw_name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
+    model_name = f"ff{raw_name}" if str(raw_name).isdigit() else raw_name
 
-    freq = getattr(model, 'frequency', 'd').lower()
-    _ff_region = getattr(model, 'region', None)
+    freq = model.frequency
+    region = getattr(model, 'region', None)
+    country = getattr(model, 'country', None)
 
-    if hasattr(model, 'data') and not model.data.empty:
-        # get actual start/end dates (ValueError if data empty)
-        start = model.data.index.min().strftime('%Y%m%d')
-        end = model.data.index.max().strftime('%Y%m%d')
+    if hasattr(model, 'data') and model.data.num_rows > 0:
+        date_col = model.data.column(0)
 
-        date_str = f"{start}-{end}"
+        # pc.min/max give scalar, as_py makes scalar dt
+        start_dt = pc.min(date_col).as_py()
+        end_dt = pc.max(date_col).as_py()
+
+        date_str = f"{start_dt.strftime('%Y%m%d')}-{end_dt.strftime('%Y%m%d')}"
     else:
-        from datetime import datetime
-        log.warning("No data. Used timestamp for filename.")
         date_str = f"no_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-    # filter out the Nones...
-    parts = [model_name, freq, _ff_region]
-    #join it together...
-    base = "_".join(str(p).lower() for p in parts if p)
-    #what a beautiful filename!!
-    return f"{base}_{date_str}.csv"
+    parts = [model_name, freq, region, country, date_str]
+    filename = "_".join(str(p).lower() for p in parts if p)
 
+    return f"{filename}.csv"
+    
 
 def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
     """Private helper: save a table to file. 
@@ -150,13 +155,13 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
                     for line in _stream_table_to_md(table):
                         f.write(line + '\n')
             except Exception as e:
-                raise OSError(f"Failed to write markdown to {full_path}: {e}")
+                msg = f"Failed to write markdown to {full_path}"
+                log.exception(msg) 
+                raise OSError(f"{msg}: {e}")
 
         elif ext == '.pkl':
-        # pd ----------------------------------- #
             df = table.to_pandas()
             df.to_pickle(full_path)
-        # -------------------------------------- #
         else:
             supported = ['.parquet', '.feather', '.csv', '.txt', '.pkl', '.md']
             raise ValueError(f"Extension '{ext}' not supported. Options: {supported}")
@@ -202,20 +207,24 @@ def _roll_to_eom(dt: datetime) -> str:
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
 
-# TODO: redo below, user date inputs... 
 ### used ONLY for user input and get/set start/end. TODO: REDO
 def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
-    """Internal helper: standardizes date input to an ISO (YYYY-MM-DD) str.
+    """Internal helper: standardizes user input dates 
 
-    - Takes a date_input, "2023", "202310", "2023-10" and converts it to 
-      YYYY-MM-DD. If end_date is True, sets day to last of m/q/y period.
-    - Used for start_date/end_date inputs.
+    Converts YYYY, YYYY-MM, YYYYMM, YYYY/MM/DD to a standard YYYY-MM-DD 
+    string. If end_date is true, then sets day to the last day of the period.
+    No-op for frequencies under monthly.
+    
+    - Solely for start_date and end_date provided by a user.
+    
+    - Validates against future dates (will move this out probably): if start,
+      then errors, if end is in the future, warn and set to today.
 
     Args
-        `date_input`: the date str.
-        `is_end`: if True, snaps YYYY to Dec 31st and YYYY-MM to the 
-          last calendar day of its month. Else, defaults to the first
-          day of the period.
+        date_input (str | int): the date str.
+        is_end (bool): if True, converts YYYY to YYYY-12-31, and YYYY-MM to the 
+        last calendar day of that month. Else, defaults to the first
+        day of the period.
     """
     if date_input is None:
         return None
@@ -224,28 +233,44 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
     clean_str = re.sub(r'\D', '', raw_str) # Removes anything that isn't a digit
 
     try:
-        # YYYY, YYYYMM: don't allow parser to guess YYYYMM as YYMMDD!
-        if clean_str.isdigit():
-            if len(clean_str) == 4:
-                year = int(clean_str)
-                return f"{year}-12-31" if is_end else f"{year}-01-01"
+        if len(clean_str) == 4:
+            year = int(clean_str)
+            dt = datetime(year, 12, 31) if is_end else datetime(year, 1, 1)
+        elif len(clean_str) == 6:
+            dt = datetime.strptime(clean_str, "%Y%m")
+            if is_end:
+                return _roll_to_eom(dt)
+        elif len(clean_str) == 8:
+            dt = datetime.strptime(clean_str, "%Y%m%d")
+        else:
+            # Fallback for iso yyyy-mm-dd or yyyy/mm/dd
+            dt = datetime.fromisoformat(raw_str.replace('/', '-'))
+                   
+        # Check for future dates: if start_date is in the future, then 
+        # errors. If end_date is in the future, warns and sets to today.
+        # Also testing warnings and logging...
+        if dt > datetime.now():
+            _today = datetime.now().strftime('%Y-%m-%d')
+            if not is_end:
+                msg = f"Error: Future date used as start_date: '{date_input}'."
+                log.error(msg)
+                raise ValueError(msg)
+            else:
+                warnmsg = f"Future date as end date: '{date_input}'. Setting to today ({_today})."
+                warnings.warn(warnmsg, UserWarning) 
+                log.warning(warnmsg)
+                dt = datetime.now()
 
-            if len(clean_str) == 6:
-                dt = datetime.strptime(clean_str, "%Y%m") # 6 chars IS %Y%m, parser
-                return _roll_to_eom(dt) if is_end else dt.strftime("%Y-%m-01")
-
-        # this sets a default fallback for dates which shouldn't ever be hit
-        dt = parser.parse(raw_str, default=datetime(1960, 1, 1))
-        
         # input give a day? "YYYY-MM" (len 7) or "YYYY/MM", then no
         day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
-
         if is_end and not day_given:
-            return _roll_to_eom(dt)
-        # they gave day, use it.
-        return dt.strftime("%Y-%m-%d")
+             return _roll_to_eom(dt)
 
-    except (ValueError, OverflowError):
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, OverflowError) as e:
+        # if a specific error's already raised, don't wrap a generic one!
+        if "Future date" in str(e):
+            raise e
         raise ValueError(f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.")# tests -- yyyy, yyyymm yyyy-mm start dates 
 # test:
 # yyyy, yyyy-mm, yyyymm, yyyymmdd end dates 
@@ -253,3 +278,5 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
 # isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
 # isn't filling in today's month or current year.
 # IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
+
+#TODO: style warnings! Consistent logging!

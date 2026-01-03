@@ -17,13 +17,13 @@
 import hashlib
 import logging
 import ssl
+import sys
+import time
+from io import BytesIO
 import certifi
 import httpx
 from platformdirs import user_cache_path
 from .cache import _Cache
-import sys 
-import time
-from io import BytesIO
 
 log = logging.getLogger(__name__)
 

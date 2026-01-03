@@ -30,7 +30,9 @@ from .models import (
     QMJFactors,
 )
 
-logging.getLogger('getfactormodels').setLevel(logging.ERROR)
+#logging.getLogger('getfactormodels').setLevel(logging.ERROR)
+logger = logging.getLogger('getfactormodels')
+logger.addHandler(logging.NullHandler())
 
 __version__ = "0.0.13"
 __all__ = [ 

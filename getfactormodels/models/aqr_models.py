@@ -32,7 +32,8 @@ from getfactormodels.utils.data_utils import (
     round_to_precision,
 )
 from getfactormodels.utils.http_client import _HttpClient
-
+import logging
+log = logging.getLogger(__name__) #TODO: consistent logging.
 
 class _AQRModel(FactorModel):
     """
@@ -53,7 +54,8 @@ class _AQRModel(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
-    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, country: str = 'usa', **kwargs):
+    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, 
+                 country: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
         self.country = country
         self._validate_country(country) #will fix casing
@@ -63,12 +65,6 @@ class _AQRModel(FactorModel):
     @property
     def _precision(self) -> int:
         return 8
-
-    @property
-    @abstractmethod
-    def sheet_map(self) -> dict:
-        """Mapping of Excel sheet names to internal factor names."""
-        pass
 
     @property
     def country(self) -> str:
@@ -109,8 +105,9 @@ class _AQRModel(FactorModel):
         if requested in valid:
             return requested
 
-        raise ValueError(f"Unsupported country/region: '{value}'. "
-            f"Must be one of: {valid}")
+        msg = f"Unsupported country/region: '{value}'. \nMust be one of: {valid}"
+        log.error(msg)
+        raise ValueError(msg)
 
 
     def _aqr_dt_fix(self, d) -> str:
@@ -135,7 +132,9 @@ class _AQRModel(FactorModel):
                 break
 
         if header_row is None:
-            raise ValueError(f"Couldn't find the header row")
+            msg = f"Error: Couldn't find a header row for sheet: '{sheet_name}')"
+            log.error(msg)
+            raise ValueError(msg)
         
         headers = [str(h).strip().upper() for h in rows[header_row]]
         data_rows = rows[header_row + 1:]
@@ -144,8 +143,12 @@ class _AQRModel(FactorModel):
             col_idx = 1
         else:
             country_key = self.country.upper() if self.country else 'USA'
+            
             if country_key not in headers:
-                raise ValueError(f"'{country_key}' not found in {sheet_name} headers.")
+                msg = f"'{country_key}' not found in {sheet_name} headers. Available: {headers}"
+                log.error(msg)
+                raise ValueError(msg)
+
             col_idx = headers.index(country_key)
 
         dates, values = [], []
@@ -177,7 +180,7 @@ class _AQRModel(FactorModel):
             t = offset_period_eom(t, self.frequency)
             tables.append(t)
         # using left outer join on these models. Uses the factor the 
-        #  model's named for. Gets full data for that factor, and only 
+        #  model's named after. Gets full data for that factor, and only 
         #  filters that factors NaNs. 
         result = tables[0]
         for next_t in tables[1:]:
@@ -186,6 +189,12 @@ class _AQRModel(FactorModel):
         table = rearrange_columns(result)
         table = round_to_precision(table, self._precision)
         return table.combine_chunks()
+    
+    @property
+    @abstractmethod
+    def sheet_map(self) -> dict:
+        """Mapping sheet names to factor names."""
+        pass
 
 
 class HMLDevilFactors(_AQRModel):
@@ -206,9 +215,8 @@ class HMLDevilFactors(_AQRModel):
     NOTES:
     - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
         starts 1926-07, and RF begins 1926-08-02.
-    TODO: smarter caching for HML Devil download.
-   
    """
+    #TODO: smarter caching!
     @property
     def sheet_map(self):
         return {'HML Devil': 'HML_Devil',
@@ -234,7 +242,6 @@ class HMLDevilFactors(_AQRModel):
         ])
 
 
-# NEW
 class QMJFactors(_AQRModel):
     """Quality Minus Junk: Asness, Frazzini & Pedersen (2017).
     
@@ -270,7 +277,7 @@ class QMJFactors(_AQRModel):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Quality-Minus-Junk-Factors-{f}.xlsx'
 
-# NEW
+
 class BABFactors(_AQRModel):
     """Betting Against Beta: A. Frazzini, L. Pedersen (2014)
 
@@ -304,10 +311,8 @@ class BABFactors(_AQRModel):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
-
 # NOTE: Countries that == FF regions: JPN, USA 
 # Regions that match FF regions: global, Global Ex USA, Europe, North America, 
 #Pacific if ex japan
-#No RF's per country provided
 #Add error handling/validations
 #Output to CLI then needs titles, FF and AQR specifics...
