@@ -61,7 +61,7 @@ class QFactors(FactorModel):
     def _precision(self) -> int: return 6
 
     @property
-    def schema(self) -> pa.Schema:
+    def schema(self) -> pa.Schema:   # TODO: make dynamic with self.classic
         factors = [
             ("R_F", pa.float64()),
             ("R_MKT", pa.float64()),
@@ -113,15 +113,21 @@ class QFactors(FactorModel):
                 convert_options=conv_opts,
             )
             table = pa.Table.from_batches(reader)
-
+            
             if self.frequency == "q":
                 table = parse_quarterly_dates(table=table)
-            elif self.frequency in ["m"]:
-                y = table.column("year").cast(pa.string())
-                m = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
-                # Combines 2 cols, util handles the padding etc.
-                table = table.add_column(0, "date", pc.binary_join_element_wise(y, m, "")).drop(["year", "period"])
+            elif self.frequency in ["m", "y"]:
+                # temp fix: FIXME: q factors annual data year col
+                yr = table.column("year").cast(pa.string())
+                if self.frequency == "m":
+                    m_str = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
+                    date_col = pc.cast(pc.binary_join_element_wise(yr, m_str, ""), pa.string())
+                    drop_cols = ["year", "period"]
+                else: # yearly
+                    date_col = yr
+                    drop_cols = ["year"]
 
+                table = table.add_column(0, "date", date_col).drop(drop_cols)
             table = offset_period_eom(table, self.frequency)
             table = scale_to_decimal(table)
             table = round_to_precision(table, self._precision)

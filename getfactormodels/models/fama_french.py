@@ -21,6 +21,7 @@ import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.data_utils import (
     offset_period_eom,
+    round_to_precision,
     scale_to_decimal,
 )
 from getfactormodels.utils.http_client import _HttpClient
@@ -66,7 +67,7 @@ class FamaFrenchFactors(FactorModel):
 
     @property 
     def _precision(self) -> int:
-        return 6  
+        return 6
 
     def __init__(self, 
                  frequency: str = 'm', 
@@ -112,7 +113,38 @@ class FamaFrenchFactors(FactorModel):
         """
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
-    
+    @property
+    def model(self) -> str:
+        return self._model
+    @model.setter
+    def model(self, value: int | str):
+        val = str(value)
+        if val not in ["3", "4", "5", "6"]:
+            raise ValueError(f"Invalid model '{val}'. Options: 3, 4, 5, 6")
+        
+        if hasattr(self, '_model') and val != self._model:
+            self.log.info(f"Model changed from {self._model} to {val}")
+            self._data = None
+            self._view = None
+        self._model = val 
+
+    @property
+    def region(self) -> str:
+        return self._region
+    @region.setter
+    def region(self, value: str | None):
+        val = value.lower() if value else 'us'
+        
+        if val not in self.list_regions():
+            raise ValueError(f"Invalid region '{val}'. Supported: {self.list_regions()}")
+
+        if hasattr(self, '_region') and val != self._region:
+            self.log.info(f"Region changed from {self._region} to {val}.")
+            self._data = None
+            self._view = None
+            
+        self._region = val 
+
     @classmethod
     def list_regions(cls) -> list[str]:
         """Returns the list of supported Fama-French regions (clean keys)."""
@@ -136,20 +168,12 @@ class FamaFrenchFactors(FactorModel):
         }
 
     def _validate_ff_input(self) -> None:
-        """Validates input for Fama-French models."""
-        valid_regions = self.list_regions()
-
-        if self.region and self.region not in valid_regions:
-            raise ValueError(f"Invalid region '{self.region}'. Supported: {valid_regions}")
-
+        """Validates input for Fama-French models for things getters/setters dont take care of."""
         if self.region != 'us' and self.frequency == 'w':
             raise ValueError(f"Weekly frequency not available for {self.region}.")
 
-        if self.region == "Emerging" and self.frequency != 'm':
+        if self.region == "emerging" and self.frequency != 'm':
             raise ValueError("Emerging markets only available in monthly.")
-
-        if self.model not in ["3", "4", "5", "6"]:
-            raise ValueError(f"Invalid model '{self.model}'")
 
         if self.frequency == 'w' and self.model != "3":
             raise ValueError("Weekly Fama-French data is only available for the 3-factor model.")
@@ -209,21 +233,23 @@ class FamaFrenchFactors(FactorModel):
         if self.frequency == 'y':
             raw_content = lines[annual_marker + 1:] if annual_marker is not None else lines
         else:
-            _start = 6 if self.region == 'Emerging' else (12 if is_mom else 4)
+            _start = 6 if self.region == 'emerging' else (12 if is_mom else 4)
             _stop = annual_marker if annual_marker else len(lines)
             raw_content = lines[_start:_stop]
 
-        content = [",".join(_schema.names)]  # Force clean header
+        content = [",".join(_schema.names)]
         for line in raw_content:
             clean = line.strip()
             if not clean or "copyright" in clean.lower():
                 if "copyright" in clean.lower(): self.copyright = clean
                 continue
             
-            # fix: keep lines starting with a number
-            first_part = clean.replace(',', ' ').split()
-            if first_part and first_part[0].isdigit():
-                content.append(",".join(first_part))
+            # Use commas for split, not spaces!
+            parts = [p.strip() for p in clean.split(',')]
+            
+            # only keeps lines that start with a date
+            if parts and parts[0].isdigit():
+                content.append(",".join(parts))
 
         return pv.read_csv(
             io.BytesIO("\n".join(content).encode('utf-8')),
@@ -231,6 +257,7 @@ class FamaFrenchFactors(FactorModel):
                 null_values=["-99.99", "-999", "-99.990", "-0.9999"],
                 strings_can_be_null=True,
                 column_types=_schema,
+                include_columns=_schema.names
             ),
         )   
     
@@ -252,8 +279,19 @@ class FamaFrenchFactors(FactorModel):
 
 
     def _read(self, data: bytes) -> pa.Table:
-        # Temporary schema without the momentum factor for the first file
-        main_cols = [f for f in self.schema if f.name not in ["UMD", "MOM", "WML"]]
+        is_emerging = self.region == 'emerging'
+        
+        main_cols = []
+        for field in self.schema:
+            if field.name not in ["UMD", "MOM", "WML"]:
+                main_cols.append(field)
+
+        # fix: user asked for model=3 or 4, region='emerging' 
+        #   schema needs RMW/CMA anyway (only a 5 factor file)
+        if is_emerging and self.model in ["3", "4"]:
+            main_cols.insert(4, pa.field("RMW", pa.float64()))
+            main_cols.insert(5, pa.field("CMA", pa.float64()))
+
         main_schema = pa.schema(main_cols)
 
         table = self._read_zip(data, use_schema=main_schema)
@@ -264,4 +302,6 @@ class FamaFrenchFactors(FactorModel):
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
+
+        # using select with schema.names drops the cols the user doesn't want
         return table.select(self.schema.names).combine_chunks()
