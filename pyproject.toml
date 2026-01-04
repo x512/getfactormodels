@@ -57,6 +57,7 @@ py_version = 312
 multi_line_output = 3
 include_trailing_comma = true
 lines_between_sections = false
+force_grid_wrap = 0
 
 [tool.ruff]
 line-length = 79
@@ -66,7 +67,7 @@ respect-gitignore = true
 exclude = ["*.ipynb", ".git", ".git-rewrite", "build", "dist"]
 
 [tool.ruff.lint]
-select = [ 
+select = [ "ANN201", "D",  # docs
     "E", "F", "B", "G", "N", "A", "S", "SIM", "C901", "COM", 
     "UP", "C4", "PT", "LOG", "DTZ", "RET", "ICN", "TID", 
     "FBT", "BLE", "ISC"
@@ -78,6 +79,9 @@ unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
 "**/__init__.py" = ["F401"]
 "__main__.py" = ["F401"]
 "tests/**/*.py" = ["F401", "S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"  #docs
 
 [tool.ruff.format]
 quote-style = "double"

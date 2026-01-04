@@ -39,10 +39,9 @@ class FactorModel(ABC):
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
                  **kwargs: Any):
-        """
-        Initialize the factor model instance.
+        """Initialize the factor model instance.
 
-        Args
+        Args:
             frequency (str): the frequency of the data. Default: 'm'.
             start_date (str, opt):
             end_date (str, opt):
@@ -52,6 +51,7 @@ class FactorModel(ABC):
         """
         logger_name = f"{self.__module__}.{self.__class__.__name__}"
         self.log = logging.getLogger(logger_name)
+
         self._data: pa.Table | None = None
         self._start_date = None
         self._end_date = None
@@ -70,21 +70,18 @@ class FactorModel(ABC):
     def __len__(self) -> int:
         return len(self.data) # length of the table (after slicing)
 
-
     def __str__(self) -> str:
-        """User view of data. Shows repr if data hasn't been called."""
         if self._data is not None:
             region = getattr(self, 'region', 'US')
             header = f"{self.__class__.__name__} ({region})\n"
             return header + print_table_preview(self.data)
         return self.__repr__()
 
-
     def __repr__(self) -> str:
         params = []
         attrs = [
             'model', 'frequency', 'region', 'start_date', 'end_date',
-            'country', 'classic', 'output_file'
+            'country', 'classic', 'output_file',
         ]
 
         for attr in attrs:
@@ -97,22 +94,9 @@ class FactorModel(ABC):
 
         return f"{self.__class__.__name__}({', '.join(params)})"
 
-
     def __getitem__(self, key: str | list[str]) -> pa.Table:
         """Returns a pa.Table of date + selected factors."""
         return select_table_columns(self.data, key)
-
-        #keys = [key] if isinstance(key, str) else list(key)
-
-        #selection = [k for k in keys if k != 'date']
-        #selection = ['date'] + selection
-
-        #missing = [k for k in selection if k not in self.data.column_names]
-        #if missing:
-        #    raise KeyError(f"Factors {missing} not found in {self.model}.")
-
-        #return self.data.select(selection).combine_chunks()
-
 
     def _repr_html_(self) -> str:
         """HTML repr for nice IPython/Jupyter outputs."""
@@ -128,7 +112,6 @@ class FactorModel(ABC):
 
         # str(self) calls get_table_preview, wrap in <pre>
         return f'<pre style="{style}">{str(self)}</pre>'
-
 
     @property
     def start_date(self) -> str | None:
@@ -166,7 +149,8 @@ class FactorModel(ABC):
 
         if val != self._frequency:
             if self._frequency is not None:
-                self.log.info(f"Freq. changed from {self._frequency} to {val}.")
+                msg = f"Freq. changed from {self._frequency} to {val}." 
+                self.log.info(msg)
             self._frequency = val
             self._data = None
 
@@ -184,7 +168,7 @@ class FactorModel(ABC):
         return filter_table_by_date(
             table, 
             self.start_date, 
-            self.end_date
+            self.end_date,
         )
 
 
@@ -194,8 +178,9 @@ class FactorModel(ABC):
         return self.data.shape
 
 
-    def extract(self, factor: str | list[str]) -> "FactorModel":
+    def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
         """Select specific factors from the model. Str or list[str]. Case-sensitive.
+
         Stateful: Sets the view to only these factors.
         """
         table = self._get_table()
@@ -205,9 +190,10 @@ class FactorModel(ABC):
         return self
 
 
-    def drop(self, factor: str | list[str]) -> "FactorModel":
-        """Remove specific factors from the model. Str or list[str]. Case-sensitive.
-        Stateful: Removes these factors from the view.
+    def drop(self, factor: str | list[str]) -> "FactorModel": #Self
+        """Remove specific factors from the model. Str or list[str].
+                
+        Stateful: Removes these factors from the view. Case-sensitive.
         """
         to_drop = [factor] if isinstance(factor, str) else factor
         all_cols = self._get_table().column_names
@@ -243,8 +229,8 @@ class FactorModel(ABC):
         _save_to_file(table, target, model_instance=self)
 
 
-    def to_pandas(self):
-        """Convert model to a pandas DataFrame. Wrapper around Arrow's `to_pandas()`"""
+    def to_pandas(self) -> "pd.DataFrame":
+        """Convert model to a pandas DataFrame. Wrapper around Arrow's `to_pandas()`."""
         try:
             import pandas as pd  # not needed, but if user doesn't have pandas we can err
             df = self.data.to_pandas()
@@ -252,25 +238,20 @@ class FactorModel(ABC):
                 df = df.set_index("date")
             return df
         except ImportError:
-            raise ImportError("Requires Pandas. `pip install pandas`")
+            raise ImportError("Requires Pandas. `pip install pandas`") from None
 
 
-    def to_polars(self):
-        """Convert model to a polars DataFrame. 
+    def to_polars(self) -> "pl.DataFrame":
+        """Convert model to a polars DataFrame.
 
         Wrapper around Polars' `from_arrow()`. Triggers the download if 
         not loaded.
-
-        Example 
-        >>> m = m.get_factors(model='misp')
-        >>> m.to_polars()
-
         """
         try:
             import polars as pl
             return pl.from_arrow(self.data)
         except ImportError:
-            raise ImportError("Requires Polars. `pip install polars`")
+            raise ImportError("Requires Polars. `pip install polars`") from None
 
 
     def _extract_as_table(self, factor: str | list[str]) -> pa.Table:
@@ -286,6 +267,7 @@ class FactorModel(ABC):
 
     def _get_table(self) -> pa.Table:
         """Internal: triggers download if cache empty.
+
         Returns the full table/data.
         """
         if self._data is None:
@@ -318,20 +300,20 @@ class FactorModel(ABC):
 
 
     # might move to utils
-    def __dataframe__(self, nan_as_null: bool = False, allow_copy: bool = True):
-        """Dataframe interchange protocol support. 
+    def __dataframe__(self, *, nan_as_null: bool = False):
+        """Dataframe interchange protocol support.
 
         Casts date32 to ns.
 
-        Args
+        Args:
             nan_as_null: converts NaN to null
 
-        Usage:
+        Examples:
             model = FamaFrenchFactors(model='3')
             df = model.to_pandas()
 
             import polars as pl
-            df = pl.from_dataframe(model.data)       
+            df = pl.from_dataframe(model.data)
 
             import pandas as pd
             df = pd.api.interchange.from_dataframe(model.data)
@@ -345,7 +327,7 @@ class FactorModel(ABC):
             date_ns = table.column(0).cast(pa.timestamp("ns")).combine_chunks()
             table = table.set_column(0, "date", date_ns)
 
-        return table.combine_chunks().__dataframe__(nan_as_null=nan_as_null, allow_copy=allow_copy)
+        return table.combine_chunks().__dataframe__(nan_as_null=nan_as_null, allow_copy=True)
 
 
     @property

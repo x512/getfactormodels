@@ -18,7 +18,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
 import pyarrow.csv as pv
 from getfactormodels import models as factor_models
 from getfactormodels.models.aqr_models import _AQRModel
@@ -26,23 +25,16 @@ from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 
-logger = logging.getLogger("getfactormodels")
+log = logging.getLogger("getfactormodels")
 
-def get_factors(model: str | int = 3,
-                frequency: str = "m",
-                *,
-                start_date: str | None = None,
-                end_date: str | None = None,
-                output_file: str | None = None,
-                region: str | None = None,
-                **kwargs: Any) -> FactorModel:
+def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
     """Get and process factor model data.
 
     The primary entry point for the getfactormodels package. Maps the 'model' 
     param the specific FactorModel subclass and initializes it with the 
     requested parameters.
 
-    Args
+    Args:
         model (str, int): the name of the factor model.
             one of: '3', '4', '5', '6', 'carhart', 'liq', 'misp', 'icr',
             'dhs', 'qclassic', 'q', 'hml_d', 'bab', 'qmj'.
@@ -51,42 +43,31 @@ def get_factors(model: str | int = 3,
         start_date (str, optional): start date, YYYY-MM-DD.
         end_date (str, optional): end date, YYYY-MM-DD.
         output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
+        **kwargs: keyword args passed to the base model.
 
     """
-    model_key = _get_model_key(model)  # uses MODEL_INPUT_MAP
-
-    if model_key in ["3", "4", "5", "6"]:
-        class_name = "FamaFrenchFactors" if model_key != "4" else "CarhartFactors"
-    else:
-        class_name = f"{model_key}Factors" if not model_key.endswith("Factors") else model_key
-
-    factor_class = getattr(factor_models, class_name, None)    
+    model_key = _get_model_key(model)
+    
+    model_class_map = {
+        "3": "FamaFrenchFactors",
+        "5": "FamaFrenchFactors",
+        "6": "FamaFrenchFactors",
+        "4": "CarhartFactors",
+        "Qclassic": "QFactors", # Handled via 'classic=True' in kwargs
+    }
+    
+    class_name = model_class_map.get(model_key, f"{model_key}Factors")
+    factor_class = getattr(factor_models, class_name, None)
 
     if not factor_class:
-        msg = f"Model '{model}' not recognized."
-        logger.error(msg)
-        raise ValueError(msg)
-
-    # base params
-    params = {
-        "frequency": frequency.lower(),
-        "start_date": start_date,
-        "end_date": end_date,
-        "output_file": output_file,
-        **kwargs,
-    }
+        raise ValueError(f"Model '{model}' not recognized.")
 
     if model_key in ("3", "5", "6"):
-        params["model"] = model_key
-        params["region"] = region
-    elif model_key == "4":
-        params["region"] = region
-    elif model_key == "Qclassic":
-        params["classic"] = True
-    elif region: 
-        params["region"] = region
+        kwargs["model"] = model_key
+    if model_key == "Qclassic":
+        kwargs["classic"] = True
 
-    return factor_class(**params)
+    return factor_class(**kwargs)
 
 
 def main():
@@ -97,15 +78,8 @@ def main():
         sys.exit(1)
     
     try:
-        model_obj = get_factors(
-            model=args.model,
-            frequency=args.frequency,
-            start_date=args.start,
-            end_date=args.end,
-            region=args.region,
-            country=args.country,
-        )
-
+        model_obj = get_factors(**vars(args)) # now don't need to manually map each param to args
+        
         if args.country and not isinstance(model_obj, _AQRModel):
             print(f"Error: '{args.model}' doesn't support --country, only AQR models do.", file=sys.stderr)
             sys.exit(1)
@@ -120,7 +94,7 @@ def main():
         model_obj.drop(args.drop)
 
     if model_obj.data.num_rows == 0:
-        logger.error("No data returned.")
+        log.error("No data returned.")
         sys.exit(1)
 
     if args.output:
@@ -143,10 +117,6 @@ def main():
 
     else: #we're interactive, or in a jupyter notebook: write df preview to stdout
         if not args.quiet:
-            #sys.stderr.write(f"{str(model_obj)}\n") #uses model __str__ using preview
-            _ = model_obj.data
-            #print(f"{model_obj.__class__.__name__} ({model_obj.frequency})", file=sys.stderr)
-            #new print previewer. cmonn  (in model's __str__)
             sys.stderr.write(f"{str(model_obj)}\n")  #uses model's __str__ (using table preview)
             # zamn
 
