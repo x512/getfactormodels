@@ -16,8 +16,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import calendar
 import logging
-import warnings
 import re
+import warnings
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -35,12 +35,12 @@ _model_map = {
     "Q": ["q", "qfactors", "q-factors", "q_factors", "q5", "hmxz"],
     "Qclassic": ["q4", "qclassic", "q-classic", "q_classic", "classic_q"],
     "HMLDevil": ["hmld", "hmldevil", "hml_devil", "devil"],
-    "QualityMinusJunk": ["qmj", "quality", "qualityminusjunk"],
-    "BettingAgainstBeta": ["bab", "betting", "bettingainstbeta"],
+    "QMJ": ["qmj", "quality", "qualityminusjunk"],
+    "BAB": ["bab", "betting", "bettingainstbeta"],
     "Mispricing": ["mispricing", "mis", "misp"],
     "Liquidity": ["liq", "liquidity"],
-    #"ICR": ["icr", "intermediary", "hkm"],
-    #"DHS": ["dhs", "behavioural", "behaviour"],
+    "ICR": ["icr", "intermediary", "hkm"],
+    "DHS": ["dhs", "behavioural", "behaviour"],
     "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
 }
 
@@ -55,12 +55,11 @@ def _get_model_key(model_input: str | int) -> str:
     '6'
     >>> _get_model_key(icr)
     'ICR'
-    >>> _get_model_key('liQ')
-    'Liquidity'
+    >>> _get_model_key('Bab')
+    'BAB'
     """
     val = str(model_input).lower().strip()
     
-    # Check the lists in the map
     for key, alias in _MODEL_INPUT_MAP.items():
         if val in alias:
             return key
@@ -202,23 +201,24 @@ def _stream_table_to_md(table: pa.Table, precision: int = 4):
 
 
 def _roll_to_eom(dt: datetime) -> str:
-    """Roll a datetime to the last day of its month."""
+    """Roll a datetime to the last day of its month.
+    Used for user input only.
+    """
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
 
-### used ONLY for user input and get/set start/end. TODO: REDO
-def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | None:
+def _validate_input_date(date_input: None | str | int, is_end: bool = False) -> str | None:
     """Internal helper: standardizes user input dates 
 
     Converts YYYY, YYYY-MM, YYYYMM, YYYY/MM/DD to a standard YYYY-MM-DD 
     string. If end_date is true, then sets day to the last day of the period.
     No-op for frequencies under monthly.
     
-    - Solely for start_date and end_date provided by a user.
+    - This is solely for start_date and end_date provided by a user.
     
-    - Validates against future dates (will move this out probably): if start,
-      then errors, if end is in the future, warn and set to today.
+    - Validates against future dates (will move this out later): if start is
+      a future date, error, if end is in the future, warns and sets to today.
 
     Args
         date_input (str | int): the date str.
@@ -250,22 +250,18 @@ def _validate_date(date_input: None | str | int, is_end: bool = False) -> str | 
         # errors. If end_date is in the future, warns and sets to today.
         # Also testing warnings and logging...
         if dt > datetime.now():
-            _today = datetime.now().strftime('%Y-%m-%d')
+            _today_dt = datetime.now()
             if not is_end:
-                msg = f"Error: Future date used as start_date: '{date_input}'."
-                log.error(msg)
-                raise ValueError(msg)
+                raise ValueError(f"Future date used as start_date: '{date_input}'.")
             else:
-                warnmsg = f"Future date as end date: '{date_input}'. Setting to today ({_today})."
-                warnings.warn(warnmsg, UserWarning) 
-                log.warning(warnmsg)
-                dt = datetime.now()
-
+                warnings.warn(f"Future date as end date: '{date_input}'. Setting to today.")
+                dt = _today_dt
         # input give a day? "YYYY-MM" (len 7) or "YYYY/MM", then no
-        day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
-        if is_end and not day_given:
-             return _roll_to_eom(dt)
-
+        #day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
+        if is_end:
+            return _roll_to_eom(dt)        
+        #else:
+        #return dt.replace(day=1).strftime("%Y-%m-%d")
         return dt.strftime("%Y-%m-%d")
     except (ValueError, OverflowError) as e:
         # if a specific error's already raised, don't wrap a generic one!

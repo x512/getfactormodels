@@ -14,21 +14,17 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+import logging
 import os
 import sys
-import logging
 from pathlib import Path
 from typing import Any
 import pyarrow.csv as pv
+from getfactormodels import models as factor_models
 from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
-from getfactormodels.utils.data_utils import (
-    filter_table_by_date,
-    print_table_preview,
-)
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
-from getfactormodels import models as factor_models
 
 logger = logging.getLogger("getfactormodels")
 
@@ -57,8 +53,8 @@ def get_factors(model: str | int = 3,
         output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
 
     """
-    # Get model key, adds "Factors" to key if needed, and calls that class.
     model_key = _get_model_key(model)  # uses MODEL_INPUT_MAP
+
     if model_key in ["3", "4", "5", "6"]:
         class_name = "FamaFrenchFactors" if model_key != "4" else "CarhartFactors"
     else:
@@ -70,7 +66,7 @@ def get_factors(model: str | int = 3,
         msg = f"Model '{model}' not recognized."
         logger.error(msg)
         raise ValueError(msg)
-    
+
     # base params
     params = {
         "frequency": frequency.lower(),
@@ -91,6 +87,7 @@ def get_factors(model: str | int = 3,
         params["region"] = region
 
     return factor_class(**params)
+
 
 def main():
     args = parse_args()
@@ -113,19 +110,19 @@ def main():
             print(f"Error: '{args.model}' doesn't support --country, only AQR models do.", file=sys.stderr)
             sys.exit(1)
     except ValueError as e:
-        # Just prints the error, not traceback, and exit. TODO: style warnings in __init__ maybe.
+        # print error, not traceback, and exit. TODO: style warnings in __init__ maybe.
         print(f"{e}")
         sys.exit(1)
 
-    # These update model_obj._data and model_obj._view = None
     if args.extract:
         model_obj.extract(args.extract)
     elif args.drop:
         model_obj.drop(args.drop)
 
-    table = model_obj._data  #todo: err if empty
+    if model_obj.data.num_rows == 0:
+        logger.error("No data returned.")
+        sys.exit(1)
 
-    # Saves view not table
     if args.output:
         model_obj.to_file(args.output)
 
@@ -141,17 +138,16 @@ def main():
     nb_env = 'ipykernel' in sys.modules or 'JPY_PARENT_PID' in os.environ
     
     if not sys.stdout.isatty() and not nb_env:
-        # for pipe/redirects, uses the raw table to csv stream, writes to buffer
-        table = model_obj._get_table()
-        sliced = filter_table_by_date(table, model_obj.start_date, model_obj.end_date)
-        pv.write_csv(sliced, sys.stdout.buffer)
-    
+        # model_obj.data is already filtered and columns selected!
+        pv.write_csv(model_obj.data, sys.stdout.buffer)
+
     else: #we're interactive, or in a jupyter notebook: write df preview to stdout
         if not args.quiet:
-            table = model_obj.data
-            print(f"{model_obj.__class__.__name__} ({model_obj.frequency})", file=sys.stderr)
-            #new print previewer. cmonn
-            print_table_preview(table, n_rows=4)
+            #sys.stderr.write(f"{str(model_obj)}\n") #uses model __str__ using preview
+            _ = model_obj.data
+            #print(f"{model_obj.__class__.__name__} ({model_obj.frequency})", file=sys.stderr)
+            #new print previewer. cmonn  (in model's __str__)
+            sys.stderr.write(f"{str(model_obj)}\n")  #uses model's __str__ (using table preview)
             # zamn
 
 if __name__ == "__main__":

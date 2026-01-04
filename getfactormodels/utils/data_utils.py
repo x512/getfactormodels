@@ -14,10 +14,11 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import pyarrow as pa
-import pyarrow.compute as pc
 import math
 import sys
+import pyarrow as pa
+import pyarrow.compute as pc
+
 """Utilities for working with pyarrow."""
 
 
@@ -84,8 +85,8 @@ def filter_table_by_date(table: pa.Table,
 
     return table.filter(mask)
 
-
-def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[str]:
+# TODO: verify_cols_exist to validate_table_columns
+def _verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[str]:
     """
     Private helper: Checks if columns exist in a pyarrow Table by name.
     Returns the list of valid factors or raises if missing.
@@ -106,6 +107,23 @@ def verify_cols_exist(table: pa.Table, names: str | list[str] | None) -> list[st
     return input_list
 
 
+def select_table_columns(table: pa.Table, factors: str | list[str]) -> pa.Table:
+    """
+    Helper: constructs a table from a pa.Table by selecting cols by name. 
+    'date' is col 0, and if passed in 'factors', is depduplicated.
+    Used by base FactorModel's __getitem__, _extract_as_table and .extract()
+    """
+    factors = [factors] if isinstance(factors, str) else list(factors)
+
+    validated = _verify_cols_exist(table, factors)
+
+    if not validated or (len(validated) == 1 and validated[0] == 'date'):
+        raise ValueError("Extraction must include at least one factor.")
+
+    # ['date'] + [verified factors minus date]
+    selection = list(dict.fromkeys(['date'] + [f for f in validated if f != 'date']))
+
+    return table.select(selection).combine_chunks()
 
 
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
@@ -149,7 +167,8 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
     else:
         eom_dates = dates
 
-    return table.set_column(0, table.column_names[0], dates.cast(pa.date32()))
+    return table.set_column(0, table.column_names[0], eom_dates.cast(pa.date32()))
+    #ahhhhhh
 
 
 def parse_quarterly_dates(table: pa.Table) -> pa.Table:
@@ -195,6 +214,11 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
         raise ValueError(f"Failed to parse quarterly dates: {e}")
 
 
+def validate_date_range(start: str | None, end: str | None):
+    if (start and end) and (start > end):
+        raise ValueError(f"Error: start_date is later than end_date ({start} > {end})")
+
+
 def _format_for_preview(val, col_name, precision=6):
     """Private helper for print_table_preview output. Rounds for display converts None to NaNs."""
     if val is None or (isinstance(val, float) and math.isnan(val)):   #math over pycompute just for this
@@ -205,6 +229,7 @@ def _format_for_preview(val, col_name, precision=6):
         return f"{val:.{prec}f}"
 
     return str(val)
+
 
 def print_table_preview(table, n_rows=4):
     """Prints a pa.Table like a (simplified) pd.DataFrame.
@@ -224,10 +249,11 @@ def print_table_preview(table, n_rows=4):
 
     # Get the model's own _precision property!
     precision = getattr(table, '_precision', 6)
-
     columns = table.column_names
+
     # if there's a gap, then the row is None. (Below, if None, prints "[...]")
     is_gap = total_rows <= (n_rows * 2) + 5   # +5 to prevent hiding just a few cols
+
     # slice a head and tail
     head = table.slice(0, n_rows).to_pylist() if not is_gap else table.to_pylist()
     tail = table.slice(total_rows - n_rows, n_rows).to_pylist() if not is_gap else []
@@ -242,25 +268,26 @@ def print_table_preview(table, n_rows=4):
     }
 
     # construct header
+    # change: instead of print, return str. 
+    # collect into a list instead of printing to stderr
+    output = []
     header_row = "".join(c.rjust(col_widths[c]) for c in columns[1:])
-    print(f"\t    {header_row}", file=sys.stderr)
-    print("date", file=sys.stderr) 
+    output.append(f"\t    {header_row}")
+    output.append("date")
 
     # print (head, gap, tail) rows. TODO: nice header, __str__ in base
     display_rows = head + ([None] if tail else []) + tail
     for row in display_rows:
         if row is None:    # from above, row's None, because is_gap
-            print("  [...]", file=sys.stderr)
+            output.append("  [...] ")
             continue
 
         # left align dates, other cols right
         date_str = _format_for_preview(row['date'], 'date', precision).ljust(col_widths['date'])
         factors_str = "".join(_format_for_preview(row[c], c, precision).rjust(col_widths[c]) for c in columns[1:])
+        output.append(f"{date_str}{factors_str}")
 
-        print(f"{date_str}{factors_str}", file=sys.stderr)
-
-    # footer, like pandas, with size: "[rows x cols, size]"
     buf_size = table.get_total_buffer_size()
-    size_kb = buf_size / 1024
-    print(f"\n[{total_rows} rows x {len(columns)} columns, {size_kb:.1f} kb]", file=sys.stderr)
-
+    output.append(f"\n[{total_rows} rows x {len(columns)} columns, {buf_size / 1024:.1f} kb]")
+    # change: return the str, not print
+    return "\n".join(output)

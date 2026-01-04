@@ -75,7 +75,7 @@ class BarillasShankenFactors(FactorModel):
             ('R_IA', pa.float64()),
             ('R_ROE', pa.float64()),
             ('UMD', pa.float64()),
-            ('RF', pa.float64()),
+            ('RF_AQR', pa.float64()),
         ])
 
     @override
@@ -99,7 +99,7 @@ class BarillasShankenFactors(FactorModel):
         q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
         ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
         print("Getting HML Devil factors...", file=sys.stderr) #if not cached TODO
-        devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF'])
+        devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF_AQR'])
 
         table = ff.join(q, keys='date', join_type='inner')
         table = table.join(devil, keys='date', join_type='inner')

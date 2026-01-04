@@ -34,7 +34,7 @@ from .models import (
 logger = logging.getLogger('getfactormodels')
 logger.addHandler(logging.NullHandler())
 
-__version__ = "0.0.13"
+__version__ = "0.0.14"
 __all__ = [ 
     "get_factors",
     "BABFactors",
