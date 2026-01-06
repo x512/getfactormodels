@@ -30,24 +30,49 @@ log = logging.getLogger("getfactormodels")
 def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
     """Get and process factor model data.
 
-    The primary entry point for the getfactormodels package. Maps the 'model' 
-    param the specific FactorModel subclass and initializes it with the 
-    requested parameters.
+    This function initializes a specific FactorModel subclass based on the 
+    requested model param.
 
     Args:
-        model (str, int): the name of the factor model.
-            one of: '3', '4', '5', '6', 'carhart', 'liq', 'misp', 'icr',
-            'dhs', 'qclassic', 'q', 'hml_d', 'bab', 'qmj'.
-        frequency  (str, optional): the frequency of the data. Default: 'm'.
-            'd' 'w' 'w2w' 'm' 'q' or 'y'
-        start_date (str, optional): start date, YYYY-MM-DD.
-        end_date (str, optional): end date, YYYY-MM-DD.
-        output(str, optional): filepath to write returned data to, e.g. "~/some/dir/some_file.csv"
-        **kwargs: keyword args passed to the base model.
+        model (str | int): the the name of the factor model. Default: 3
+            - Fama-French: '3', '5', '6' ('ff3', 'famafrench3')
+            - Carhart: '4', 'carhart', 'car', 'ff4'.
+            - q-Factors: 'q', 'q5', or 'qclassic', 'q4'
+            - HML Devil: 'hmld' 
+            - Betting Against Beta: 'bab'
+            - Quality Minus Junk: 'qmj'
+            - Pastor-Stambaugh Liquidity: 'liq', 'liquidity'
+            - Stambaugh-Yuan Mispricing: 'misp', 'mispricing'
+            - Intermediary Capital Risk: 'icr'
+            - Daniel-Hirshleifer-Sun Behavioral Factors: 'dhs'
+            - Barillas Shanken 6-Factors: 'bs', 'bs6'
+        frequency (str): data frequency. Availability varies by model.
+            - One of: 'd' 'w' 'w2w' 'm' 'q' or 'y'. Default: 'm'.
+        start_date (str): optional start date, YYYY-MM-DD.
+        end_date (str): optional end date, YYYY-MM-DD.
+        output_file (str): optional path or string to save data to disk.
+        **kwargs: model specific parameters:
+            - region (str): Geographic region (e.g., 'US', 'Developed')
+            - country (str): Specific country code (AQR only).
+            - classic (bool): Use the 4-factor version of the Q-model.
 
+    Returns:
+        FactorModel: a container object with the requested data. 
+            Provides the data as a pa.Table via `.data`, or DataFrame 
+            via `.to_pandas()` and `.to_polars()`. Supports the 
+            DataFrame Interchange Protocol.
+
+    Raises:
+        ValueError: the model key is unrecognized or date is invalid.
+        RuntimeError: the data download failed after retries.
+
+    Example:
+        >>> m = get_factors(3, start_date="2020-01", frequency='m')
+        >>> model.extract(['SMB', 'HML'])
+        >>> df = model.to_polars()
     """
     model_key = _get_model_key(model)
-    
+
     model_class_map = {
         "3": "FamaFrenchFactors",
         "5": "FamaFrenchFactors",
@@ -55,7 +80,7 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         "4": "CarhartFactors",
         "Qclassic": "QFactors", # Handled via 'classic=True' in kwargs
     }
-    
+
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
     factor_class = getattr(factor_models, class_name, None)
 
@@ -76,26 +101,34 @@ def main():
     if not args.model:
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
-    
-    try:
-        model_obj = get_factors(**vars(args)) # now don't need to manually map each param to args
-        
+
+    try: #oops. Unless params match flags, do this:
+        model_obj = get_factors(
+            model=args.model,
+            frequency=args.frequency,
+            start_date=args.start,
+            end_date=args.end,
+            region=args.region,
+            country=args.country,
+        )
+
         if args.country and not isinstance(model_obj, _AQRModel):
-            print(f"Error: '{args.model}' doesn't support --country, only AQR models do.", file=sys.stderr)
+            print(f"\tERROR: '{args.model}' doesn't support --country, "
+                "only AQR models do.", file=sys.stderr)
             sys.exit(1)
-    except ValueError as e:
-        # print error, not traceback, and exit. TODO: style warnings in __init__ maybe.
-        print(f"{e}")
+
+        if not len(model_obj):
+            log.error("No data returned.")
+            sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        # print the error, not traceback, and exit.
+        print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
     if args.extract:
         model_obj.extract(args.extract)
     elif args.drop:
         model_obj.drop(args.drop)
-
-    if model_obj.data.num_rows == 0:
-        log.error("No data returned.")
-        sys.exit(1)
 
     if args.output:
         model_obj.to_file(args.output)
@@ -106,19 +139,20 @@ def main():
                 actual_path = actual_path / _generate_filename(model_obj)
 
             print(f"Data saved to: {actual_path.resolve()}", file=sys.stderr)
-    
-    # fix: jupyter runs "%%bash" commands in a subprocess (not 
-    # interactive), and output is the entire arrow table.
+
+    # fix: '%%bash' commands are run in a subprocess (output was entire table)
     nb_env = 'ipykernel' in sys.modules or 'JPY_PARENT_PID' in os.environ
-    
-    if not sys.stdout.isatty() and not nb_env:
-        # model_obj.data is already filtered and columns selected!
+
+    if not sys.stdout.isatty() and not nb_env: # piped
+        # model_obj.data's been filtered. Write csv stream of it:
         pv.write_csv(model_obj.data, sys.stdout.buffer)
 
-    else: #we're interactive, or in a jupyter notebook: write df preview to stdout
+    else:
+        # we're interactive/IPython: print preview of table to stderr. 
+        # uses the model_obj's __str__ (which prints the Table preview)
         if not args.quiet:
-            sys.stderr.write(f"{str(model_obj)}\n")  #uses model's __str__ (using table preview)
-            # zamn
+            sys.stderr.write(f"{str(model_obj)}\n")
 
 if __name__ == "__main__":
     main()
+#TODO: style warnings in __init__ maybe.

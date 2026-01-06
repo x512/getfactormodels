@@ -19,16 +19,19 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 import pyarrow as pa
-from getfactormodels.utils.data_utils import (
+from getfactormodels.utils.arrow_utils import (
     filter_table_by_date,
     print_table_preview,
     rearrange_columns,
     round_to_precision,
     select_table_columns,
+)
+from getfactormodels.utils.date_utils import (
+    _validate_input_date,
     validate_date_range,
 )
 from getfactormodels.utils.http_client import _HttpClient
-from getfactormodels.utils.utils import _save_to_file, _validate_input_date
+from getfactormodels.utils.utils import _save_to_file  # _validate_input_date
 
 
 class FactorModel(ABC):
@@ -49,8 +52,8 @@ class FactorModel(ABC):
             cache_ttl (int): Cache time-to-live in seconds. Default: 86400.
             **kwargs: some models have additional params.
         """
-        logger_name = f"{self.__module__}.{self.__class__.__name__}"
-        self.log = logging.getLogger(logger_name)
+        logger = f"{self.__module__}.{self.__class__.__name__}"
+        self.log = logging.getLogger(logger)
 
         self._data: pa.Table | None = None
         self._start_date = None
@@ -68,7 +71,8 @@ class FactorModel(ABC):
         super().__init__()
 
     def __len__(self) -> int:
-        return len(self.data) # length of the table (after slicing)
+        """Length of the pa.Table."""
+        return len(self.data)
 
     def __str__(self) -> str:
         if self._data is not None:
@@ -119,20 +123,15 @@ class FactorModel(ABC):
     @start_date.setter
     def start_date(self, value: Any):
         valid = _validate_input_date(value, is_end=False)
-
-        if self._start_date != valid:
-            self._start_date = valid
-            validate_date_range(self.start_date, self.end_date)
-
+        self._start_date, self._end_date = validate_date_range(valid, self._end_date)
+    
     @property
     def end_date(self) -> str | None:
         return self._end_date
     @end_date.setter
     def end_date(self, value: Any):
         valid = _validate_input_date(value, is_end=True)
-        if self._end_date != valid:
-            self._end_date = valid  # set 
-            validate_date_range(self.start_date, self.end_date)
+        self._start_date, self._end_date = validate_date_range(self._start_date, valid)
 
     @property
     def frequency(self) -> str | None: 
@@ -165,11 +164,7 @@ class FactorModel(ABC):
             selection = list(dict.fromkeys(['date'] + self._selected_factors))
             table = table.select(selection)
 
-        return filter_table_by_date(
-            table, 
-            self.start_date, 
-            self.end_date,
-        )
+        return filter_table_by_date(table, self._start_date, self._end_date)
 
 
     @property
@@ -179,26 +174,25 @@ class FactorModel(ABC):
 
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
-        """Select specific factors from the model. Str or list[str]. Case-sensitive.
+        """Select specific factors from the model. Str or list[str].
 
         Stateful: Sets the view to only these factors.
         """
-        table = self._get_table()
-        select = select_table_columns(table, factor)
-        
-        self._selected_factors = [f for f in select.column_names if f != 'date']
+        table = select_table_columns(self._get_table(), factor)
+        self._selected_factors = [f for f in table.column_names if f != 'date']
         return self
 
 
     def drop(self, factor: str | list[str]) -> "FactorModel": #Self
         """Remove specific factors from the model. Str or list[str].
                 
-        Stateful: Removes these factors from the view. Case-sensitive.
+        Stateful: Removes these factors from the view.
         """
-        to_drop = [factor] if isinstance(factor, str) else factor
-        all_cols = self._get_table().column_names
+        t_cols = self._get_table().column_names
+        to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
 
-        selection = [c for c in all_cols if c not in to_drop and c != 'date']
+        # select cols whose lower case name isn't in the to_drop set.
+        selection = [c for c in t_cols if c.lower() not in to_drop and c != 'date']
 
         if not selection:
             raise ValueError("Cannot drop all factors from the model.")

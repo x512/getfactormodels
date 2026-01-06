@@ -14,10 +14,7 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-import calendar
 import logging
-import re
-import warnings
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -25,7 +22,11 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 
+#import warnings
+
 log = logging.getLogger(__name__) #TODO: consistent logging.
+
+"""Model utils and I/O utils."""
 
 _model_map = {
     "3": ["3", "ff3", "famafrench3"],
@@ -46,9 +47,9 @@ _model_map = {
 
 _MODEL_INPUT_MAP = MappingProxyType(_model_map)
 
-
 def _get_model_key(model_input: str | int) -> str:
     """Converts user input (e.g. 'ff3', 'hmld') to the model key.
+    
     >>> _get_model_key('3')
     '3'
     >>> _get_model_key('ff6')
@@ -89,6 +90,7 @@ def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
 
 def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndefinedVariable]   TODO: FIXME
     """Private helper: create filename using metadata from a model instance.
+    
     Used if directory is provided, or just an extension, intended to be used 
     for -o flag with no param.
     """
@@ -121,7 +123,8 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
     
 
 def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
-    """Private helper: save a table to file. 
+    """Private helper: save a table to file.
+    
     - Uses pyarrow, falls back to pandas to write .pkl.
     """
     #TODO: require user to have pandas installed for pkl, or use python's pickle...
@@ -171,6 +174,7 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
 
 def _stream_table_to_md(table: pa.Table, precision: int = 4):
     """Generator that yields markdown rows.
+    
     - Reduces memory usage for writing larger tables.
     """
     yield "| " + " | ".join(table.column_names) + " |"
@@ -199,80 +203,3 @@ def _stream_table_to_md(table: pa.Table, precision: int = 4):
     for row in zip(*str_columns):
         yield "| " + " | ".join(row) + " |"
 
-
-def _roll_to_eom(dt: datetime) -> str:
-    """Roll a datetime to the last day of its month.
-    Used for user input only.
-    """
-    last_day = calendar.monthrange(dt.year, dt.month)[1]
-    return dt.replace(day=last_day).strftime("%Y-%m-%d")
-
-
-def _validate_input_date(date_input: None | str | int, is_end: bool = False) -> str | None:
-    """Internal helper: standardizes user input dates 
-
-    Converts YYYY, YYYY-MM, YYYYMM, YYYY/MM/DD to a standard YYYY-MM-DD 
-    string. If end_date is true, then sets day to the last day of the period.
-    No-op for frequencies under monthly.
-    
-    - This is solely for start_date and end_date provided by a user.
-    
-    - Validates against future dates (will move this out later): if start is
-      a future date, error, if end is in the future, warns and sets to today.
-
-    Args
-        date_input (str | int): the date str.
-        is_end (bool): if True, converts YYYY to YYYY-12-31, and YYYY-MM to the 
-        last calendar day of that month. Else, defaults to the first
-        day of the period.
-    """
-    if date_input is None:
-        return None
-
-    raw_str = str(date_input).strip()
-    clean_str = re.sub(r'\D', '', raw_str) # Removes anything that isn't a digit
-
-    try:
-        if len(clean_str) == 4:
-            year = int(clean_str)
-            dt = datetime(year, 12, 31) if is_end else datetime(year, 1, 1)
-        elif len(clean_str) == 6:
-            dt = datetime.strptime(clean_str, "%Y%m")
-            if is_end:
-                return _roll_to_eom(dt)
-        elif len(clean_str) == 8:
-            dt = datetime.strptime(clean_str, "%Y%m%d")
-        else:
-            # Fallback for iso yyyy-mm-dd or yyyy/mm/dd
-            dt = datetime.fromisoformat(raw_str.replace('/', '-'))
-                   
-        # Check for future dates: if start_date is in the future, then 
-        # errors. If end_date is in the future, warns and sets to today.
-        # Also testing warnings and logging...
-        if dt > datetime.now():
-            _today_dt = datetime.now()
-            if not is_end:
-                raise ValueError(f"Future date used as start_date: '{date_input}'.")
-            else:
-                warnings.warn(f"Future date as end date: '{date_input}'. Setting to today.")
-                dt = _today_dt
-        # input give a day? "YYYY-MM" (len 7) or "YYYY/MM", then no
-        #day_given = (len(clean_str) == 8 or raw_str.count('-') == 2 or raw_str.count('/') == 2)
-        if is_end:
-            return _roll_to_eom(dt)        
-        #else:
-        #return dt.replace(day=1).strftime("%Y-%m-%d")
-        return dt.strftime("%Y-%m-%d")
-    except (ValueError, OverflowError) as e:
-        # if a specific error's already raised, don't wrap a generic one!
-        if "Future date" in str(e):
-            raise e
-        raise ValueError(f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.")# tests -- yyyy, yyyymm yyyy-mm start dates 
-# test:
-# yyyy, yyyy-mm, yyyymm, yyyymmdd end dates 
-# That they return as intended, and yyyy-mm isn't filling in today's day.
-# isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
-# isn't filling in today's month or current year.
-# IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
-
-#TODO: style warnings! Consistent logging!
