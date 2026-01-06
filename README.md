@@ -45,7 +45,6 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 The easiest way to install `getfactormodels` is with pip:
 
-
 ```bash
 pip install getfactormodels
 ```
@@ -54,23 +53,70 @@ pip install getfactormodels
 
 ### CLI
 
-```bash 
-# Fama-French 3-Factor (monthly) starting Jan 2020
-getfactormodels -m ff3 -f m -s 2020-01-01 -o my_factors.csv
+```bash
+# Fama-French 5-Factor model, monthly
+getfactormodels --model ff5 --frequency m
 
-# ICR factors (daily) data saved to Parquet
-getfactormodels -m icr -f d -s 2015-01-01 -o data.parquet
+# q-factor model’s weekly ‘R_IA’ since start (using -x/--extract)
+getfactormodels -m q -f w --start 2000 -x “R_IA”
 
-# Fama-French 6-Factor (Europe) with factor dropping
-getfactormodels -m ff6 -f m --region europe --drop "RF" -o europe_factors.csv
-
-getfactormodels -m qmj -f -m --country JPN
-getfactormodels -m bab -f d -c AUS -s 1990 -o aus_betting-against-beta.ipc
+# Australia, Quality Minus Junk (daily) saved to file:
+getfactormodels -m qmj -f d --country aus --output aus_bab.ipc
 ```
-### Python
-**`get_factors`**
 
-```py 
+**Example**
+
+    getfactormodels -m qmj -f d --output qmj.ipc
+
+<details>
+<summary>View output</summary>
+
+```plaintext
+Data saved to: qmj.ipc
+
+date            Mkt-RF           QMJ           SMB           HML           UMD    RF_AQR
+1957-07-01    0.001784     -0.001566     -0.002166      0.001984      0.000651    0.0001
+1957-07-02    0.008514     -0.000484     -0.005030     -0.004436      0.002705    0.0001
+1957-07-03    0.007938      0.000869     -0.001245     -0.003676      0.002294    0.0001
+1957-07-05    0.007755      0.001975     -0.000769     -0.002781     -0.001137    0.0001
+  [...]
+2025-10-28    0.001157      0.004138     -0.003897     -0.006681      0.011682    0.0002
+2025-10-29   -0.002034     -0.003446     -0.007738     -0.002619      0.015875    0.0002
+2025-10-30   -0.010841      0.009058     -0.000406      0.005180     -0.006211    0.0002
+2025-10-31    0.003867     -0.006546      0.000620      0.001108      0.000869    0.0002
+
+[17574 rows x 7 columns, 905.3 kb]
+```
+
+Another:
+
+``getfactormodels -m q -f q -o qfactors_qtrly.md``
+
+```plaintext
+Data saved to: qfactors_qtrly.md
+
+               Mkt-RF         R_ME         R_IA         R_EG        R_ROE       RF
+date
+1967-03-31   0.134805     0.114866    -0.053626    -0.015750     0.084400   0.0114
+1967-06-30   0.018500     0.087544    -0.026375    -0.018427     0.021278   0.0092
+1967-09-30   0.068962     0.055625     0.040412    -0.009986    -0.006436   0.0096
+1967-12-31   0.002605     0.052229    -0.052616     0.017556     0.048551   0.0107
+  [...]
+2024-03-31   0.088848    -0.048872    -0.012363     0.001792     0.034865   0.0132
+2024-06-30   0.022145    -0.051355    -0.025798     0.086070     0.084276   0.0135
+2024-09-30   0.046601     0.020398     0.017324    -0.058132     0.025571   0.0138
+2024-12-31   0.021465    -0.025093    -0.062185     0.024003    -0.038607   0.0116
+
+[232 rows x 7 columns, 12.0 kb]
+```
+
+</details>
+
+
+### Python
+**`getfactormodels.get_factors()`**
+
+```py
 import getfactormodels as gfm
 
 m = gfm.get_factors(
@@ -79,35 +125,39 @@ m = gfm.get_factors(
     start_date='2000-01-01',
     end_date='2024-12-31',
     output_file='data.csv',
-    cache_ttl=86400
+    cache_ttl=86400,
 )
-df = model.data
-model.to_file("factors.md")
 ```
 
 #### Model classes
-
 ```py
-from getfactormodels import FamaFrenchFactors, DHSFactors, BarillasShankenFactors, QFactors
+from getfactormodels import FamaFrenchFactors
 
-# Fama-French 3-Factors
-ff3 = FamaFrenchFactors(model='3', frequency='m', region='developed', start_date='2020-01-01')
-ff3.end_date = '2020'
-ff3.frequency = 'd'
-df_ff3 = ff3.data
+# Initialize model instance
+m = FamaFrenchFactors(model='3', frequency='m', 
+			region='developed', start_date='2020-01-01')
 
+m.end_date = '2020'
 
-# AQR Models for different countries:
-qmj_nor = QMJFactors(frequency='m', country='nor')
-bab_jpn = BABFactors(frequency='d', country='JPN', start='2000-02-20', end '2010').data
-aus_devil = HMLDevil(frequency='m', country='Aus', end='2020').data
+# Access/download the Arrow Table:
+table = m.data
 
+# As a dataframe:
+df = m.to_polars() # Helper method, see also `.to_pandas()`
+```
+
+- Some other examples:
+```py
+from getfactormodels import Qfactors, BABFactors, QMJFactors
 
 # Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
 q = QFactors(classic=True, frequency='w').data
 
-misp = gfm.MispricingFactors(frequency='m')
-df = misp.data
+# AQR Models for different countries:
+nor_qmj_table = QMJFactors(frequency='m', country='nor').data
+
+# Japan Betting Against Beta, daily:
+bab_jpn_df = BABFactors(frequency='d', country='JPN', start='2000-02-20', end '2010').to_polars()
 ```
 
 *A list of model classes available:*
@@ -123,30 +173,46 @@ df = misp.data
  - `BABFactors`
  - `QMJFactors`
 
-#### Dataframes
 
-`getfactormodels` uses pyarrow internally but supports the Dataframe Interchange Protocol `__dataframe__`. 
+**Data Interoperability**
 
-A few helper methods for the most common workflows:
+`getfactormodels` uses PyArrow internally and supports the Dataframe Interchange Protocol. This allows for zero-copy data sharing with most modern Python data tools.
+
+Create a model instance:
 ```py
-import pandas as pd
-
+from getfactormodels import QFactors
 m = getfactormodels.QFactors(frequency='m')
-df_pandas = m.to_pandas()
 ```
->Note: these helper methods require the library to be installed!
 
-You can also access `.data` directly with whatever supports the protocol:
-- Polars / PySpark: ``pl.from_arrow(m.data)``
-- Ibis: ...
-- NumPy: ``m.data.to_pandas().to_numpy()``
-- DuckDB: Query the table
-    ```Python
-    import duckdb
+- DuckDB can query a table without conversion
+```py
+import duckdb
+duckdb.sql("SELECT date, ROE, IA FROM m.data LIMIT 7").show() 
+```
 
-    duckdb.sql("SELECT date, SMB, HML FROM m.data LIMIT 7").show()
-    ```
+- Polars has first-class support for Arrow:
+```py
+import polars as pl
+df = pl.from_arrow(m.data)
+```
 
+- Pandas/NumPy
+```py
+# Pandas DataFrame
+df = m.to_pandas()
+
+# or NumPy Array (via Pandas)
+array = m.to_pandas().to_numpy()
+```
+
+**The Interchange Protocol**
+
+- If you use libraries like Ibis, Modin, or Vaex, you can use the interchange protocol directly:
+
+```py
+df = vaex.from_arrow_table(m.data)
+print(df.mean(vdf.ROE))
+```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Data Availability
