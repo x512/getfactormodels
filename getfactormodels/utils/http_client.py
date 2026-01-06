@@ -28,8 +28,7 @@ from .cache import _Cache
 log = logging.getLogger(__name__)
 
 class _HttpClient:
-    """
-    Internal HTTP client with caching.
+    """Internal HTTP client with caching.
 
     Wrapper around httpx.Client with SSL context creation and 
     XDG-compliant caching.
@@ -40,7 +39,7 @@ class _HttpClient:
     def __init__(self, timeout: float | int = 15.0,
                  cache_dir: str | None = None, # None by default!
                  default_cache_ttl: int = 86400):
-        """Initialize the internal client 
+        """Initialize the internal client.
 
         Args:
             timeout (str | float): max time to wait for a network response.

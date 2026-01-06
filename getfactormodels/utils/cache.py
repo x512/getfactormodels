@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import logging
 from pathlib import Path
-from typing import Optional
+#from typing import Optional
 from diskcache import Cache
 
 logging.basicConfig(level=logging.ERROR)
@@ -23,7 +23,7 @@ class _Cache:
     def directory(self) -> str:
         return self.cache.directory
 
-    def get(self, key: str) -> Optional[bytes]: #type err as bytes|None TODO FXME
+    def get(self, key: str) -> (bytes | None): #type err as bytes|None TODO FXME
         """Retrieves data from cache if valid, otherwise returns None."""
         data = self.cache.get(key)
         msg = f"key: {key}"
@@ -43,6 +43,14 @@ class _Cache:
         except Exception as e:
             msg = f"Failed to write to cache: {key}:\n{e}"
             log.error(msg)
+
+    # new: TODO: impl clear cache, optionally by model
+    def remove(self, key: str):
+        """Removes a specific key from the cache."""
+        if self.cache.delete(key):
+            log.info(f"Cache entry removed: {key}")
+        else:
+            log.debug(f"Cache entry not found (no action): {key}")
 
     def close(self):
         self.cache.close()
