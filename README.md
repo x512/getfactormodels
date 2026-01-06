@@ -85,7 +85,7 @@ df = model.data
 model.to_file("factors.md")
 ```
 
-**Model classes**
+#### Model classes
 
 ```py
 from getfactormodels import FamaFrenchFactors, DHSFactors, BarillasShankenFactors, QFactors
@@ -122,6 +122,30 @@ df = misp.data
  - `BarillasShankenFactors`
  - `BABFactors`
  - `QMJFactors`
+
+#### Dataframes
+
+`getfactormodels` uses pyarrow internally but supports the Dataframe Interchange Protocol `__dataframe__`. 
+
+A few helper methods for the most common workflows:
+```py
+import pandas as pd
+
+m = getfactormodels.QFactors(frequency='m')
+df_pandas = m.to_pandas()
+```
+>Note: these helper methods require the library to be installed!
+
+You can also access `.data` directly with whatever supports the protocol:
+- Polars / PySpark: ``pl.from_arrow(m.data)``
+- Ibis: ...
+- NumPy: ``m.data.to_pandas().to_numpy()``
+- DuckDB: Query the table
+    ```Python
+    import duckdb
+
+    duckdb.sql("SELECT date, SMB, HML FROM m.data LIMIT 7").show()
+    ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
