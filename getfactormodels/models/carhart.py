@@ -18,8 +18,7 @@ from .fama_french import FamaFrenchFactors
 
 
 class CarhartFactors(FamaFrenchFactors): # inheritence ooo
-    """
-    Download and process the Carhart 4-Factor model data.
+    """Download and process the Carhart 4-Factor model data.
     
     This model extends the Fama-French 3-factor model to 4 factors, 
     adding a momentum factor (MOM).
@@ -36,8 +35,7 @@ class CarhartFactors(FamaFrenchFactors): # inheritence ooo
         return ["d", "m", "y"]
 
     def __init__(self, frequency='m', region=None, **kwargs):
-        #model = '4'                     # enforce model 
         super().__init__(frequency=frequency,
-                         model=4,   # give it to ff 
+                         model=4,   # enforce model for FF 
                          region=region,
                          **kwargs)

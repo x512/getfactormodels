@@ -19,17 +19,16 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import offset_period_eom
+from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class MispricingFactors(FactorModel):
-    """
-    Mispricing Factors of Stambaugh & Yuan.
+    """Mispricing Factors of Stambaugh & Yuan.
 
     Download and process the Mispricing factor data of Stambaugh-Yuan
     (2016). Data from 1963 to 2016. The SMB factor is returned as SMB_SY.
 
-    Args
+    Args:
         frequency(str, optional): 'm' (monthly), 'd' (daily)
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
@@ -40,19 +39,17 @@ class MispricingFactors(FactorModel):
         cache_ttl (int, optional): Cached download time-to-live in 
             seconds (default: 86400).
 
-    References
+    References:
     - R. F. Stambaugh and Y. Yuan, ‘Mispricing Factors’, The Review 
       of Financial Studies, vol. 30, no. 4, pp. 1270–1315, 12 2016.
 
     """
-    #Data source: https://finance.wharton.upenn.edu/~stambaug/
-
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
     def __init__(self, **kwargs: Any) -> None:
-        """Initialize the MispricingFactors model."""
+        """Initialize the Mispricing Factors model."""
         super().__init__(**kwargs)
 
     @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.

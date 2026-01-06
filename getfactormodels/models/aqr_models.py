@@ -26,25 +26,23 @@ from typing import override
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import (
-    offset_period_eom,
+from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
     round_to_precision,
 )
+from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
-import logging
-log = logging.getLogger(__name__) #TODO: consistent logging.
+
 
 class _AQRModel(FactorModel):
-    """
-    Abstract base class for AQR's factor models.
+    """Abstract base class for AQR's factor models.
 
     This subclass handles parsing the AQR Excel workbook with calamine, 
     validates the country param, and has a getter/setter for country.
 
     - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
 
-    Notes 
+    Notes:
     - These models are slow to download. Daily datasets are 20-30 MB each,
     and the download is rate limited.
 
@@ -90,7 +88,7 @@ class _AQRModel(FactorModel):
             'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'DEU', 'DNK', 'ESP', 
             'FIN', 'FRA', 'GBR', 'GRC', 'HKG', 'IRL', 'ISR', 'ITA', 
             'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
-            'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA'
+            'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA',
         ]
 
 
@@ -106,7 +104,7 @@ class _AQRModel(FactorModel):
             return requested
 
         msg = f"Unsupported country/region: '{value}'. \nMust be one of: {valid}"
-        log.error(msg)
+        self.log.error(msg)
         raise ValueError(msg)
 
 
@@ -133,7 +131,7 @@ class _AQRModel(FactorModel):
 
         if header_row is None:
             msg = f"Error: Couldn't find a header row for sheet: '{sheet_name}')"
-            log.error(msg)
+            self.log.error(msg)
             raise ValueError(msg)
         
         headers = [str(h).strip().upper() for h in rows[header_row]]
@@ -146,7 +144,7 @@ class _AQRModel(FactorModel):
             
             if country_key not in headers:
                 msg = f"'{country_key}' not found in {sheet_name} headers. Available: {headers}"
-                log.error(msg)
+                self.log.error(msg)
                 raise ValueError(msg)
 
             col_idx = headers.index(country_key)
@@ -159,7 +157,7 @@ class _AQRModel(FactorModel):
             dates.append(self._aqr_dt_fix(r[0]))
             values.append(float(r[col_idx]))
 
-        clean_factor_name = self.sheet_map.get(sheet_name, sheet_name)
+        clean_factor_name = self._sheet_map.get(sheet_name, sheet_name)
 
         if clean_factor_name in ['RF', 'RF_AQR']:
             final_col_name = 'RF_AQR'
@@ -175,7 +173,7 @@ class _AQRModel(FactorModel):
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
 
-        for sheet in self.sheet_map.keys():
+        for sheet in self._sheet_map.keys():
             t = self._process_sheet(sheet, wb)
             t = offset_period_eom(t, self.frequency)
             tables.append(t)
@@ -192,7 +190,7 @@ class _AQRModel(FactorModel):
     
     @property
     @abstractmethod
-    def sheet_map(self) -> dict:
+    def _sheet_map(self) -> dict:
         """Mapping sheet names to factor names."""
         pass
 
@@ -202,23 +200,24 @@ class HMLDevilFactors(_AQRModel):
 
     HML Devil factors of C. Asness and A. Frazzini (2013)
 
-    Args
+    Args:
         frequency (str): The frequency of the data. M, D (default: M)
         start_date (str, optional): The start date of the data, YYYY-MM-DD.
         end_date (str, optional): The end date of the data, YYYY-MM-DD.
         output_file (str, optional): The filepath to save the output data.
 
-    References
+    References:
     - C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio 
     Management, vol. 39, pp. 49–68, 2013.
     ---
-    NOTES:
+
+    Notes:
     - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
         starts 1926-07, and RF begins 1926-08-02.
-   """
+    """
     #TODO: smarter caching!
     @property
-    def sheet_map(self):
+    def _sheet_map(self):
         return {'HML Devil': 'HML_Devil',
                 'MKT': 'Mkt-RF',
                 'SMB': 'SMB',
@@ -245,11 +244,11 @@ class HMLDevilFactors(_AQRModel):
 class QMJFactors(_AQRModel):
     """Quality Minus Junk: Asness, Frazzini & Pedersen (2017).
     
-    References
+    References:
     - Asness, Cliff S. and Frazzini, Andrea and Pedersen, Lasse Heje, 
       Quality Minus Junk (June 5, 2017). http://dx.doi.org/10.2139/ssrn.2312432
      
-     """
+    """
     @property
     def schema(self) -> pa.Schema:
         """Schema for QMJ."""
@@ -265,7 +264,7 @@ class QMJFactors(_AQRModel):
 
 
     @property
-    def sheet_map(self):
+    def _sheet_map(self):
         return {'QMJ Factors': 'QMJ',
                 'MKT': 'Mkt-RF',
                 'SMB': 'SMB',
@@ -279,9 +278,9 @@ class QMJFactors(_AQRModel):
 
 
 class BABFactors(_AQRModel):
-    """Betting Against Beta: A. Frazzini, L. Pedersen (2014)
+    """Betting Against Beta: A. Frazzini, L. Pedersen (2014).
 
-    References
+    References:
     - Frazzini, A. and Pedersen, L. Betting against beta,
       Journal of Financial Economics, 111, issue 1, p. 1-25, 2014.
 
@@ -289,6 +288,7 @@ class BABFactors(_AQRModel):
     @property
     def schema(self) -> pa.Schema:
         """Schema for Betting Against Beta factor model.
+        
         - see: Asness & Frazzini (2013): BAB model uses FF's 
         HML, SMB and UMD.
         """
@@ -303,7 +303,7 @@ class BABFactors(_AQRModel):
         ])
     
     @property
-    def sheet_map(self):
+    def _sheet_map(self):
         return {'BAB Factors': 'BAB',
                 'MKT': 'Mkt-RF', 'SMB': 'SMB', 'HML FF': 'HML', 'RF': 'RF_AQR'}  #SMB_AQR?
 

@@ -19,19 +19,18 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import (
+from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
 )
 
 
 class ICRFactors(FactorModel):
-    """
-    Download the Intermediary Capital Ratio of He, Kelly, Manela (2017).
+    """Download the Intermediary Capital Ratio (He-Kelly-Manela, 2017).
 
     Monthly and quarterly data start in 1970, daily begins on 1999-05-03.
 
-    Args
+    Args:
         frequency (str): The data frequency, 'd' 'm' 'q' (default: 'm')
         start_date (str, optional): The start date YYYY-MM-DD
         end_date (str, optional): The end date YYYY-MM-DD
@@ -40,13 +39,14 @@ class ICRFactors(FactorModel):
         cache_ttl (int): Time-to-live for cache in seconds 
           (default: 86400).
 
-    References
+    References:
     - Z. He, B. Kelly, and A. Manela, ‘Intermediary asset pricing: New evidence
     from many asset classes’, Journal of Financial Economics, vol. 126, no. 1, 
     pp. 1–35, 2017. (https://doi.org/10.1016/j.jfineco.2017.08.002)
 
     ---
-    Notes
+
+    Notes:
     - quarterly data (as of Dec 2025) contains a duplicate entry
       for 2025Q1.
     - NaNs: daily IC_RISK factor doesn't begin until 2008.

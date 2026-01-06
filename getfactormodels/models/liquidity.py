@@ -20,7 +20,7 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import offset_period_eom
+from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class LiquidityFactors(FactorModel):
@@ -29,7 +29,7 @@ class LiquidityFactors(FactorModel):
     Download the Pastor-Stambaugh Liquidity Factors. Only available 
     in monthly.
 
-    Args
+    Args:
         frequency (str): The data frequency, 'm'.
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
@@ -38,13 +38,14 @@ class LiquidityFactors(FactorModel):
         cache_ttl (int, optional): download time-to-live in secs 
         (default: 86400).
 
-    References
+    References:
     - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock 
       Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
       642–685, 2003.
 
     ---
-    Note
+
+    Note:
         the leading 65 values of TRADED_LIQ are NaNs.
     """
     @property

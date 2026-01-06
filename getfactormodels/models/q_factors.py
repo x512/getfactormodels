@@ -20,19 +20,20 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import (
-    offset_period_eom,
-    parse_quarterly_dates,
+from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
+)
+from getfactormodels.utils.date_utils import (
+    offset_period_eom,
+    parse_quarterly_dates,
 )
 
 
 class QFactors(FactorModel): 
-    """
-    Download and process q-factor data from global-q.org.
+    """Download and process q-factor data from global-q.org.
 
-    Args
+    Args:
         frequency (str): the frequency of the data. d, m, y, q, w, w2w.
         start_date (str, optional): start date, YYYY-MM-DD.
         end_date (str, optional): end date, YYYY-MM-DD.
@@ -40,7 +41,7 @@ class QFactors(FactorModel):
         output_file (str, optional): Path to save the data automatically.
         cache_ttl (int, optional): cache TTL in seconds.
 
-    References
+    References:
     - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented 
       q-factor model with expected growth, Review of Finance 25 (1), 
       1-41.

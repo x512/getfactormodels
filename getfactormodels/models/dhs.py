@@ -20,21 +20,20 @@ import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-from getfactormodels.utils.data_utils import (
-    offset_period_eom,
+from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
 )
+from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class DHSFactors(FactorModel):
-    """
-    Download and process the DHS Behavioural Factors.
+    """Download and process the DHS Behavioural Factors.
 
     Behavioural Factors of Kent Daniel, David Hirshleifer, and 
     Lin Sun (DHS). Data from July 1972 - December, 2023. Factors: FIN, PEAD
 
-    Args
+    Args:
         frequency (str): The data frequency, 'm'.
         start_date (str, optional): The start date YYYY-MM-DD.
         end_date (str, optional): The end date YYYY-MM-DD.
@@ -43,7 +42,7 @@ class DHSFactors(FactorModel):
         cache_ttl (int, optional): Cached download time-to-live in 
             seconds (default: 86400).
 
-    References
+    References:
     - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
     Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
     1673-1736.

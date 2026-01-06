@@ -17,7 +17,7 @@
 import sys
 from typing import Any, override
 import pyarrow as pa
-from getfactormodels.utils.data_utils import (
+from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
     round_to_precision,
 )
@@ -35,14 +35,14 @@ class BarillasShankenFactors(FactorModel):
     This is the factor model with the highest posterior inclusion probability
     in Barillas and Shanken (2018).
 
-    Args
+    Args:
         frequency (str): the frequency of the data. d, m. (default: m).
         start_date (str, optional): start date, YYYY-MM-DD.
         end_date (str, optional): end date, YYYY-MM-DD.
         cache_ttl (int, optional): Cache time-to-live in seconds 
             (default: 86400).
 
-    References
+    References:
     - F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, Journal of 
     Finance, vol. 73, no. 2, pp. 715–754, 2018.
 
@@ -94,8 +94,8 @@ class BarillasShankenFactors(FactorModel):
 
 
     def _construct(self) -> pa.Table:
-        self.log.info("Constructing Barillas-Shanken 6 Factor Model...")
-
+        print("Constructing Barillas-Shanken 6 Factor Model...", file=sys.stderr)
+        
         q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
         ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
         print("Getting HML Devil factors...", file=sys.stderr) #if not cached TODO

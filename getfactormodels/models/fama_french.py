@@ -19,11 +19,11 @@ from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.data_utils import (
-    offset_period_eom,
+from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
 )
+from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
 
@@ -36,7 +36,7 @@ class FamaFrenchFactors(FactorModel):
 
     Weekly data only available for the 3-factor model.
 
-    Args
+    Args:
         model (str | int): model to return. '3' '4' '5' '6' (default: '3')
         frequency (str, optional): frequency of the data. 'd' 'm' 'y' 'w'
             (default: 'm').
@@ -47,7 +47,7 @@ class FamaFrenchFactors(FactorModel):
         region (str, optional): return an international/emerging market 
             model.
 
-    References
+    References:
     - E. F. Fama and K. R. French, ‘Common risk factors in the returns 
       on stocks and bonds’, Journal of Financial Economics, vol. 33, 
       no. 1, pp. 3–56, 1993.
@@ -150,7 +150,7 @@ class FamaFrenchFactors(FactorModel):
         """Returns the list of supported Fama-French regions (clean keys)."""
         return [
             'us', 'emerging', 'developed', 'ex-us', 
-            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america'
+            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america',
         ]
     
     @property
@@ -257,15 +257,15 @@ class FamaFrenchFactors(FactorModel):
                 null_values=["-99.99", "-999", "-99.990", "-0.9999"],
                 strings_can_be_null=True,
                 column_types=_schema,
-                include_columns=_schema.names
+                include_columns=_schema.names,
             ),
         )   
     
 
     def _add_momentum(self, table: pa.Table) -> pa.Table:
         """Private helper to download and join the specific momentum
-        factor required."""
-
+        factor required.
+        """
         with _HttpClient(timeout=15.0) as client:
             mom_zip = client.download(self._get_mom_url(), self.cache_ttl)
 
