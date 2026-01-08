@@ -25,7 +25,7 @@ from abc import ABC, abstractmethod
 from typing import override
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
     round_to_precision,
@@ -34,7 +34,7 @@ from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
 
-class _AQRModel(FactorModel):
+class _AQRModel(FactorModel, RegionMixin):
     """Abstract base class for AQR's factor models.
 
     This subclass handles parsing the AQR Excel workbook with calamine, 
@@ -52,37 +52,8 @@ class _AQRModel(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
 
-    def __init__(self, frequency: str = 'm', *, cache_ttl: int = 86400, 
-                 country: str = 'usa', **kwargs):
-        self.cache_ttl = cache_ttl
-        self.country = country
-        self._validate_country(country) #will fix casing
-        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
-        self.frequency = frequency
-
     @property
-    def _precision(self) -> int:
-        return 8
-
-    @property
-    def country(self) -> str:
-        return self._country
-    @country.setter
-    def country(self, value: str):
-        c = self._validate_country(value)
-        if not hasattr(self, '_country') or self._country != c:
-            self._country = c
-            self._data = None  # Reset caches
-            self._df = None
-    
-    @override
-    def _download(self) -> bytes:
-        with _HttpClient(timeout=15.0) as client:
-            return client.stream(self._get_url(), self.cache_ttl, model_name=self.__class__.__name__)
-
-    # NEW. TODO: FIXME: good enough for now.
-    @classmethod
-    def list_countries(cls) -> list[str]:
+    def _regions(self) -> list[str]:
         """Returns the list of supported AQR countries/regions."""
         return [
             'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'DEU', 'DNK', 'ESP', 
@@ -90,23 +61,38 @@ class _AQRModel(FactorModel):
             'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
             'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA',
         ]
+    # TODO: I hate uppercase... FIXME
+    def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, 
+                 region: str = 'usa', **kwargs):
+        self.cache_ttl = cache_ttl
+        #self.country = country
+        #self._validate_country(country) #will fix casing
+        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
+        self.frequency = frequency
+        self.region = region
 
+    @property
+    def _precision(self) -> int:
+        return 8
 
-    def _validate_country(self, value: str) -> str:
-        """Standardizes and validates country input for AQR models."""
-        if value is None or str(value).strip().lower() in ['', 'none', 'us']:
-            return 'USA'
+    # AQR-specific mappings  # will move to the mixin when ff is done...
+    @RegionMixin.region.setter
+    def region(self, value: str | None):
+        val = str(value).strip().upper() if value else 'USA'
+        synonyms = {'US': 'USA', 'UK': 'GBR', 'GER': 'DEU', 'GERMANY': 'DEU'}
+        val = synonyms.get(val, val)
 
-        requested = str(value).strip().upper()
-        valid = self.list_countries() #class method
+        if val not in self._regions:
+            raise ValueError(f"Unsupported AQR region: {val}")
+        if hasattr(self, "_region") and val != self._region:
+            self._data = None #reset cache
+            
+        self._region = val
 
-        if requested in valid:
-            return requested
-
-        msg = f"Unsupported country/region: '{value}'. \nMust be one of: {valid}"
-        self.log.error(msg)
-        raise ValueError(msg)
-
+    @override
+    def _download(self) -> bytes:
+        with _HttpClient(timeout=15.0) as client:
+            return client.stream(self._get_url(), self.cache_ttl, model_name=self.__class__.__name__)
 
     def _aqr_dt_fix(self, d) -> str:
         """Fixes AQR's 'MM/DD/YYYY' format."""
@@ -122,7 +108,7 @@ class _AQRModel(FactorModel):
     def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
         rows = wb.get_sheet_by_name(sheet_name).to_python()
         header_row = None
-       
+
         # Finds the header row (contains 'DATE'). One row was 17, others 18.
         for i, row in enumerate(rows):
             if row and str(row[0]).strip().upper() == 'DATE':
@@ -133,27 +119,25 @@ class _AQRModel(FactorModel):
             msg = f"Error: Couldn't find a header row for sheet: '{sheet_name}')"
             self.log.error(msg)
             raise ValueError(msg)
-        
+
         headers = [str(h).strip().upper() for h in rows[header_row]]
         data_rows = rows[header_row + 1:]
 
         if sheet_name == 'RF':
             col_idx = 1
-        else:
-            country_key = self.country.upper() if self.country else 'USA'
-            
-            if country_key not in headers:
-                msg = f"'{country_key}' not found in {sheet_name} headers. Available: {headers}"
+        else: # self.region (now 'USA', 'GBR', etc.)
+            if self.region not in headers:
+                msg = f"'{self.region}' not found in {sheet_name}. Available: {headers}"
                 self.log.error(msg)
                 raise ValueError(msg)
 
-            col_idx = headers.index(country_key)
+            col_idx = headers.index(self.region)
 
         dates, values = [], []
         for r in data_rows:
             if not r or r[0] is None or r[col_idx] == '': 
                 continue
-                
+
             dates.append(self._aqr_dt_fix(r[0]))
             values.append(float(r[col_idx]))
 
@@ -161,13 +145,16 @@ class _AQRModel(FactorModel):
 
         if clean_factor_name in ['RF', 'RF_AQR']:
             final_col_name = 'RF_AQR'
-        elif self.country == 'USA':
+        elif self.region == 'USA':
             final_col_name = clean_factor_name
         else:
-            # prepend all but RF with country
-            final_col_name = f"{self.country}_{clean_factor_name}"
+            # prepend all but RF with region (except default US),
+            # Note: the columns are prepended with AQR's name. Input flexible:
+            # 'GER' or 'Deu', output is standardized (DEU).
+            final_col_name = f"{self.region}_{clean_factor_name}"
 
         return pa.Table.from_pydict({"date": dates, final_col_name: values})
+
 
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))

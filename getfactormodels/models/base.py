@@ -33,6 +33,12 @@ from getfactormodels.utils.date_utils import (
 from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _save_to_file
 
+"""Core components used to build factor model implementations.
+
+- FactorModel: abstract base class. Provides common data handling, 
+  caching, and date-filtering logic implemented by all factor models.
+- RegionMixin: A mixin for models supporting international data.
+"""
 
 class FactorModel(ABC):
     """Abstract Base Class used by all factor model implementations."""
@@ -75,11 +81,18 @@ class FactorModel(ABC):
         return len(self.data)
 
     def __str__(self) -> str:
-        if self._data is not None:
-            region = getattr(self, 'region', 'US')
-            header = f"{self.__class__.__name__} ({region})\n"
-            return header + print_table_preview(self.data)
-        return self.__repr__()
+        try:
+            table = self.data
+        except Exception:
+            return self.__repr__()
+
+        if isinstance(self, RegionMixin):
+            region_label = f" ({self.region})"
+        else:
+            region_label = ""
+
+        header = f"{self.__class__.__name__}{region_label}\n"
+        return header + print_table_preview(table)
 
     def __repr__(self) -> str:
         params = []
@@ -250,6 +263,10 @@ class FactorModel(ABC):
             return pl.from_arrow(self.data)
         except ImportError:
             raise ImportError("Requires Polars. `pip install polars`") from None
+    # maybe
+    #def preview(self, n: int = 4):
+    #    """Prints the formatted table preview."""
+    #    print(print_table_preview(self.data, n_rows=n))
 
 
     def _get_table(self) -> pa.Table:
@@ -337,10 +354,48 @@ class FactorModel(ABC):
     @abstractmethod 
     def _get_url(self) -> str | dict[str, str]:
         """Build the unique data source URL."""
-        #TODO: change to accept a list (e.g., for FF mom models, backup URLs)
         pass
 
     @abstractmethod
     def _read(self, data: bytes) -> pa.Table:
         """Read bytes into a pa.Table."""
         pass
+
+
+# ---------------------------------------------------------------------
+# New: regional models (this unifies country/region, and removes the region 
+# property from AQR/FF models. Adds list_regions, a regions property, 
+# getter/setter. TODO: handle cases, mapping here. There's still an override in 
+# setter in aqr.
+class RegionMixin:
+    """Mixin for models that support international regions/countries."""
+    @property
+    @abstractmethod
+    def _regions(self) -> list[str]:
+        pass
+
+    @classmethod
+    def list_regions(cls) -> list[str]:
+        """List available regions."""
+        # List regions without instantiation
+        if isinstance(cls._regions, property):
+            # if a property on an uninstantiated class, reach into the fget
+            return cls._regions.fget(cls) 
+        return cls._regions
+
+    @property
+    def region(self) -> str:
+        return getattr(self, "_region", "us")
+    @region.setter
+    def region(self, value: str | None):
+        val = value.strip().lower() if value else "us"
+
+        if val not in self.list_regions():
+            raise ValueError(f"Invalid region '{val}'. Supported: {self.list_regions()}")
+
+        if hasattr(self, "_region") and val != self._region:
+            self.log.info(f"Region changed to {val}. Resetting cache.")
+            self._data = None
+            self._selected_factors = None # reset factor selection on region change
+
+        self._region = val

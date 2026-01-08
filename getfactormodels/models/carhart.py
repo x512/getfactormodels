@@ -35,6 +35,7 @@ class CarhartFactors(FamaFrenchFactors): # inheritence ooo
         return ["d", "m", "y"]
 
     def __init__(self, frequency='m', region=None, **kwargs):
+        """Initialize the Carhart 4-Factor model."""
         super().__init__(frequency=frequency,
                          model=4,   # enforce model for FF 
                          region=region,

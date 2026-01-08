@@ -18,17 +18,17 @@ import zipfile
 from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
-from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.arrow_utils import (
-    round_to_precision,
-    scale_to_decimal,
-)
+from getfactormodels.models.base import FactorModel, RegionMixin
+from getfactormodels.utils.arrow_utils import \
+    round_to_precision  # dont know if need here
+from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import offset_period_eom
-from getfactormodels.utils.http_client import _HttpClient
+
+#from getfactormodels.utils.http_client import _HttpClient  #client/_download handles multi dls now
 
 
 #TODO: break up _read_zip
-class FamaFrenchFactors(FactorModel):
+class FamaFrenchFactors(FactorModel, RegionMixin):
     """Download Fama-French (and Carhart) factor models.
 
     Downloads the 3-factor (1993), 5-factor (2015), or 6-factor (2018)
@@ -66,8 +66,11 @@ class FamaFrenchFactors(FactorModel):
         return ['d', 'w', 'm', 'y']
 
     @property 
-    def _precision(self) -> int:
-        return 6
+    def _regions(self) -> list[str]:
+        return [
+            'us', 'emerging', 'developed', 'ex-us', 
+            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america', 
+        ]
 
     def __init__(self, 
                  frequency: str = 'm', 
@@ -76,9 +79,14 @@ class FamaFrenchFactors(FactorModel):
                  **kwargs: Any) -> None:
         """Initialize the Fama-French factor model."""
         self.model = str(model)
-        self.region = region.lower() if region else 'us'
+        #self.region = region.lower() if region else 'us'
         super().__init__(frequency=frequency, model=model, **kwargs)
+        self.region = region
         self._validate_ff_input()
+    
+    @property 
+    def _precision(self) -> int:
+        return 6
 
     @property
     def schema(self) -> pa.Schema:
@@ -129,31 +137,6 @@ class FamaFrenchFactors(FactorModel):
             self._view = None
         self._model = val 
 
-    @property
-    def region(self) -> str:
-        return self._region
-    @region.setter
-    def region(self, value: str | None):
-        val = value.lower() if value else 'us'
-        
-        if val not in self.list_regions():
-            raise ValueError(f"Invalid region '{val}'. Supported: {self.list_regions()}")
-
-        if hasattr(self, '_region') and val != self._region:
-            self.log.info(f"Region changed from {self._region} to {val}.")
-            self._data = None
-            self._view = None
-            
-        self._region = val 
-
-    @classmethod
-    def list_regions(cls) -> list[str]:
-        """Returns the list of supported Fama-French regions (clean keys)."""
-        return [
-            'us', 'emerging', 'developed', 'ex-us', 
-            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america',
-        ]
-    
     @property
     def _ff_region_map(self) -> dict[str, str]:
         """Private: maps region input to region URL str"""
