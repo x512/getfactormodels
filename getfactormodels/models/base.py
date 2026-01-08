@@ -39,6 +39,8 @@ from getfactormodels.utils.utils import _save_to_file
   caching, and date-filtering logic implemented by all factor models.
 - RegionMixin: A mixin for models supporting international data.
 """
+logger = logging.getLogger(__name__)
+
 
 class FactorModel(ABC):
     """Abstract Base Class used by all factor model implementations."""
@@ -52,14 +54,13 @@ class FactorModel(ABC):
 
         Args:
             frequency (str): the frequency of the data. Default: 'm'.
-            start_date (str, opt):
-            end_date (str, opt):
-            output_file (str | Path, opt):
+            start_date (str, opt): The start date YYYY[-MM-DD]
+            end_date (str, opt): The end date YYYY[-MM-DD]
+            output_file (str): optional path to save data to.
             cache_ttl (int): Cache time-to-live in seconds. Default: 86400.
             **kwargs: some models have additional params.
         """
-        logger = f"{self.__module__}.{self.__class__.__name__}"
-        self.log = logging.getLogger(logger)
+        self.log = logger
 
         self._data: pa.Table | None = None
         self._start_date = None
@@ -293,7 +294,6 @@ class FactorModel(ABC):
     def _download(self) -> bytes | dict[str, bytes]:
         urls = self._get_url()
         self.log.info(f"Downloading data from: {urls}")
-
         try:
             with _HttpClient() as client:
                 if isinstance(urls, str):
@@ -363,16 +363,53 @@ class FactorModel(ABC):
 
 
 # ---------------------------------------------------------------------
-# New: regional models (this unifies country/region, and removes the region 
-# property from AQR/FF models. Adds list_regions, a regions property, 
+# New: regional mixin (this unifies country/region, and removes the region 
+# property from AQR/FF models). Adds list_regions, a regions property, 
 # getter/setter. TODO: handle cases, mapping here. There's still an override in 
 # setter in aqr.
 class RegionMixin:
     """Mixin for models that support international regions/countries."""
+    # just here for now... removes some friction
+    # TODO: long region names
+    _aliases = {
+        'usa': 'us', 'us': 'usa',
+        'jpn': 'japan', 'japan': 'jpn',
+        'uk': 'gbr', 
+        'ger': 'deu',
+    }
+
     @property
     @abstractmethod
     def _regions(self) -> list[str]:
         pass
+
+    @property
+    def region(self) -> str:
+        # default set to 'us' or 'usa' (depends whats in _region!)
+        if not hasattr(self, "_region"):
+            return 'us' if 'us' in self._regions else 'usa'
+        return self._region
+    @region.setter
+    def region(self, value: str | None):
+        val = str(value).strip().lower() if value else self.region
+        
+        resolved = None
+        # exact match
+        if val in self._regions:
+            resolved = val
+        # alias match
+        elif self._aliases.get(val) in self._regions:
+            resolved = self._aliases.get(val)
+        if not resolved:
+            raise ValueError(f"Invalid region '{value}'. Supported: {self._regions}")
+        if hasattr(self, "_region") and resolved != self._region:
+            msg = f"Region changed to {resolved}. Cache reset."
+            # Mixin can use self.log:
+            #   the child class that mixed it in inherited it.
+            self.log.info(msg)
+            self._data = None
+            #self._selected_factors = None # Reset selected factors when region changes?
+        self._region = resolved
 
     @classmethod
     def list_regions(cls) -> list[str]:
@@ -382,20 +419,3 @@ class RegionMixin:
             # if a property on an uninstantiated class, reach into the fget
             return cls._regions.fget(cls) 
         return cls._regions
-
-    @property
-    def region(self) -> str:
-        return getattr(self, "_region", "us")
-    @region.setter
-    def region(self, value: str | None):
-        val = value.strip().lower() if value else "us"
-
-        if val not in self.list_regions():
-            raise ValueError(f"Invalid region '{val}'. Supported: {self.list_regions()}")
-
-        if hasattr(self, "_region") and val != self._region:
-            self.log.info(f"Region changed to {val}. Resetting cache.")
-            self._data = None
-            self._selected_factors = None # reset factor selection on region change
-
-        self._region = val

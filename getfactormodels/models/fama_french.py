@@ -79,7 +79,6 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  **kwargs: Any) -> None:
         """Initialize the Fama-French factor model."""
         self.model = str(model)
-        #self.region = region.lower() if region else 'us'
         super().__init__(frequency=frequency, model=model, **kwargs)
         self.region = region
         self._validate_ff_input()

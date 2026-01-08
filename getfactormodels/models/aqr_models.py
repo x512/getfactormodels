@@ -40,11 +40,10 @@ class _AQRModel(FactorModel, RegionMixin):
     This subclass handles parsing the AQR Excel workbook with calamine, 
     validates the country param, and has a getter/setter for country.
 
-    - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
-
     Notes:
     - These models are slow to download. Daily datasets are 20-30 MB each,
     and the download is rate limited.
+    - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
 
     """
     # TODO: cache_ttl improved for AQR, use file's last modified date in header. 
@@ -54,19 +53,17 @@ class _AQRModel(FactorModel, RegionMixin):
 
     @property
     def _regions(self) -> list[str]:
-        """Returns the list of supported AQR countries/regions."""
+        """List of supported AQR countries/regions."""
         return [
-            'AUS', 'AUT', 'BEL', 'CAN', 'CHE', 'DEU', 'DNK', 'ESP', 
-            'FIN', 'FRA', 'GBR', 'GRC', 'HKG', 'IRL', 'ISR', 'ITA', 
-            'JPN', 'NLD', 'NOR', 'NZL', 'PRT', 'SGP', 'SWE', 'USA',
-            'EUROPE', 'NORTH AMERICA', 'PACIFIC', 'GLOBAL', 'GLOBAL EX USA',
+            'aus', 'aut', 'bel', 'can', 'che', 'deu', 'dnk', 'esp', 
+            'fin', 'fra', 'gbr', 'grc', 'hkg', 'irl', 'isr', 'ita', 
+            'jpn', 'nld', 'nor', 'nzl', 'prt', 'sgp', 'swe', 'usa',
+            'europe', 'north america', 'pacific', 'global', 'global ex usa',
         ]
-    # TODO: I hate uppercase... FIXME
+
     def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, 
                  region: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
-        #self.country = country
-        #self._validate_country(country) #will fix casing
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
         self.frequency = frequency
         self.region = region
@@ -74,20 +71,6 @@ class _AQRModel(FactorModel, RegionMixin):
     @property
     def _precision(self) -> int:
         return 8
-
-    # AQR-specific mappings  # will move to the mixin when ff is done...
-    @RegionMixin.region.setter
-    def region(self, value: str | None):
-        val = str(value).strip().upper() if value else 'USA'
-        synonyms = {'US': 'USA', 'UK': 'GBR', 'GER': 'DEU', 'GERMANY': 'DEU'}
-        val = synonyms.get(val, val)
-
-        if val not in self._regions:
-            raise ValueError(f"Unsupported AQR region: {val}")
-        if hasattr(self, "_region") and val != self._region:
-            self._data = None #reset cache
-            
-        self._region = val
 
     @override
     def _download(self) -> bytes:
@@ -125,13 +108,13 @@ class _AQRModel(FactorModel, RegionMixin):
 
         if sheet_name == 'RF':
             col_idx = 1
-        else: # self.region (now 'USA', 'GBR', etc.)
-            if self.region not in headers:
+        else:
+            if self.region.upper() not in headers:
                 msg = f"'{self.region}' not found in {sheet_name}. Available: {headers}"
                 self.log.error(msg)
                 raise ValueError(msg)
 
-            col_idx = headers.index(self.region)
+            col_idx = headers.index(self.region.upper())
 
         dates, values = [], []
         for r in data_rows:
@@ -145,13 +128,13 @@ class _AQRModel(FactorModel, RegionMixin):
 
         if clean_factor_name in ['RF', 'RF_AQR']:
             final_col_name = 'RF_AQR'
-        elif self.region == 'USA':
+        elif self.region == 'usa':  # internal is lowercase now
             final_col_name = clean_factor_name
         else:
-            # prepend all but RF with region (except default US),
-            # Note: the columns are prepended with AQR's name. Input flexible:
-            # 'GER' or 'Deu', output is standardized (DEU).
-            final_col_name = f"{self.region}_{clean_factor_name}"
+            # prepends all but RF with region if not default (USA).
+            # Note: output uses AQR's name. Input is flexible: 'GER',
+            #   or 'Deu', but output is standardized ("DEU_").
+            final_col_name = f"{self.region.upper()}_{clean_factor_name}"
 
         return pa.Table.from_pydict({"date": dates, final_col_name: values})
 
@@ -292,14 +275,15 @@ class BABFactors(_AQRModel):
     @property
     def _sheet_map(self):
         return {'BAB Factors': 'BAB',
-                'MKT': 'Mkt-RF', 'SMB': 'SMB', 'HML FF': 'HML', 'RF': 'RF_AQR'}  #SMB_AQR?
+                'MKT': 'Mkt-RF', 
+                'SMB': 'SMB',           # SMB_AQR?
+                'HML FF': 'HML', 
+                'RF': 'RF_AQR'} 
 
     def _get_url(self):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
-# NOTE: Countries that == FF regions: JPN, USA 
 # Regions that match FF regions: global, Global Ex USA, Europe, North America, 
 #Pacific if ex japan
-#Add error handling/validations
 #Output to CLI then needs titles, FF and AQR specifics...
