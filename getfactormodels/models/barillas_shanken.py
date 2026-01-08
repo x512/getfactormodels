@@ -19,8 +19,8 @@ from typing import Any, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
-    select_table_columns,
     round_to_precision,
+    select_table_columns,
 )
 from .aqr_models import HMLDevilFactors
 from .base import FactorModel

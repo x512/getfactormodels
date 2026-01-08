@@ -33,7 +33,7 @@ from getfactormodels.utils.date_utils import (
 from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _save_to_file
 
-"""Core components used to build factor model implementations.
+"""An abstract base class for model implementations.
 
 - FactorModel: abstract base class. Provides common data handling, 
   caching, and date-filtering logic implemented by all factor models.
@@ -138,7 +138,7 @@ class FactorModel(ABC):
     def start_date(self, value: Any):
         valid = _validate_input_date(value, is_end=False)
         self._start_date, self._end_date = validate_date_range(valid, self._end_date)
-    
+
     @property
     def end_date(self) -> str | None:
         return self._end_date
@@ -199,7 +199,7 @@ class FactorModel(ABC):
 
     def drop(self, factor: str | list[str]) -> "FactorModel": #Self
         """Remove specific factors from the model. Str or list[str].
-                
+
         Stateful: Removes these factors from the view.
         """
         t_cols = self._get_table().column_names
@@ -298,7 +298,7 @@ class FactorModel(ABC):
             with _HttpClient() as client:
                 if isinstance(urls, str):
                     return client.download(urls, self.cache_ttl)
-                
+
                 return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
 
         except Exception as e:
@@ -365,8 +365,7 @@ class FactorModel(ABC):
 # ---------------------------------------------------------------------
 # New: regional mixin (this unifies country/region, and removes the region 
 # property from AQR/FF models). Adds list_regions, a regions property, 
-# getter/setter. TODO: handle cases, mapping here. There's still an override in 
-# setter in aqr.
+# getter/setter. 
 class RegionMixin:
     """Mixin for models that support international regions/countries."""
     # just here for now... removes some friction
@@ -392,12 +391,12 @@ class RegionMixin:
     @region.setter
     def region(self, value: str | None):
         val = str(value).strip().lower() if value else self.region
-        
+
         resolved = None
         # exact match
         if val in self._regions:
             resolved = val
-        # alias match
+            # alias match
         elif self._aliases.get(val) in self._regions:
             resolved = self._aliases.get(val)
         if not resolved:

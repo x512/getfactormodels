@@ -15,11 +15,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
+import sys
+import textwrap
 from importlib.metadata import PackageNotFoundError, version
 from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-import sys
-import textwrap
+
 
 def _get_version():
     """Avoids importing __init__ for the ver. no."""
