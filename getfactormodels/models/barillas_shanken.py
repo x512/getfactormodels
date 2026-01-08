@@ -19,6 +19,7 @@ from typing import Any, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
+    select_table_columns,
     round_to_precision,
 )
 from .aqr_models import HMLDevilFactors
@@ -54,7 +55,7 @@ class BarillasShankenFactors(FactorModel):
 
     """
     def __init__(self, **kwargs: Any) -> None:
-        """Initialize the Barillas-Shanken model."""
+        """Initialize the Barillas-Shanken 6-Factor model."""
         super().__init__(**kwargs)
     
     @property
@@ -94,18 +95,21 @@ class BarillasShankenFactors(FactorModel):
 
 
     def _construct(self) -> pa.Table:
-        print("Constructing Barillas-Shanken 6 Factor Model...", file=sys.stderr)
+        # Get tables
+        q_t = QFactors(frequency=self.frequency)._get_table()
+        ff_t = FamaFrenchFactors(model='6', frequency=self.frequency)._get_table()
+        devil_t = HMLDevilFactors(frequency=self.frequency)._get_table()
         
-        q = QFactors(frequency=self.frequency)._extract_as_table(['R_IA', 'R_ROE'])
-        ff = FamaFrenchFactors(model='6', frequency=self.frequency)._extract_as_table(['Mkt-RF', 'SMB', 'UMD'])
-        print("Getting HML Devil factors...", file=sys.stderr) #if not cached TODO
-        devil = HMLDevilFactors(frequency=self.frequency)._extract_as_table(['HML_Devil', 'RF_AQR'])
-
+        # Slice
+        q = select_table_columns(q_t, ['R_IA', 'R_ROE'])
+        ff = select_table_columns(ff_t, ['Mkt-RF', 'SMB', 'UMD'])
+        devil = select_table_columns(devil_t, ['HML_Devil', 'RF_AQR'])
+        
+        # Join
         table = ff.join(q, keys='date', join_type='inner')
         table = table.join(devil, keys='date', join_type='inner')
 
-        table = table.combine_chunks()
-        return table.select(self.schema.names).cast(self.schema)    
+        return table.select(self.schema.names).cast(self.schema)
 
     def _get_url(self) -> str:
         """Composite model: no remote source."""

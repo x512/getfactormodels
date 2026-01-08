@@ -31,7 +31,7 @@ from getfactormodels.utils.date_utils import (
     validate_date_range,
 )
 from getfactormodels.utils.http_client import _HttpClient
-from getfactormodels.utils.utils import _save_to_file  # _validate_input_date
+from getfactormodels.utils.utils import _save_to_file
 
 
 class FactorModel(ABC):
@@ -71,7 +71,7 @@ class FactorModel(ABC):
         super().__init__()
 
     def __len__(self) -> int:
-        """Length of the pa.Table."""
+        """Length of the pa.Table after filtering."""
         return len(self.data)
 
     def __str__(self) -> str:
@@ -191,7 +191,7 @@ class FactorModel(ABC):
         t_cols = self._get_table().column_names
         to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
 
-        # select cols whose lower case name isn't in the to_drop set.
+        # select: cols (lowercase) not in the to_drop set
         selection = [c for c in t_cols if c.lower() not in to_drop and c != 'date']
 
         if not selection:
@@ -224,9 +224,13 @@ class FactorModel(ABC):
 
 
     def to_pandas(self) -> "pd.DataFrame":
-        """Convert model to a pandas DataFrame. Wrapper around Arrow's `to_pandas()`."""
+        """Convert model to a pandas DataFrame.
+
+        - Wrapper around Arrow's `to_pandas()`.
+        - Triggers the download if not loaded.
+        """
         try:
-            import pandas as pd  # not needed, but if user doesn't have pandas we can err
+            import pandas as pd  # check for if user has pd?
             df = self.data.to_pandas()
             if "date" in df.columns:
                 df = df.set_index("date")
@@ -238,8 +242,8 @@ class FactorModel(ABC):
     def to_polars(self) -> "pl.DataFrame":
         """Convert model to a polars DataFrame.
 
-        Wrapper around Polars' `from_arrow()`. Triggers the download if 
-        not loaded.
+        - Wrapper around Polars' `from_arrow()`. 
+        - Triggers the download if not loaded.
         """
         try:
             import polars as pl
@@ -247,17 +251,6 @@ class FactorModel(ABC):
         except ImportError:
             raise ImportError("Requires Polars. `pip install polars`") from None
 
-
-    def _extract_as_table(self, factor: str | list[str]) -> pa.Table:
-        """Internal helper: Extracts factors (columns) and returns a pa.Table."""
-        table = self._get_table()
-        factor_cols = select_table_columns(table, factor)
-        
-        if factor_cols.num_columns < 2: 
-            raise ValueError("Extraction must include at least one factor.")
-
-        return filter_table_by_date(factor_cols, self.start_date, self.end_date)
-    
 
     def _get_table(self) -> pa.Table:
         """Internal: triggers download if cache empty.
@@ -268,8 +261,7 @@ class FactorModel(ABC):
             raw_bytes = self._download()
             table = self._read(raw_bytes)
 
-            # order isn't guarenteed after a join.
-            # fix: was messing up AQR models with a country param once pd was removed!
+            # fix: slice of data for AQR models with country (order isn't guarenteed after a join)
             if "date" in table.column_names:
                 table = table.sort_by([("date", "ascending")])
 
@@ -280,17 +272,21 @@ class FactorModel(ABC):
         return self._data
 
 
-    # TODO: ff requires two files... allow list passed in
-    def _download(self) -> bytes:
-        url = self._get_url()
-        log_msg = f"Downloading data from: {url}"
-        self.log.info(log_msg)
+    # New: allows a dict or str, multi-dl using dict comprehension
+    def _download(self) -> bytes | dict[str, bytes]:
+        urls = self._get_url()
+        self.log.info(f"Downloading data from: {urls}")
+
         try:
-            with _HttpClient(timeout=15.0) as client:
-                return client.download(url, self.cache_ttl)
+            with _HttpClient() as client:
+                if isinstance(urls, str):
+                    return client.download(urls, self.cache_ttl)
+                
+                return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
+
         except Exception as e:
-            self.log.error(f"Failed to download from {url}: {e}")
-            raise RuntimeError(f"Download failed for {url}.") from e
+            self.log.error(f"Download failed: {e}")
+            raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
 
 
     # might move to utils
@@ -339,7 +335,7 @@ class FactorModel(ABC):
         pass
 
     @abstractmethod 
-    def _get_url(self) -> str | list[str]:
+    def _get_url(self) -> str | dict[str, str]:
         """Build the unique data source URL."""
         #TODO: change to accept a list (e.g., for FF mom models, backup URLs)
         pass

@@ -108,7 +108,8 @@ class FamaFrenchFactors(FactorModel):
     @property
     def _mom_schema(self) -> pa.Schema:
         """Private helper: schema for momentum files.
-        'val' is a placeholder for the specific (model, region)
+        
+        - 'val' is a placeholder for the specific (model, region)
           momentum factor, it gets renamed during the join process.
         """
         return pa.schema([("date", pa.string()), 
@@ -179,43 +180,40 @@ class FamaFrenchFactors(FactorModel):
             raise ValueError("Weekly Fama-French data is only available for the 3-factor model.")
  
 
-    def _get_url(self) -> str:
-        """Constructs the URL for downloading Fama-French data."""
+    def _get_url(self) -> dict[str, str]:
+        """Constructs the URLs for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        url_list = {}
+
         ff_url_name = self._ff_region_map.get(self.region)
-
-        # Emerging: only monthly 5-factors avail
+        
         if ff_url_name == 'Emerging':
-            return f"{base_url}/Emerging_5_Factors_CSV.zip"
-
-        if ff_url_name == 'US':
+            # Emerging: only monthly 5-factors avail
+            filename = "Emerging_5_Factors_CSV.zip"
+        elif ff_url_name == 'US':
             _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
             freq_map = {'d': '_daily', 'w': '_weekly'}
             suffix = freq_map.get(self.frequency, "")
-            
             filename = f"{_model}{suffix}_CSV.zip"
-
         else:
-            # regions: 3 and 4 use 3. 5 and 6 use the 5-factor file.
+            # International regions
             base_model = '3' if self.model in ['3', '4'] else '5'
             daily = '_Daily' if self.frequency == 'd' else ''
             filename = f"{ff_url_name}_{base_model}_Factors{daily}_CSV.zip"
+            
+        url_list['factors'] = f"{base_url}/{filename}"
+        
+        # Construct the momentum URL if needed.
+        if self.model in ["4", "6"]:
+            freq_suffix = "_daily" if self.frequency == 'd' else ""
+            if self.region in ['us', None]:
+                mom_filename = f"F-F_Momentum_Factor{freq_suffix}_CSV.zip"
+            else:
+                mom_filename = f"{self.region}_Mom_Factor{freq_suffix.title()}_CSV.zip"
+            
+            url_list['momentum'] = f"{base_url}/{mom_filename}"
 
-        return f"{base_url}/{filename}"
-
-
-    def _get_mom_url(self) -> str:
-        """Constructs the URL for the required momentum file."""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        freq_suffix = "_daily" if self.frequency == 'd' else ""
-
-        if self.region in ['us', None]:
-            filename = f"F-F_Momentum_Factor{freq_suffix}_CSV.zip"
-        else:
-            # regional, e.g., 'Europe_Mom_Factor_Daily_CSV.zip'
-            filename = f"{self.region}_Mom_Factor{freq_suffix.title()}_CSV.zip"
-
-        return f"{base_url}/{filename}"
+        return url_list
 
 
     def _read_zip(self, _data: bytes, use_schema: pa.Schema = None) -> pa.Table:
@@ -262,46 +260,30 @@ class FamaFrenchFactors(FactorModel):
         )   
     
 
-    def _add_momentum(self, table: pa.Table) -> pa.Table:
-        """Private helper to download and join the specific momentum
-        factor required.
-        """
-        with _HttpClient(timeout=15.0) as client:
-            mom_zip = client.download(self._get_mom_url(), self.cache_ttl)
-
-        mom_table = self._read_zip(mom_zip, use_schema=self._mom_schema)
+    def _read(self, data: dict[str, bytes]) -> pa.Table:
+        main_cols = [f for f in self.schema if f.name not in ["UMD", "MOM", "WML"]]
         
-        # WML for intl, UMD for US 6, MOM for US 4
-        mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
-        mom_table = mom_table.rename_columns(["date", mom_key])
-
-        return table.join(mom_table, keys="date", join_type="inner").combine_chunks()
-
-
-    def _read(self, data: bytes) -> pa.Table:
-        is_emerging = self.region == 'emerging'
-        
-        main_cols = []
-        for field in self.schema:
-            if field.name not in ["UMD", "MOM", "WML"]:
-                main_cols.append(field)
-
-        # fix: user asked for model=3 or 4, region='emerging' 
-        #   schema needs RMW/CMA anyway (only a 5 factor file)
-        if is_emerging and self.model in ["3", "4"]:
+        # Emerging Markets: base file is 5 factors (even for models 3/4)
+        if self.region == 'emerging' and self.model in ["3", "4"]:
             main_cols.insert(4, pa.field("RMW", pa.float64()))
             main_cols.insert(5, pa.field("CMA", pa.float64()))
 
         main_schema = pa.schema(main_cols)
 
-        table = self._read_zip(data, use_schema=main_schema)
+        # access data['factors'] directly
+        table = self._read_zip(data['factors'], use_schema=main_schema)
 
-        if self.model in {"4", "6"}:
-            table = self._add_momentum(table)
+        if 'momentum' in data:
+            mom_table = self._read_zip(data['momentum'], use_schema=self._mom_schema)
+            
+            # momentum column name based on schema
+            mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
+            mom_table = mom_table.rename_columns(["date", mom_key])
+            
+            table = table.join(mom_table, keys="date", join_type="inner").combine_chunks()
 
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
 
-        # using select with schema.names drops the cols the user doesn't want
         return table.select(self.schema.names).combine_chunks()
