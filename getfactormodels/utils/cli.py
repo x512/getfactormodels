@@ -18,7 +18,8 @@ import argparse
 from importlib.metadata import PackageNotFoundError, version
 from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
-
+import sys
+import textwrap
 
 def _get_version():
     """Avoids importing __init__ for the ver. no."""
@@ -39,12 +40,10 @@ def parse_args() -> argparse.Namespace:
     getfactormodels -m liquidity -f m --start 2000-01-01 --end 2009-12-31
     getfactormodels -m 5 -f m -e 2009-12-31 --extract SMB RF -o '~/file.csv'
     getfactormodels -m Carhart -f d -s 2000-01-01 -x MOM -o file
-    getfactormodels -m hml_devil --country jpn
+    getfactormodels -m hml_devil --region jpn
         ''', 
     )
 
-    aqr_countries = _AQRModel.list_countries() 
-    ff_regions = FamaFrenchFactors.list_regions()
 
     parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
@@ -75,21 +74,25 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
                         help='extract specific factor(s) from a model, name should match column value.')
-    # region and country will probably be combined.
-    parser.add_argument('-r', '--region', metavar='REGION',
-                        help=f"Fama-French models only: region code. Options: {', '.join(ff_regions)}")
-    
-    parser.add_argument('-c', '--country', metavar='COUNTRY',
-                        help=f"AQR models only. ISO-3 letter country code. "
-                        f"Options: {', '.join(aqr_countries)}")  
-    # list 
-    # verbose
+
+    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
+                        help="Region or country code for AQR/FF models. Use --list-regions to see all valid regions."
+                        "Fama-French: us, emerging, developed, europe, japan, ex-us. "
+                        "AQR models: usa, japan, global ex us, etc.")
+
+    parser.add_argument('--list-regions', action='store_true', help="show all supported regions and exit")
     args = parser.parse_args()
+
+    if args.list_regions:
+        print(f"\nFama-French: {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), 
+                                              width=68, subsequent_indent='    ')}")
+        print(f"AQR Models:  {textwrap.fill(', '.join(_AQRModel.list_regions()), 
+                                            width=68, subsequent_indent='    ')}")
+        print("\nNote: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
+        sys.exit(0)
+
 
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
         parser.error(f"'w2w' frequency is not supported by '{args.model}'.")
-
-    #if args.country and args.model.lower() not in ['hmld', 'hml_devil', 'hmldevil']:
-    #    parser.error(f"'{args.model}' doesn't support the --country param. Only HML Devil factors do.")
 
     return args

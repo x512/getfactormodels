@@ -20,7 +20,6 @@ import sys
 from pathlib import Path
 import pyarrow.csv as pv
 from getfactormodels import models as factor_models
-from getfactormodels.models.aqr_models import _AQRModel
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
@@ -78,7 +77,7 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         "5": "FamaFrenchFactors",
         "6": "FamaFrenchFactors",
         "4": "CarhartFactors",
-        "Qclassic": "QFactors", # Handled via 'classic=True' in kwargs
+        "Qclassic": "QFactors", # 'classic=True' kwarg
     }
 
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
@@ -97,31 +96,26 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
 
 def main():
     args = parse_args()
-    # TODO: list models
+    
     if not args.model:
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
 
-    try: #oops. Unless params match flags, do this:
+    try:
         model_obj = get_factors(
             model=args.model,
             frequency=args.frequency,
             start_date=args.start,
             end_date=args.end,
-            region=args.region,
-            country=args.country,
+            region=args.region, 
         )
-
-        if args.country and not isinstance(model_obj, _AQRModel):
-            print(f"\tERROR: '{args.model}' doesn't support --country, "
-                "only AQR models do.", file=sys.stderr)
-            sys.exit(1)
-
+        # remove: country/region check, the model's internal 
+        # @region.setter now handles the check
         if not len(model_obj):
             log.error("No data returned.")
             sys.exit(1)
+
     except (ValueError, RuntimeError) as e:
-        # print the error, not traceback, and exit.
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
