@@ -371,10 +371,21 @@ class RegionMixin:
     # just here for now... removes some friction
     # TODO: long region names
     _aliases = {
+        #AQR (not VME), FF
         'usa': 'us', 'us': 'usa',
         'jpn': 'japan', 'japan': 'jpn',
         'uk': 'gbr', 
         'ger': 'deu',
+        # FF regions : AQR Aggregate Portfolios. 
+        # Note: AQR's 'pacific' includes japan.
+        # 'europe', 'north america', 'pacific', 'global', 'global ex usa',
+        'ex-us': 'global ex usa',
+        'north-america': 'north america', 'north america': 'north-america',
+        #for VME
+        'developed': 'everywhere',
+        'global': 'everywhere',
+        'global_stocks': 'all_equities',
+        'macro': 'all_other',
     }
 
     @property

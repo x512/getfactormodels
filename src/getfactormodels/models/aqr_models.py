@@ -61,7 +61,7 @@ class _AQRModel(FactorModel, RegionMixin):
             'europe', 'north america', 'pacific', 'global', 'global ex usa',
         ]
 
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, 
+    def __init__(self, frequency: str = 'm', cache_ttl: int = 14400, 
                  region: str = 'usa', **kwargs):
         self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
@@ -287,3 +287,76 @@ class BABFactors(_AQRModel):
 # Regions that match FF regions: global, Global Ex USA, Europe, North America, 
 #Pacific if ex japan
 #Output to CLI then needs titles, FF and AQR specifics...
+
+
+## NEW --------------------------------------------------------------------------------#
+# Value and Momentum Everywhere. It's file is unlike the others.
+# Testing. Returns the 'everywhere' VAL and MOM by defult.
+
+class VMEFactors(_AQRModel):
+    """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
+    @property
+    @override # only AQR model not avail in daily
+    def _frequencies(self) -> list[str]:
+        return ["m"]
+    
+    @property
+    @override # different regions to other models.
+    def _regions(self) -> list[str]:
+        """Regions specific to the VME Excel layout."""
+        return [ 
+            'everywhere', 'all_equities', 'all_other', 
+            'usa', 'uk', 'europe', 'japan',
+        ]  # all_equities by default? us? 
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Schema for Value and Momentum Everywhere (VME)."""
+        return pa.schema([  
+            ('date', pa.string()),  # forcing 'DATE' to lower here
+            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
+            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
+        ])
+
+    @property
+    def _sheet_map(self) -> dict:
+        return {'VME Factors': 'VME'}
+
+    def _get_url(self) -> str:
+        f = 'Monthly'
+        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
+    
+    def _read(self, data: bytes) -> pa.Table:
+        wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
+        rows = wb.get_sheet_by_name("VME Factors").to_python()
+        # Workbook contains a single sheet with the data.
+        # Note: for later... Data sources and definition tabs are images of text.
+        _vme_map = {
+            'everywhere': 1,      # Global averages
+            'all_equities': 3,
+            'all_other': 5,     #
+            'usa': 7,             # Stocks
+            'uk': 9,
+            'europe': 11,
+            'japan': 13,
+        }  # Haven't figured asset allocation yet. 
+           # Rough! Don't know about global averages being in regions, or whether to use 
+           # everywhere or us by default. "Equities" match AQR's stock selection, "SS". 
+        
+        start_idx = _vme_map.get(self.region, 7) #default to US... or everywhere? 
+        
+        dates, val, mom = [], [], []
+        # data begins at 22 (row 23) (headers: 20-22)
+        for r in rows[22:]:
+            if not r or r[0] is None or r[start_idx] == '':
+                continue
+            
+            dates.append(self._aqr_dt_fix(r[0]))
+            val.append(float(r[start_idx]))
+            mom.append(float(r[start_idx + 1]))
+
+        table = pa.Table.from_pydict({"date": dates, "VAL": val, "MOM": mom})
+        table = offset_period_eom(table, "m")
+
+        # might append _region to cols
+        return table.cast(self.schema).combine_chunks()
