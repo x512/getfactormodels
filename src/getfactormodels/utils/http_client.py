@@ -27,14 +27,15 @@ from .cache import _Cache
 
 log = logging.getLogger(__name__)
 
+# TODO: cleanup debug messages!
 class _HttpClient:
     """Internal HTTP client with caching.
 
     Wrapper around httpx.Client with SSL context creation and 
     XDG-compliant caching.
     """
-    
-    APP_NAME = "getfactormodels"  #platformdirs for xdg cache 
+    APP_NAME = "getfactormodels"
+    APP_AUTHOR = "x512"
 
     def __init__(self, timeout: float | int = 15.0,
                  cache_dir: str | None = None, # None by default!
@@ -49,27 +50,23 @@ class _HttpClient:
         """
         self.timeout = timeout
         self.default_cache_ttl = default_cache_ttl
-        
         self._client = None
 
         # XDG path
         if cache_dir is None:
             _cache_path = user_cache_path(appname=self.APP_NAME, 
-                                       ensure_exists=True)
+                                          appauthor=self.APP_AUTHOR, 
+                                          ensure_exists=True)
             self.cache_dir = str(_cache_path.resolve())
-            
-        else:
-            # user explicitly passed a path, use it...
+
+        else: # user explicitly passed a path, use it
             self.cache_dir = cache_dir
-
-        msg = f"cache directory: {self.cache_dir}"
-        log.debug(msg)
-
+        
         self.cache = _Cache(self.cache_dir, default_timeout=default_cache_ttl)
+
 
     def __enter__(self):
         if self._client is None:
-            # fix: tox depre warning: create SSL context
             ssl_context = ssl.create_default_context(cafile=certifi.where())
             self._client = httpx.Client(
                 verify=ssl_context,
@@ -79,10 +76,6 @@ class _HttpClient:
             )
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
-        msg = f"closed: {self._client.__class__.__name__}"
-        log.debug(msg)
 
     def close(self) -> None:
         if self._client is not None:
@@ -94,11 +87,20 @@ class _HttpClient:
         msg =f'closing {self.cache.__class__.__name__}'
         log.debug(msg)
         self.cache.close()
+        #if hasattr(self, 'cache') and self.cache:
+        #    self.cache.close()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        msg = f"closed: {self._client.__class__.__name__}"
+        log.debug(msg)
+
 
     def _generate_cache_key(self, url: str) -> str:
-        """Generates a cache key/hash for the URL."""
+        """Generate a cache key for the URL."""
         return hashlib.sha256(url.encode('utf-8')).hexdigest()
-    
+
+
     def download(self, url: str, cache_ttl: int | None = None) -> bytes:
         """Uses the HTTP Client to download content from a URL.
 
@@ -111,51 +113,49 @@ class _HttpClient:
                 "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block.",
             )
 
-        cache_key = self._generate_cache_key(url)
-        cached_data = self.cache.get(cache_key)
+        
+        key, data, expired = self._check_for_update(url)
+        if not expired: return data
 
-        if cached_data is not None:
-            return cached_data
+        resp = self._client.get(url)
+        resp.raise_for_status()
+        ttl = cache_ttl or self.default_cache_ttl
+        meta = {
+            "etag": resp.headers.get("ETag"),
+            "last_modified": resp.headers.get("Last-Modified"),
+            "expires_at": time.time() + ttl,
+        }
+        
+        self.cache.set(key, resp.content, metadata=meta)
+        return resp.content
 
-        try:
-            msg = f'Connecting: {url[:30]}...'
-            log.info(msg)
 
-            response = self._client.get(url)
-            response.raise_for_status()
-            data = response.content  # Always bytes
+    def stream(self, url: str, cache_ttl: int, model_name="Model") -> bytes:
+        """Wrapper around Httpx's stream.
 
-            # Store in cache: need to verify it
-            self.cache.set(cache_key, data, expire_secs=cache_ttl)
-            msg = f"{len(data)} bytes cached."
-            log.info(msg)
-
-            return data
-        except httpx.HTTPStatusError as e:
-            err = f"HTTP error {e.response.status_code} for {url}"
-            log.error(err)
-            raise ConnectionError(f"HTTP error: {e.response.status_code}") from e
-        except httpx.RequestError as e:
-            err = f"Network error for {url}: {e}"
-            log.error(err)
-            raise ConnectionError(f"Request error: {e}") from e
-
-    # AQR models use this. Was in AQR base... minimizes the override for now.
-    def stream(self, url: str, cache_ttl: int, model_name = "Model") -> bytes:
-        # model_name is just to display the download.
-        cache_key = self._generate_cache_key(url)
-        cached_data = self.cache.get(cache_key)
-        if cached_data is not None: return cached_data
+        - Uses the _progress_bar helper. 
+        - This is used by AQR models.
+        """
+        key, data, expired = self._check_for_update(url)
+        if not expired: return data
 
         with self._client.stream("GET", url) as resp:
             resp.raise_for_status()
-            data = self._progress_bar(resp, model_name) # moved from aqr
-        
-        self.cache.set(cache_key, data, expire_secs=cache_ttl)
-        return data
-   
+            new_data = self._progress_bar(resp, model_name)
+
+            ttl = cache_ttl or self.default_cache_ttl
+            meta = {
+                "etag": resp.headers.get("ETag"),
+                "last_modified": resp.headers.get("Last-Modified"),
+                "expires_at": time.time() + ttl,
+            }
+            
+            self.cache.set(key, new_data, metadata=meta)
+            return new_data
+
+
     def _progress_bar(self, response, model_name: str = "Model") -> bytes:
-        """A progress bar for AQR downloads."""
+        """A progress bar for downloads."""
         buffer = BytesIO()
         total = int(response.headers.get("Content-Length", 0))
         downloaded = 0
@@ -179,7 +179,57 @@ class _HttpClient:
 
         sys.stderr.write("\n")
         return buffer.getvalue() 
+    
 
+    # New
+    def _get_metadata(self, url: str) -> dict:
+        try:
+            resp = self._client.head(url, timeout=5.0)
+            resp.raise_for_status() 
+            
+            return {
+                "etag": resp.headers.get("ETag"),
+                "last_modified": resp.headers.get("Last-Modified"),
+            }
+        except Exception as e:
+            # If fail (405/404, timeout), return empty, so can just do a normal download 
+            log.debug(f"Err?: Unable to get metadata from {url}: {e}")
+            return {}
+
+    # New
+    def _refresh_ttl(self, key, data, meta):
+        """Helper to update cache's ttl without re-downloading."""
+        meta["expires_at"] = time.time() + self.default_cache_ttl
+        self.cache.set(key, data, metadata=meta)
+
+
+    def _check_for_update(self, url: str) -> tuple[str, bytes | None, bool]:
+        cache_key = self._generate_cache_key(url)
+        
+        cached_data, cached_meta = self.cache.get(cache_key)
+        if not cached_data or not cached_meta:
+            return cache_key, None, True # expired = True
+
+        expires_at = cached_meta.get("expires_at", 0)
+        if time.time() < expires_at:
+            log.debug(f"CACHE HIT: {url[:30]}... ({int(expires_at - time.time())}s remaining)")
+            return cache_key, cached_data, False # expired = False
+
+        log.debug("CACHE STALE: Checking server...")
+        remote_meta = self._get_metadata(url)
+        
+        if remote_meta.get("etag") and remote_meta.get("etag") == cached_meta.get("etag"):
+            log.debug("SYNC: ETag match.")
+            self._refresh_ttl(cache_key, cached_data, cached_meta)
+            return cache_key, cached_data, False
+
+        if remote_meta.get("last_modified") and remote_meta.get("last_modified") == cached_meta.get("last_modified"):
+            log.debug("SYNC: Date match.")
+            self._refresh_ttl(cache_key, cached_data, cached_meta)
+            return cache_key, cached_data, False
+
+        log.debug("CACHE EXPIRED: Metadata mismatch or unavailable.")
+        return cache_key, None, True
 
     def check_connection(self, url: str):
         """Simple url ping. Boolean."""
@@ -218,7 +268,7 @@ class _HttpClient:
     # TODO: user needs to acces this. force, or clear cache?
     def _clear_cache(self) -> None:
         self.cache.clear()
-        log.debug("cache cleared by HttpClient")
+        log.debug("CACHE: cleared by HttpClient")
 
 # TODO: Exception handling...
 class ClientNotOpenError(Exception):

@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
+import logging
 import sys
 import textwrap
 from importlib.metadata import PackageNotFoundError, version
@@ -82,16 +83,21 @@ def parse_args() -> argparse.Namespace:
                         "AQR models: usa, japan, global ex us, etc.")
 
     parser.add_argument('--list-regions', action='store_true', help="show all supported regions and exit")
+    parser.add_argument('--verbose', action='store_true', help="verbose output (set log to debug)")
+    
     args = parser.parse_args()
+    if args.verbose:
+        logging.getLogger("getfactormodels").setLevel(logging.DEBUG)
+    else:
+        logging.getLogger("getfactormodels").setLevel(logging.WARNING)
 
     if args.list_regions:
         print(f"\nFama-French: {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), 
-                                              width=68, subsequent_indent='    ')}")
+                                              width=70, subsequent_indent='    ')}")
         print(f"AQR Models:  {textwrap.fill(', '.join(_AQRModel.list_regions()), 
-                                            width=68, subsequent_indent='    ')}")
+                                            width=70, subsequent_indent='    ')}")
         print("\nNote: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
         sys.exit(0)
-
 
     if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
         parser.error(f"'w2w' frequency is not supported by '{args.model}'.")
