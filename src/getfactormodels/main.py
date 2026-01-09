@@ -20,13 +20,13 @@ import sys
 from pathlib import Path
 import pyarrow.csv as pv
 from getfactormodels import models as factor_models
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 
 log = logging.getLogger("getfactormodels")
 
-def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
+def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Self
     """Get and process factor model data.
 
     This function initializes a specific FactorModel subclass based on the 
@@ -52,7 +52,6 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         output_file (str): optional path or string to save data to disk.
         **kwargs: model specific parameters:
             - region (str): Geographic region (e.g., 'US', 'Developed')
-            - country (str): Specific country code (AQR only).
             - classic (bool): Use the 4-factor version of the Q-model.
 
     Returns:
@@ -90,8 +89,16 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         kwargs["model"] = model_key
     if model_key == "Qclassic":
         kwargs["classic"] = True
-
-    return factor_class(**kwargs)
+ 
+    if issubclass(factor_class, RegionMixin):
+        if region:
+            kwargs['region'] = region
+    elif region:
+        # check: if region passed to non regional model:
+        print(f"WARNING: Model '{class_name}' does not support regions. Ignoring '{region}'.", 
+              file=sys.stderr)
+    
+    return factor_class(**kwargs) # type: ignore
 
 
 def main():
