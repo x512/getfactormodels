@@ -44,7 +44,7 @@ _model_map = {
     "DHS": ["dhs", "behavioural", "behaviour"],
     "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
     "VME": ["vme", "valmom", "valueandmomentumeverywhere"],
-    "AQR6": ["aqr6", "aqr", "aqrfactors"]
+    "AQR6": ["aqr6", "aqr", "aqrfactors"],
 }
 
 _MODEL_INPUT_MAP = MappingProxyType(_model_map)

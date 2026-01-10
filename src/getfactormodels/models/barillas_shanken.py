@@ -52,13 +52,13 @@ class BarillasShankenFactors(CompositeModel):
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
 
     def _construct(self, client: _HttpClient) -> pa.Table:
-        ff = FamaFrenchFactors(model='3', frequency=self.frequency)._get_table(client=client)
-        q = QFactors(frequency=self.frequency)._get_table(client=client)
-        aqr = HMLDevilFactors(frequency=self.frequency)._get_table(client=client)
+        ff = FamaFrenchFactors(model='3', frequency=self.frequency).load(client=client)
+        q = QFactors(frequency=self.frequency).load(client=client)
+        aqr = HMLDevilFactors(frequency=self.frequency).load(client=client)
 
-        mkt_smb = select_table_columns(ff, ['Mkt-RF', 'SMB']) # might switch to using aqr's data (SMB = SMB FF)
-        ia_roe = select_table_columns(q, ['R_IA', 'R_ROE'])
-        umd_hml = select_table_columns(aqr, ['UMD', 'HML_Devil', 'RF_AQR'])
+        mkt_smb = select_table_columns(ff.data, ['Mkt-RF', 'SMB']) # might switch to using aqr's data (SMB = SMB FF)
+        ia_roe = select_table_columns(q.data, ['R_IA', 'R_ROE'])
+        umd_hml = select_table_columns(aqr.data, ['UMD', 'HML_Devil', 'RF_AQR'])
 
         table = (
             mkt_smb.join(ia_roe, keys='date')

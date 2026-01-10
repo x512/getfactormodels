@@ -115,7 +115,7 @@ def main():
             start_date=args.start,
             end_date=args.end,
             region=args.region, 
-        )
+        ).load()
         # remove: country/region check, the model's internal 
         # @region.setter now handles the check
         if not len(model_obj):

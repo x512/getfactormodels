@@ -172,7 +172,10 @@ class FactorModel(ABC):
     @property
     def data(self) -> pa.Table:
         """Returns a pa.Table with requested data (sliced)."""
-        table = self._get_table()
+        if self._data is None:
+            self.load()
+            
+        table = self._data
 
         # drop/extract handled here.
         if self._selected_factors is not None:
@@ -193,7 +196,7 @@ class FactorModel(ABC):
 
         Stateful: Sets the view to only these factors.
         """
-        table = select_table_columns(self._get_table(), factor)
+        table = select_table_columns(self.load(), factor)
         self._selected_factors = [f for f in table.column_names if f != 'date']
         return self
 
@@ -203,7 +206,7 @@ class FactorModel(ABC):
 
         Stateful: Removes these factors from the view.
         """
-        t_cols = self._get_table().column_names
+        t_cols = self.load().column_names
         to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
 
         # select: cols (lowercase) not in the to_drop set
@@ -270,9 +273,9 @@ class FactorModel(ABC):
     #    """Prints the formatted table preview."""
     #    print(print_table_preview(self.data, n_rows=n))
 
-
-    def _get_table(self, client: _HttpClient | None = None) -> pa.Table:
-        """Internal: triggers download or construction."""
+    # RENAME: load, was _get_table
+    def load(self, client: _HttpClient | None = None) -> pa.Table:
+        """Trigger download or construction."""
         if self._data is not None:
             return self._data
 
@@ -285,35 +288,36 @@ class FactorModel(ABC):
         else:
             raw_bytes = self._download(client=client)
             table = self._read(raw_bytes)
-        # move this out probably
+
+        # move this out probably ---------------------
         if "date" in table.column_names:
             table = table.sort_by([("date", "ascending")])
+
         table = round_to_precision(table, self._precision)
 
-        # If the child class (CompositeModel) requested drop_null, do it.
+        # CompositeModel: if drop_null=True, drop
         if getattr(self, 'drop_null', False):
             table = table.drop_null()
+
         table.validate(full=True)
         self._data = rearrange_columns(table=table).combine_chunks()
-        return self._data
+        # -------------------------------------------
+        return self
 
-    # New: allows a dict or str, multi-dl using dict comprehension
-    # New: pass a client in.
+
     def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
         urls = self._get_url()
-        self.log.info(f"Downloading data from: {urls}")
-        # will do properly later...
-        try:
-            if client is not None:
+        self.log.info(f"Downloading from: {urls}")
+        def _download_method(client: _HttpClient, urls: str | dict):
+            if isinstance(urls, str):
                 # A client was given. Using it.
-                if isinstance(urls, str):
-                    return client.download(urls, self.cache_ttl)
-                return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
-            with _HttpClient() as _client:
-                if isinstance(urls, str):
-                    return _client.download(urls, self.cache_ttl)
-                return {k: _client.download(v, self.cache_ttl) for k, v in urls.items()}
-
+                return client.download(urls, self.cache_ttl)
+            return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
+        try:
+            if client:
+                return _download_method(client, urls)
+            with _HttpClient() as new_client:
+                return _download_method(new_client, urls)
         except Exception as e:
             self.log.error(f"Download failed: {e}")
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e

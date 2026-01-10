@@ -38,7 +38,8 @@ from getfactormodels.models.base import (
     FactorModel,
     RegionMixin,
 )
-from getfactormodels.utils.arrow_utils import (rearrange_columns,
+from getfactormodels.utils.arrow_utils import (
+    rearrange_columns,
     round_to_precision,
     select_table_columns,
 )
@@ -399,11 +400,11 @@ class AQR6Factors(CompositeModel, RegionMixin):
 
     def _construct(self, client: _HttpClient) -> pa.Table:  # prob add a keep_nulls param False by default.
         # these should share the client! pray!!
-        bab_t = BABFactors(frequency=self.frequency, region=self.region)._get_table(client=client)
-        qmj_t = QMJFactors(frequency=self.frequency, region=self.region)._get_table(client=client)
+        bab_t = BABFactors(frequency=self.frequency, region=self.region).load(client=client)
+        qmj_t = QMJFactors(frequency=self.frequency, region=self.region).load(client=client)
 
-        bab = select_table_columns(bab_t, ['BAB', 'Mkt-RF', 'SMB'])
-        qmj = select_table_columns(qmj_t, ['QMJ', 'HML', 'UMD'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
+        bab = select_table_columns(bab_t.data, ['BAB', 'Mkt-RF', 'SMB'])
+        qmj = select_table_columns(qmj_t.data, ['QMJ', 'HML', 'UMD'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
 
         # Renaming HML to HML_FF: user doesn't know if it's HML Devil otherwise.
         qmj = qmj.rename_columns([
