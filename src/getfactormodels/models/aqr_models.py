@@ -14,25 +14,43 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Module that provides a base class for AQR models.
+"""Module for AQR models.
 
-- HMLDevilFactors() - HML Devil
-- BABFactors() - Betting against beta
-- QMJFactors() - Quality Minus Junk
+This module provides access to AQR Capital Management's public datasets.
+
+Models:
+- BABFactors: Betting Against Beta (Frazzini & Pedersen, 2014).
+- QMJFactors: Quality Minus Junk (Asness, Frazzini & Pedersen, 2017).
+- HMLDevilFactors: The "Devil" in HML's Details (Asness & Frazzini, 2013).
+- AQR6Factors: The 6-factor model used in "Buffett's Alpha" (Asness, Frazzini
+  & Pedersen, 2018).
+- VMEFactors: Value and Momentum Everywhere (Asness, Moskowitz &  Pedersen,
+  2013).
+
 """
 import io
 from abc import ABC, abstractmethod
 from typing import override
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.arrow_utils import (
-    rearrange_columns,
+from getfactormodels.models.base import (
+    CompositeModel,
+    FactorModel,
+    RegionMixin,
+)
+from getfactormodels.utils.arrow_utils import (rearrange_columns,
     round_to_precision,
+    select_table_columns,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
+_AQR_REGIONS = [
+    'aus', 'aut', 'bel', 'can', 'che', 'deu', 'dnk', 'esp', 
+    'fin', 'fra', 'gbr', 'grc', 'hkg', 'irl', 'isr', 'ita', 
+    'jpn', 'nld', 'nor', 'nzl', 'prt', 'sgp', 'swe', 'usa',
+    'europe', 'north america', 'pacific', 'global', 'global ex usa',
+]
 
 class _AQRModel(FactorModel, RegionMixin):
     """Abstract base class for AQR's factor models.
@@ -46,7 +64,6 @@ class _AQRModel(FactorModel, RegionMixin):
     - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
 
     """
-    # TODO: cache_ttl improved for AQR, use file's last modified date in header. 
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "m"]
@@ -54,12 +71,11 @@ class _AQRModel(FactorModel, RegionMixin):
     @property
     def _regions(self) -> list[str]:
         """List of supported AQR countries/regions."""
-        return [
-            'aus', 'aut', 'bel', 'can', 'che', 'deu', 'dnk', 'esp', 
-            'fin', 'fra', 'gbr', 'grc', 'hkg', 'irl', 'isr', 'ita', 
-            'jpn', 'nld', 'nor', 'nzl', 'prt', 'sgp', 'swe', 'usa',
-            'europe', 'north america', 'pacific', 'global', 'global ex usa',
-        ]
+        return _AQR_REGIONS
+
+    @property
+    def _precision(self) -> int:
+        return 8
 
     def __init__(self, frequency: str = 'm', cache_ttl: int = 14400, 
                  region: str = 'usa', **kwargs):
@@ -68,14 +84,17 @@ class _AQRModel(FactorModel, RegionMixin):
         self.frequency = frequency
         self.region = region
 
-    @property
-    def _precision(self) -> int:
-        return 8
 
     @override
-    def _download(self) -> bytes:
-        with _HttpClient(timeout=15.0) as client:
-            return client.stream(self._get_url(), self.cache_ttl, model_name=self.__class__.__name__)
+    def _download(self, client: _HttpClient | None = None) -> bytes:
+        url = self._get_url()
+        
+        if client is not None:
+            return client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
+        # direct calls
+        with _HttpClient(timeout=15.0) as new_client:
+            return new_client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
+
 
     def _aqr_dt_fix(self, d) -> str:
         """Fixes AQR's 'MM/DD/YYYY' format."""
@@ -128,14 +147,10 @@ class _AQRModel(FactorModel, RegionMixin):
 
         if clean_factor_name in ['RF', 'RF_AQR']:
             final_col_name = 'RF_AQR'
-        elif self.region == 'usa':  # internal is lowercase now
-            final_col_name = clean_factor_name
         else:
-            # prepends all but RF with region if not default (USA).
-            # Note: output uses AQR's name. Input is flexible: 'GER',
-            #   or 'Deu', but output is standardized ("DEU_").
-            final_col_name = f"{self.region.upper()}_{clean_factor_name}"
-
+            final_col_name = clean_factor_name  # Change: cols needs to be constant. When region > 4-5 chars too ugly, 
+                                                # and '{self.region}_' would just be the start of it. Print region more 
+                                                # prominently to output. TODO. FIXME.
         return pa.Table.from_pydict({"date": dates, final_col_name: values})
 
 
@@ -185,7 +200,6 @@ class HMLDevilFactors(_AQRModel):
     - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
         starts 1926-07, and RF begins 1926-08-02.
     """
-    #TODO: smarter caching!
     @property
     def _sheet_map(self):
         return {'HML Devil': 'HML_Devil',
@@ -268,7 +282,7 @@ class BABFactors(_AQRModel):
             ('MKT', pa.float64()),
             ('SMB', pa.float64()),
             ('HML FF', pa.float64()),
-            ('UMD', pa.float64()),
+            #  ('UMD', pa.float64()),   # not sure if UMD for bab? TODO: check
             ('RF', pa.float64()),
         ])
     
@@ -277,29 +291,24 @@ class BABFactors(_AQRModel):
         return {'BAB Factors': 'BAB',
                 'MKT': 'Mkt-RF', 
                 'SMB': 'SMB',           # SMB_AQR?
-                'HML FF': 'HML', 
+                'HML FF': 'HML',
                 'RF': 'RF_AQR'} 
 
     def _get_url(self):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
-# Regions that match FF regions: global, Global Ex USA, Europe, North America, 
-#Pacific if ex japan
-#Output to CLI then needs titles, FF and AQR specifics...
 
-
-## NEW --------------------------------------------------------------------------------#
-# Value and Momentum Everywhere. It's file is unlike the others.
+## NEW/WIP/ETC --------------------------------------------------------------------------------#
+# Value and Momentum Everywhere. Its file is unlike the others.
 # Testing. Returns the 'everywhere' VAL and MOM by defult.
-
 class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
     @property
-    @override # only AQR model not avail in daily
+    @override # only AQR model not avail in daily.
     def _frequencies(self) -> list[str]:
         return ["m"]
-    
+
     @property
     @override # different regions to other models.
     def _regions(self) -> list[str]:
@@ -307,25 +316,10 @@ class VMEFactors(_AQRModel):
         return [ 
             'everywhere', 'all_equities', 'all_other', 
             'usa', 'uk', 'europe', 'japan',
-        ]  # all_equities by default? us? 
+        ]  # all_equities by default? us?
 
-    @property
-    def schema(self) -> pa.Schema:
-        """Schema for Value and Momentum Everywhere (VME)."""
-        return pa.schema([  
-            ('date', pa.string()),  # forcing 'DATE' to lower here
-            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
-            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
-        ])
 
-    @property
-    def _sheet_map(self) -> dict:
-        return {'VME Factors': 'VME'}
-
-    def _get_url(self) -> str:
-        f = 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
-    
+    @override  # workbook is different to the other models.
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = wb.get_sheet_by_name("VME Factors").to_python()
@@ -360,3 +354,77 @@ class VMEFactors(_AQRModel):
 
         # might append _region to cols
         return table.cast(self.schema).combine_chunks()
+    
+    @property
+    def schema(self) -> pa.Schema:
+        """Schema for Value and Momentum Everywhere (VME)."""
+        return pa.schema([  
+            ('date', pa.string()),  # forcing 'DATE' to lower here
+            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
+            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
+        ])
+    
+    @property
+    def _sheet_map(self) -> dict:
+        return {'VME Factors': 'VME'}
+
+    def _get_url(self) -> str:
+        f = 'Monthly'
+        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
+    
+# WIP NEW ---------------------------------------
+# NOTE: this doesn't inherit the _AQRModel above, but is here to keep all AQR 
+#  models together. This is a composite model.
+class AQR6Factors(CompositeModel, RegionMixin):
+    """AQR 6-Factor Model: Mkt-RF, SMB, HML, UMD, BAB, QMJ.
+
+    - This is the model used in 'Buffet's Alpha', Asness & 
+    Frazzini (2018). SMB, HML, UMD (and Mkt-RF?) are Fama-French.
+    - This will download AQR's BAB and QMJ! Warning: Daily frequency
+      will take a while if BAB/QMJ aren't in the cache). 
+      Downloads aren't concurrent! TODO: FIXME
+    """
+    @property
+    def _regions(self) -> list[str]:
+        return _AQR_REGIONS
+
+    @property
+    def _frequencies(self) -> list[str]:
+        return ['m', 'd']
+
+    def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
+        """Initialize the AQR 6-Factor Model."""
+        super().__init__(frequency=frequency, **kwargs)
+        self.region = region
+
+    def _construct(self, client: _HttpClient) -> pa.Table:  # prob add a keep_nulls param False by default.
+        # these should share the client! pray!!
+        bab_t = BABFactors(frequency=self.frequency, region=self.region)._get_table(client=client)
+        qmj_t = QMJFactors(frequency=self.frequency, region=self.region)._get_table(client=client)
+
+        bab = select_table_columns(bab_t, ['BAB', 'Mkt-RF', 'SMB'])
+        qmj = select_table_columns(qmj_t, ['QMJ', 'HML', 'UMD'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
+
+        # Renaming HML to HML_FF: user doesn't know if it's HML Devil otherwise.
+        qmj = qmj.rename_columns([
+            "HML_FF" if col == "HML" else col for col in qmj.column_names
+        ])
+
+        table = bab.join(qmj, keys='date').combine_chunks()
+        return table.select(self.schema.names).cast(self.schema)
+
+    @property
+    def schema(self) -> pa.Schema:
+        return pa.schema([
+            ('date', pa.string()),
+            ('Mkt-RF', pa.float64()),
+            ('SMB', pa.float64()),
+            ('HML_FF', pa.float64()),
+            ('UMD', pa.float64()),
+            ('BAB', pa.float64()),
+            ('QMJ', pa.float64()),
+        ])
+
+# Regions that match FF regions: global, Global Ex USA, Europe, North America, 
+#Pacific if ex japan
+#Output to CLI then needs titles, FF and AQR specifics...

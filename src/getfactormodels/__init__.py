@@ -17,6 +17,7 @@
 import logging
 from .main import get_factors
 from .models import (
+    AQR6Factors,
     BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
@@ -53,6 +54,7 @@ __all__ = [
     "QFactors",
     "QMJFactors",
     "VMEFactors",
+    "AQR6Factors",
 ]
 
 

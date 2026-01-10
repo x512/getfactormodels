@@ -14,7 +14,13 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
-from .aqr_models import BABFactors, HMLDevilFactors, QMJFactors, VMEFactors
+from .aqr_models import (
+    AQR6Factors,
+    BABFactors,
+    HMLDevilFactors,
+    QMJFactors,
+    VMEFactors,
+)
 from .barillas_shanken import BarillasShankenFactors
 from .carhart import CarhartFactors
 from .dhs import DHSFactors

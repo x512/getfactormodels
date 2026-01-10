@@ -16,6 +16,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from abc import ABC, abstractmethod
+from typing import override
 from pathlib import Path
 from typing import Any
 import pyarrow as pa
@@ -270,13 +271,13 @@ class FactorModel(ABC):
     #    print(print_table_preview(self.data, n_rows=n))
 
 
-    def _get_table(self) -> pa.Table:
+    def _get_table(self, client: _HttpClient | None = None) -> pa.Table: # New: pass client to it
         """Internal: triggers download if cache empty.
 
         Returns the full table/data.
         """
         if self._data is None:
-            raw_bytes = self._download()
+            raw_bytes = self._download(client=client)
             table = self._read(raw_bytes)
 
             # fix: slice of data for AQR models with country (order isn't guarenteed after a join)
@@ -291,15 +292,22 @@ class FactorModel(ABC):
 
 
     # New: allows a dict or str, multi-dl using dict comprehension
-    def _download(self) -> bytes | dict[str, bytes]:
+    # New: pass a client in.
+    def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
         urls = self._get_url()
         self.log.info(f"Downloading data from: {urls}")
+        # will do properly later...
         try:
-            with _HttpClient() as client:
+            if client is not None:
+                # A client was given. Using it.
                 if isinstance(urls, str):
                     return client.download(urls, self.cache_ttl)
-
                 return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
+            #else:
+            with _HttpClient() as _client:
+                if isinstance(urls, str):
+                    return _client.download(urls, self.cache_ttl)
+                return {k: _client.download(v, self.cache_ttl) for k, v in urls.items()}
 
         except Exception as e:
             self.log.error(f"Download failed: {e}")
@@ -362,6 +370,7 @@ class FactorModel(ABC):
         pass
 
 
+
 # ---------------------------------------------------------------------
 # New: regional mixin (this unifies country/region, and removes the region 
 # property from AQR/FF models). Adds list_regions, a regions property, 
@@ -404,10 +413,8 @@ class RegionMixin:
         val = str(value).strip().lower() if value else self.region
 
         resolved = None
-        # exact match
         if val in self._regions:
             resolved = val
-            # alias match
         elif self._aliases.get(val) in self._regions:
             resolved = self._aliases.get(val)
         if not resolved:
@@ -429,3 +436,58 @@ class RegionMixin:
             # if a property on an uninstantiated class, reach into the fget
             return cls._regions.fget(cls) 
         return cls._regions
+
+
+# NEW: CHILD CLASS FOR CONSTRUCTED MODELS
+class CompositeModel(FactorModel):
+    """Base for models constructed by joining multiple other FactorModels.
+
+    Ensures a single `_HttpClient` session is shared across all models 
+    used for construction.
+    """
+    def __init__(self, frequency: str = 'm', **kwargs):
+        super().__init__(frequency=frequency, **kwargs)
+
+    @abstractmethod
+    def _construct(self, client: _HttpClient) -> pa.Table:
+        pass
+    
+    @override
+    def _get_table(self, *, client: _HttpClient | None = None, keep_nulls: bool = False) -> pa.Table:
+        """Internal: triggers download if cache empty, returning the full dataset.
+
+        Args:
+            client (obj): an instance of _HttpClient. (None by default)
+            keep_nulls (bool): if True, drops rows with nulls.
+        
+        Note:
+            Overrides FactorModel._get_table
+        """
+        # TODO: keep_nulls needs a util that drops only continuous nans from boundaries.
+        if self._data is not None:
+            return self._data
+
+        if client is None:
+            with _HttpClient() as shared_client:
+                self._data = self._construct(shared_client)
+        else:
+            self._data = self._construct(client)
+        
+        table = self._data
+
+        table = table.sort_by([("date", "ascending")])
+        table = round_to_precision(table, self._precision)
+        table = rearrange_columns(table=table)
+
+        if not keep_nulls:
+            table = table.drop_null()
+
+        self._data = table.combine_chunks()
+        self._data.validate(full=True) 
+
+        return self._data
+
+    def _get_url(self) -> str:
+        raise NotImplementedError("CompositeModel: no remote source.")
+    def _read(self, data: bytes) -> pa.Table:
+        raise NotImplementedError("CompositeModel: _read called on a composite models.")
