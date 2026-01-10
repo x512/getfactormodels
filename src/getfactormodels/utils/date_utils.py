@@ -82,34 +82,37 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     if table.num_rows == 0:
         return table
 
-    # q-factors, 2 col, year and period:
+    # q-factors: 2 cols - 'year' and 'period'
     if "year" in table.column_names and "period" in table.column_names:
         year = table.column("year").cast(pa.string())
-        qtr  = table.column("period").cast(pa.int32())
+        qtr = table.column("period").cast(pa.int32())
         table = table.drop(["year", "period"])
-    else:
-        # ICR factors: 20231
+    else: 
+        # ICR factors: YYYYQ
         dates = table.column(0).cast(pa.string())
-        year  = pc.utf8_slice_codeunits(dates, 0, 4)
-        qtr   = pc.utf8_slice_codeunits(dates, 4, 5).cast(pa.int32())
+        year = pc.utf8_slice_codeunits(dates, 0, 4)
+        qtr = pc.utf8_slice_codeunits(dates, 4, 5).cast(pa.int32())
         table = table.remove_column(0)
-    # multiply 'q' to it's month.
-    m_ints = pc.multiply(qtr, 3).cast(pa.string())
-    # pad month if needed
-    months = pc.utf8_lpad(m_ints, width=2, padding="0")
-    # add '01' for yyyymmdd (relies on offset_period_eom to shift to eom)
-    days   = pa.array(["01"] * table.num_rows, type=pa.string())
 
-    # make a yyyymmdd str
-    datestr = pc.binary_join_element_wise(year, months, days, "-")
+    # Find month (q*3) and make sure it's padded (9 to 09)
+    m_int = pc.multiply(qtr, 3).cast(pa.string())
+    month = pc.utf8_lpad(m_int, width=2, padding="0")
 
+    # Add '01' for days (offset will set to EOM)
+    days = pa.array(["01"] * table.num_rows, type=pa.string())
+
+    # Create a YYYYMMDD date str
+    datestr = pc.binary_join_element_wise(year, month, days, "-")
     try:
-        # cast to date32
+        # cast it to date32
         date_col = pc.cast(datestr, pa.date32())
-        # Replaces first col, 0, date:
+
+        # Set first col to 'date' (replaces col 0)
         table = table.add_column(0, "date", date_col)
-        #offset
-        return offset_period_eom(table, "q")
+        
+        # NOTE: don't offset_period_eom here. Causes models to offset twice.
+        return table.combine_chunks()
+
     except pa.ArrowInvalid as e:
         raise ValueError(f"Failed to parse quarterly dates: {e}")
 

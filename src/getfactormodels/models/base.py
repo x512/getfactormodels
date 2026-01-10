@@ -16,7 +16,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
 from abc import ABC, abstractmethod
-from typing import override
 from pathlib import Path
 from typing import Any
 import pyarrow as pa
@@ -39,6 +38,7 @@ from getfactormodels.utils.utils import _save_to_file
 - FactorModel: abstract base class. Provides common data handling, 
   caching, and date-filtering logic implemented by all factor models.
 - RegionMixin: A mixin for models supporting international data.
+- CompositeModel: base class for models built from other models.
 """
 logger = logging.getLogger(__name__)
 
@@ -271,25 +271,31 @@ class FactorModel(ABC):
     #    print(print_table_preview(self.data, n_rows=n))
 
 
-    def _get_table(self, client: _HttpClient | None = None) -> pa.Table: # New: pass client to it
-        """Internal: triggers download if cache empty.
+    def _get_table(self, client: _HttpClient | None = None) -> pa.Table:
+        """Internal: triggers download or construction."""
+        if self._data is not None:
+            return self._data
 
-        Returns the full table/data.
-        """
-        if self._data is None:
+        if hasattr(self, '_construct'):
+            if client is None:
+                with _HttpClient() as shared_client:
+                    table = self._construct(shared_client)
+            else:
+                table = self._construct(client)
+        else:
             raw_bytes = self._download(client=client)
             table = self._read(raw_bytes)
+        # move this out probably
+        if "date" in table.column_names:
+            table = table.sort_by([("date", "ascending")])
+        table = round_to_precision(table, self._precision)
 
-            # fix: slice of data for AQR models with country (order isn't guarenteed after a join)
-            if "date" in table.column_names:
-                table = table.sort_by([("date", "ascending")])
-
-            table = round_to_precision(table, self._precision)
-            table.validate(full=True)
-            self._data = rearrange_columns(table=table).combine_chunks()
-
+        # If the child class (CompositeModel) requested drop_null, do it.
+        if getattr(self, 'drop_null', False):
+            table = table.drop_null()
+        table.validate(full=True)
+        self._data = rearrange_columns(table=table).combine_chunks()
         return self._data
-
 
     # New: allows a dict or str, multi-dl using dict comprehension
     # New: pass a client in.
@@ -303,7 +309,6 @@ class FactorModel(ABC):
                 if isinstance(urls, str):
                     return client.download(urls, self.cache_ttl)
                 return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
-            #else:
             with _HttpClient() as _client:
                 if isinstance(urls, str):
                     return _client.download(urls, self.cache_ttl)
@@ -328,7 +333,7 @@ class FactorModel(ABC):
             df = model.to_pandas()
 
             import polars as pl
-            df = pl.from_dataframe(model.data)
+            df = pl.from_arrow(model.data)
 
             import pandas as pd
             df = pd.api.interchange.from_dataframe(model.data)
@@ -370,29 +375,28 @@ class FactorModel(ABC):
         pass
 
 
-
 # ---------------------------------------------------------------------
 # New: regional mixin (this unifies country/region, and removes the region 
 # property from AQR/FF models). Adds list_regions, a regions property, 
 # getter/setter. 
 class RegionMixin:
     """Mixin for models that support international regions/countries."""
-    # just here for now... removes some friction
-    # TODO: long region names
+    #TODO: map properly!
     _aliases = {
-        #AQR (not VME), FF
+        'uk': 'gbr', 'ger': 'deu', 'sg': 'sgp',
+        'hk': 'hkg', 'nl': 'nld', 'fr': 'fra',
+
+        # FF and AQR (not VME) - shared countries
         'usa': 'us', 'us': 'usa',
         'jpn': 'japan', 'japan': 'jpn',
-        'uk': 'gbr', 
-        'ger': 'deu',
-        # FF regions : AQR Aggregate Portfolios. 
-        # Note: AQR's 'pacific' includes japan.
-        # 'europe', 'north america', 'pacific', 'global', 'global ex usa',
+
+        # FF and AQR (not VME) - shared regions : aggregate portfolios
         'ex-us': 'global ex usa',
         'north-america': 'north america', 'north america': 'north-america',
+
+        # FF regions : AQR Aggregate Portfolios. 
+        # Note: AQR's 'pacific' includes japan.
         #for VME
-        'developed': 'everywhere',
-        'global': 'everywhere',
         'global_stocks': 'all_equities',
         'macro': 'all_other',
     }
@@ -445,48 +449,14 @@ class CompositeModel(FactorModel):
     Ensures a single `_HttpClient` session is shared across all models 
     used for construction.
     """
-    def __init__(self, frequency: str = 'm', **kwargs):
+    def __init__(self, frequency: str = 'm', *, drop_null: bool = True, **kwargs):
+        self.drop_null = drop_null
         super().__init__(frequency=frequency, **kwargs)
 
     @abstractmethod
     def _construct(self, client: _HttpClient) -> pa.Table:
         pass
     
-    @override
-    def _get_table(self, *, client: _HttpClient | None = None, keep_nulls: bool = False) -> pa.Table:
-        """Internal: triggers download if cache empty, returning the full dataset.
-
-        Args:
-            client (obj): an instance of _HttpClient. (None by default)
-            keep_nulls (bool): if True, drops rows with nulls.
-        
-        Note:
-            Overrides FactorModel._get_table
-        """
-        # TODO: keep_nulls needs a util that drops only continuous nans from boundaries.
-        if self._data is not None:
-            return self._data
-
-        if client is None:
-            with _HttpClient() as shared_client:
-                self._data = self._construct(shared_client)
-        else:
-            self._data = self._construct(client)
-        
-        table = self._data
-
-        table = table.sort_by([("date", "ascending")])
-        table = round_to_precision(table, self._precision)
-        table = rearrange_columns(table=table)
-
-        if not keep_nulls:
-            table = table.drop_null()
-
-        self._data = table.combine_chunks()
-        self._data.validate(full=True) 
-
-        return self._data
-
     def _get_url(self) -> str:
         raise NotImplementedError("CompositeModel: no remote source.")
     def _read(self, data: bytes) -> pa.Table:

@@ -43,6 +43,8 @@ _model_map = {
     "ICR": ["icr", "intermediary", "hkm"],
     "DHS": ["dhs", "behavioural", "behaviour"],
     "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
+    "VME": ["vme", "valmom", "valueandmomentumeverywhere"],
+    "AQR6": ["aqr6", "aqr", "aqrfactors"]
 }
 
 _MODEL_INPUT_MAP = MappingProxyType(_model_map)
@@ -103,7 +105,6 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
 
     freq = model.frequency
     region = getattr(model, 'region', None)
-    country = getattr(model, 'country', None)
 
     if hasattr(model, 'data') and model.data.num_rows > 0:
         date_col = model.data.column(0)
@@ -116,7 +117,7 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
     else:
         date_str = f"no_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-    parts = [model_name, freq, region, country, date_str]
+    parts = [model_name, freq, region, date_str]
     filename = "_".join(str(p).lower() for p in parts if p)
 
     return f"{filename}.csv"
