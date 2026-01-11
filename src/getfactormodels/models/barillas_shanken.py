@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import select_table_columns
 from getfactormodels.utils.http_client import _HttpClient
@@ -37,14 +26,8 @@ class BarillasShankenFactors(CompositeModel):
             (default: 86400).
 
     References:
-    - F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, Journal of 
-    Finance, vol. 73, no. 2, pp. 715–754, 2018.
-
-    ---
-    NOTE: Relies on HML Devil which is slow to download.
-    - This model uses the higher precision "RF" returned by AQR's HML_Devil.
-    - Factors: R_IA and R_ROE from q-factors. Mkt-RF, SMB and UMD from Fama-French.
-    AQR's HML_Devil and RF.
+        F. Barillas and J. Shanken, 2018. Comparing Asset Pricing Models. 
+        Journal of Finance, vol. 73, no. 2, pp. 715–754.
 
     """
     def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, **kwargs): 
@@ -68,12 +51,10 @@ class BarillasShankenFactors(CompositeModel):
         return table.select(self.schema.names).cast(self.schema)
 
     @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m"]
+    def _frequencies(self) -> list[str]: return ["d", "m"]
     
     @property
-    def _precision(self) -> int:
-        return 8
+    def _precision(self) -> int: return 8
     
     @property
     def schema(self) -> pa.Schema:

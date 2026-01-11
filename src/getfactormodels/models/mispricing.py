@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 from typing import Any
 import pyarrow as pa
@@ -23,7 +12,7 @@ from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class MispricingFactors(FactorModel):
-    """Mispricing Factors of Stambaugh & Yuan.
+    """Mispricing Factors of Stambaugh & Yuan (2016).
 
     Download and process the Mispricing factor data of Stambaugh-Yuan
     (2016). Data from 1963 to 2016. The SMB factor is returned as SMB_SY.
@@ -40,20 +29,19 @@ class MispricingFactors(FactorModel):
             seconds (default: 86400).
 
     References:
-    - R. F. Stambaugh and Y. Yuan, ‘Mispricing Factors’, The Review 
-      of Financial Studies, vol. 30, no. 4, pp. 1270–1315, 12 2016.
+        R. F. Stambaugh and Y. Yuan (2016). Mispricing Factors. The Review 
+        of Financial Studies, vol. 30, no. 4, pp. 1270–1315.
 
     """
     @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m"]
+    def _frequencies(self) -> list[str]: return ["d", "m"]
+    
+    @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
+    def _precision(self) -> int: return 10
 
     def __init__(self, **kwargs: Any) -> None:
         """Initialize the Mispricing Factors model."""
         super().__init__(**kwargs)
-
-    @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
-    def _precision(self) -> int: return 10
         
     @property
     def schema(self) -> pa.Schema:
@@ -79,9 +67,7 @@ class MispricingFactors(FactorModel):
         try:
             reader = pv.open_csv(
                 io.BytesIO(data),
-                read_options=pv.ReadOptions(
-                    block_size=1024*1024*2,
-                ),
+                read_options=pv.ReadOptions(block_size=1024*1024*2),
                 parse_options=pv.ParseOptions(delimiter=','),
                 convert_options=pv.ConvertOptions(
                     column_types=self.schema,
@@ -102,7 +88,6 @@ class MispricingFactors(FactorModel):
 
             return table.combine_chunks()
 
-        # no more empty table, raise
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
             msg = f"{self.__class__.__name__}: reading failed: {e}"
             self.log.error(msg)

@@ -1,31 +1,15 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-"""Module for AQR models.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""AQR Capital Management factor models.
 
-This module provides access to AQR Capital Management's public datasets.
+This module provides access to AQR Capital Management's public datasets. These 
+models parse multi-sheet Excel workbooks using calamine, and provide regional 
+data using the `RegionMixin()`.
 
-Models:
-- BABFactors: Betting Against Beta (Frazzini & Pedersen, 2014).
-- QMJFactors: Quality Minus Junk (Asness, Frazzini & Pedersen, 2017).
-- HMLDevilFactors: The "Devil" in HML's Details (Asness & Frazzini, 2013).
-- AQR6Factors: The 6-factor model used in "Buffett's Alpha" (Asness, Frazzini
-  & Pedersen, 2018).
-- VMEFactors: Value and Momentum Everywhere (Asness, Moskowitz &  Pedersen,
-  2013).
+Models: HMLDevilFactors, QMJFactors, BABFactors, VMEFactors, AQR6Factors.
 
 """
 import io
@@ -54,32 +38,34 @@ _AQR_REGIONS = [
 ]
 
 class _AQRModel(FactorModel, RegionMixin):
-    """Abstract base class for AQR's factor models.
-
-    This subclass handles parsing the AQR Excel workbook with calamine, 
-    validates the country param, and has a getter/setter for country.
+    """Base class for AQR factor models.
 
     Notes:
     - These models are slow to download. Daily datasets are 20-30 MB each,
     and the download is rate limited.
-    - Models using this base: BABFactors, HMLDevilFactors, QMJFactors.
-
     """
     @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m"]
+    def _frequencies(self) -> list[str]: return ["d", "m"]
+    
+    @property
+    def _precision(self) -> int: return 8
 
     @property
     def _regions(self) -> list[str]:
         """List of supported AQR countries/regions."""
         return _AQR_REGIONS
 
-    @property
-    def _precision(self) -> int:
-        return 8
-
     def __init__(self, frequency: str = 'm', cache_ttl: int = 14400, 
                  region: str = 'usa', **kwargs):
+        """Initialize a AQR FactorModel.
+
+        Args:
+            frequency (str): The frequency of the data. M, D (default: M)
+            start_date (str, optional): The start date of the data, YYYY-MM-DD.
+            end_date (str, optional): The end date of the data, YYYY-MM-DD.
+            output_file (str, optional): The filepath to save the output data.
+            cache_ttl (str): cache time-to-live in seconds.
+        """
         self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
         self.frequency = frequency
@@ -98,71 +84,69 @@ class _AQRModel(FactorModel, RegionMixin):
 
 
     def _aqr_dt_fix(self, d) -> str:
-        """Fixes AQR's 'MM/DD/YYYY' format."""
+        """Private helper to fix AQR's MM/DD/YYYY format."""
+        # dt objects from calamine
+        if hasattr(d, 'strftime'): 
+            return d.strftime("%Y%m%d")
+        
         if isinstance(d, str) and '/' in d:
             m, day, y = d.split('/')
             return f"{y}{m.zfill(2)}{day.zfill(2)}"
-        if hasattr(d, 'strftime'):
-            # for the dt objects from Calamine
-            return d.strftime("%Y%m%d")
+        
         return str(d)
 
 
-    def _process_sheet(self, sheet_name: str, wb: CalamineWorkbook) -> pa.Table:
-        rows = wb.get_sheet_by_name(sheet_name).to_python()
-        header_row = None
-
-        # Finds the header row (contains 'DATE'). One row was 17, others 18.
+    # New, let VME use it, and modularizes _process_sheet
+    def _get_header_idx(self, rows: list[list]) -> int:
+        """Finds row index containing 'DATE'."""
         for i, row in enumerate(rows):
             if row and str(row[0]).strip().upper() == 'DATE':
-                header_row = i
-                break
+                return i
+        raise ValueError(f"Could not find a header row containing 'DATE' in {self.__class__.__name__}")
 
-        if header_row is None:
-            msg = f"Error: Couldn't find a header row for sheet: '{sheet_name}')"
-            self.log.error(msg)
-            raise ValueError(msg)
 
+    def _process_sheet(self, sheet_name: str, rows: list[list], header_row: int) -> pa.Table:
+        """Extracts date and factor values from a single sheet."""
         headers = [str(h).strip().upper() for h in rows[header_row]]
-        data_rows = rows[header_row + 1:]
-
+        
         if sheet_name == 'RF':
             col_idx = 1
         else:
-            if self.region.upper() not in headers:
-                msg = f"'{self.region}' not found in {sheet_name}. Available: {headers}"
-                self.log.error(msg)
+            try: # map region to its col in the sheet
+                col_idx = headers.index(self.region.upper())
+            except ValueError:
+                msg = f"Region '{self.region}' not found in sheet '{sheet_name}'. Available: {headers}"
                 raise ValueError(msg)
 
-            col_idx = headers.index(self.region.upper())
-
         dates, values = [], []
-        for r in data_rows:
+        for r in rows[header_row + 1:]:
+            # Skip empty rows or footers 
             if not r or r[0] is None or r[col_idx] == '': 
                 continue
+            try:
+                dates.append(self._aqr_dt_fix(r[0]))
+                values.append(float(r[col_idx]))
+            except (ValueError, TypeError):
+                continue
 
-            dates.append(self._aqr_dt_fix(r[0]))
-            values.append(float(r[col_idx]))
-
-        clean_factor_name = self._sheet_map.get(sheet_name, sheet_name)
-
-        if clean_factor_name in ['RF', 'RF_AQR']:
-            final_col_name = 'RF_AQR'
-        else:
-            final_col_name = clean_factor_name  # Change: cols needs to be constant. When region > 4-5 chars too ugly, 
-                                                # and '{self.region}_' would just be the start of it. Print region more 
-                                                # prominently to output. TODO. FIXME.
-        return pa.Table.from_pydict({"date": dates, final_col_name: values})
+        # Maps sheet name to the factor name
+        name = self._sheet_map.get(sheet_name, sheet_name)
+        col_name = 'RF_AQR' if name == 'RF' else name
+        
+        return pa.Table.from_pydict({"date": dates, col_name: values})
 
 
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
 
-        for sheet in self._sheet_map.keys():
-            t = self._process_sheet(sheet, wb)
-            t = offset_period_eom(t, self.frequency)
-            tables.append(t)
+        for sheet_name in self._sheet_map:
+            rows = wb.get_sheet_by_name(sheet_name).to_python()
+            headers = self._get_header_idx(rows)
+            
+            t = self._process_sheet(sheet_name, rows, headers)
+            tables.append(offset_period_eom(t, self.frequency))
+        
         # using left outer join on these models. Uses the factor the 
         #  model's named after. Gets full data for that factor, and only 
         #  filters that factors NaNs. 
@@ -170,36 +154,21 @@ class _AQRModel(FactorModel, RegionMixin):
         for next_t in tables[1:]:
             result = result.join(next_t, keys='date', join_type='left outer')
 
-        table = rearrange_columns(result)
-        table = round_to_precision(table, self._precision)
-        return table.combine_chunks()
-    
+        #table = rearrange_columns(result)   let base handle?
+        return round_to_precision(result, self._precision).combine_chunks()
+
     @property
     @abstractmethod
     def _sheet_map(self) -> dict:
-        """Mapping sheet names to factor names."""
         pass
 
 
 class HMLDevilFactors(_AQRModel):
-    """Download the HML Devil factors from AQR.com.
-
-    HML Devil factors of C. Asness and A. Frazzini (2013)
-
-    Args:
-        frequency (str): The frequency of the data. M, D (default: M)
-        start_date (str, optional): The start date of the data, YYYY-MM-DD.
-        end_date (str, optional): The end date of the data, YYYY-MM-DD.
-        output_file (str, optional): The filepath to save the output data.
+    """HML Devil factors, Asness and Frazzini (2013).
 
     References:
-    - C. Asness and A. Frazzini, ‘The Devil in HML’s Details’, The Journal of Portfolio 
-    Management, vol. 39, pp. 49–68, 2013.
-    ---
-
-    Notes:
-    - Mkt-RF, SMB_AQR and UMD all start in ~1990. HML_Devil 
-        starts 1926-07, and RF begins 1926-08-02.
+        C. Asness and A. Frazzini (2013). The Devil in HML’s Details. 
+        The Journal of Portfolio Management, vol. 39, pp. 49–68.
     """
     @property
     def _sheet_map(self):
@@ -227,12 +196,11 @@ class HMLDevilFactors(_AQRModel):
 
 
 class QMJFactors(_AQRModel):
-    """Quality Minus Junk: Asness, Frazzini & Pedersen (2017).
+    """Quality Minus Junk (QMJ), Asness, Frazzini & Pedersen (2019).
     
     References:
-    - Asness, Cliff S. and Frazzini, Andrea and Pedersen, Lasse Heje, 
-      Quality Minus Junk (June 5, 2017). http://dx.doi.org/10.2139/ssrn.2312432
-     
+        C. Asness, A. Frazzini and L. Pedersen, 2019. Quality Minus Junk.
+        Review of Accounting Studies 24, no. 1 (2019): 34-112.
     """
     @property
     def schema(self) -> pa.Schema:
@@ -246,7 +214,6 @@ class QMJFactors(_AQRModel):
             ('UMD', pa.float64()),
             ('RF', pa.float64()),
         ])
-
 
     @property
     def _sheet_map(self):
@@ -263,27 +230,21 @@ class QMJFactors(_AQRModel):
 
 
 class BABFactors(_AQRModel):
-    """Betting Against Beta: A. Frazzini, L. Pedersen (2014).
+    """Betting Against Beta (BAB) factors, Frazzini and Pedersen (2014).
 
     References:
-    - Frazzini, A. and Pedersen, L. Betting against beta,
-      Journal of Financial Economics, 111, issue 1, p. 1-25, 2014.
-
+        Frazzini, A. and Pedersen, L. (2014). Betting against beta. 
+        Journal of Financial Economics, 111(1), 1-25.
     """
     @property
     def schema(self) -> pa.Schema:
-        """Schema for Betting Against Beta factor model.
-        
-        - see: Asness & Frazzini (2013): BAB model uses FF's 
-        HML, SMB and UMD.
-        """
         return pa.schema([  
             ('date', pa.string()),
             ('BAB Factors', pa.float64()),
             ('MKT', pa.float64()),
             ('SMB', pa.float64()),
             ('HML FF', pa.float64()),
-            #  ('UMD', pa.float64()),   # not sure if UMD for bab? TODO: check
+            ('UMD', pa.float64()),
             ('RF', pa.float64()),
         ])
     
@@ -292,6 +253,7 @@ class BABFactors(_AQRModel):
         return {'BAB Factors': 'BAB',
                 'MKT': 'Mkt-RF', 
                 'SMB': 'SMB',           # SMB_AQR?
+                'UMD': 'UMD',
                 'HML FF': 'HML',
                 'RF': 'RF_AQR'} 
 
@@ -300,106 +262,29 @@ class BABFactors(_AQRModel):
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
 
-## NEW/WIP/ETC --------------------------------------------------------------------------------#
-# Value and Momentum Everywhere. Its file is unlike the others.
-# Testing. Returns the 'everywhere' VAL and MOM by defult.
-class VMEFactors(_AQRModel):
-    """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
-    @property
-    @override # only AQR model not avail in daily.
-    def _frequencies(self) -> list[str]:
-        return ["m"]
-
-    @property
-    @override # different regions to other models.
-    def _regions(self) -> list[str]:
-        """Regions specific to the VME Excel layout."""
-        return [ 
-            'everywhere', 'all_equities', 'all_other', 
-            'usa', 'uk', 'europe', 'japan',
-        ]  # all_equities by default? us?
-
-
-    @override  # workbook is different to the other models.
-    def _read(self, data: bytes) -> pa.Table:
-        wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
-        rows = wb.get_sheet_by_name("VME Factors").to_python()
-        # Workbook contains a single sheet with the data.
-        # Note: for later... Data sources and definition tabs are images of text.
-        _vme_map = {
-            'everywhere': 1,      # Global averages
-            'all_equities': 3,
-            'all_other': 5,     #
-            'usa': 7,             # Stocks
-            'uk': 9,
-            'europe': 11,
-            'japan': 13,
-        }  # Haven't figured asset allocation yet. 
-           # Rough! Don't know about global averages being in regions, or whether to use 
-           # everywhere or us by default. "Equities" match AQR's stock selection, "SS". 
-        
-        start_idx = _vme_map.get(self.region, 7) #default to US... or everywhere? 
-        
-        dates, val, mom = [], [], []
-        # data begins at 22 (row 23) (headers: 20-22)
-        for r in rows[22:]:
-            if not r or r[0] is None or r[start_idx] == '':
-                continue
-            
-            dates.append(self._aqr_dt_fix(r[0]))
-            val.append(float(r[start_idx]))
-            mom.append(float(r[start_idx + 1]))
-
-        table = pa.Table.from_pydict({"date": dates, "VAL": val, "MOM": mom})
-        table = offset_period_eom(table, "m")
-
-        # might append _region to cols
-        return table.cast(self.schema).combine_chunks()
-    
-    @property
-    def schema(self) -> pa.Schema:
-        """Schema for Value and Momentum Everywhere (VME)."""
-        return pa.schema([  
-            ('date', pa.string()),  # forcing 'DATE' to lower here
-            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
-            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
-        ])
-    
-    @property
-    def _sheet_map(self) -> dict:
-        return {'VME Factors': 'VME'}
-
-    def _get_url(self) -> str:
-        f = 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
-    
-# WIP NEW ---------------------------------------
-# NOTE: this doesn't inherit the _AQRModel above, but is here to keep all AQR 
-#  models together. This is a composite model.
+# NEW: CompositeModel, not a subclass of _AQRModel. --------------------------------- #
 class AQR6Factors(CompositeModel, RegionMixin):
-    """AQR 6-Factor Model: Mkt-RF, SMB, HML, UMD, BAB, QMJ.
+    """AQR 6-Factor Model, Frazzini, Kabiller & Pederson (2018).
 
-    - This is the model used in 'Buffet's Alpha', Asness & 
-    Frazzini (2018). SMB, HML, UMD (and Mkt-RF?) are Fama-French.
-    - This will download AQR's BAB and QMJ! Warning: Daily frequency
-      will take a while if BAB/QMJ aren't in the cache). 
-      Downloads aren't concurrent! TODO: FIXME
+    This is the model used 'Buffett's Alpha'. The factors 
+    are: Mkt-RF, SMB, HML, UMD, BAB, QMJ.
+
+    References:
+        Frazzini, Kabiller & Pedersen (2018). Buffett’s Alpha. 
+        Financial Analysts Journal, 74:4, 35-55.
     """
     @property
-    def _regions(self) -> list[str]:
-        return _AQR_REGIONS
+    def _regions(self) -> list[str]: return _AQR_REGIONS
 
     @property
-    def _frequencies(self) -> list[str]:
-        return ['m', 'd']
+    def _frequencies(self) -> list[str]: return ['m', 'd']
 
     def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
         """Initialize the AQR 6-Factor Model."""
         super().__init__(frequency=frequency, **kwargs)
         self.region = region
 
-    def _construct(self, client: _HttpClient) -> pa.Table:  # prob add a keep_nulls param False by default.
-        # these should share the client! pray!!
+    def _construct(self, client: _HttpClient) -> pa.Table:
         bab_t = BABFactors(frequency=self.frequency, region=self.region).load(client=client)
         qmj_t = QMJFactors(frequency=self.frequency, region=self.region).load(client=client)
 
@@ -426,6 +311,66 @@ class AQR6Factors(CompositeModel, RegionMixin):
             ('QMJ', pa.float64()),
         ])
 
-# Regions that match FF regions: global, Global Ex USA, Europe, North America, 
-#Pacific if ex japan
-#Output to CLI then needs titles, FF and AQR specifics...
+
+# NEW/WIP/TESTING/ETC: Value and Momentum Everywhere. --------------------------------- #
+# Returns the 'everywhere' VAL and MOM by defult.
+class VMEFactors(_AQRModel):
+    """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
+    @property
+    @override # only AQR model not avail in daily.
+    def _frequencies(self) -> list[str]:
+        return ["m"]
+
+    @property
+    @override # different regions to other models.
+    def _regions(self) -> list[str]:
+        """Regions specific to the VME Excel layout."""
+        return [ 
+            'everywhere', 'all_equities', 'all_other', 
+            'usa', 'uk', 'europe', 'japan',
+        ]  # all_equities by default? us?
+
+
+    @override  # workbook is different to the other models.
+    def _read(self, data: bytes) -> pa.Table:
+        wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
+        rows = wb.get_sheet_by_name("VME Factors").to_python()
+        header_idx = self._get_header_idx(rows)
+        _vme_map = {
+            'everywhere': 1, 'all_equities': 3, 'all_other': 5,
+            'usa': 7, 'uk': 9, 'europe': 11, 'japan': 13,
+        }
+        
+        start_idx = _vme_map.get(self.region.lower(), 7)
+        
+        dates, val, mom = [], [], []
+        # Use header_idx + 1 (or +2 if there are sub-headers)
+        for r in rows[header_idx + 1:]:
+            if not r or r[0] is None or r[start_idx] == '':
+                continue
+            
+            dates.append(self._aqr_dt_fix(r[0]))
+            val.append(float(r[start_idx]))
+            mom.append(float(r[start_idx + 1]))
+
+        table = pa.Table.from_pydict({"date": dates, "VAL": val, "MOM": mom})
+        table = offset_period_eom(table, "m")
+
+        return table.cast(self.schema).combine_chunks()
+
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Schema for Value and Momentum Everywhere (VME)."""
+        return pa.schema([  
+            ('date', pa.string()),  # forcing 'DATE' to lower here
+            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
+            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
+        ])
+    
+    @property
+    def _sheet_map(self) -> dict: return {'VME Factors': 'VME'}
+
+    def _get_url(self) -> str:
+        f = 'Monthly'
+        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
