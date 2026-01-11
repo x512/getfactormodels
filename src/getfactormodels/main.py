@@ -103,11 +103,19 @@ def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Se
 
 def main():
     args = parse_args()
-    
+
+    if args.list_regions:
+        from getfactormodels.utils.cli import _cli_list_regions
+        _cli_list_regions()
+
     if not args.model:
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
 
+    if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
+        print(f"ERROR: 'w2w' frequency is not supported by '{args.model}'.", file=sys.stderr)
+        sys.exit(1)
+    
     try:
         model_obj = get_factors(
             model=args.model,
@@ -116,8 +124,7 @@ def main():
             end_date=args.end,
             region=args.region, 
         ).load()
-        # remove: country/region check, the model's internal 
-        # @region.setter now handles the check
+   
         if not len(model_obj):
             log.error("No data returned.")
             sys.exit(1)

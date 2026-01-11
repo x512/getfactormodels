@@ -19,8 +19,9 @@ import logging
 import sys
 import textwrap
 from importlib.metadata import PackageNotFoundError, version
-from getfactormodels.models.aqr_models import _AQRModel
-from getfactormodels.models.fama_french import FamaFrenchFactors
+
+#from getfactormodels.models.aqr_models import _AQRModel
+#from getfactormodels.models.fama_french import FamaFrenchFactors
 
 
 def _get_version():
@@ -29,6 +30,17 @@ def _get_version():
         return version("getfactormodels")
     except PackageNotFoundError:
         return "unknown"
+
+
+def _cli_list_regions():
+    """Helper to display regions and exit."""
+    from getfactormodels.models.aqr_models import _AQRModel
+    from getfactormodels.models.fama_french import FamaFrenchFactors
+    
+    print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
+    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(_AQRModel.list_regions()), width=70)}")
+    print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
+    sys.exit(0)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,15 +58,13 @@ def parse_args() -> argparse.Namespace:
         ''', 
     )
 
-
     parser.add_argument('-v', '--version', action='version', version=f'getfactormodels {_get_version()}')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
 
     parser.add_argument('-m', '--model', 
                         #'model',    # no dash, makes it positional. Still enforced in main (if model's missing, after eg, --list)
                         nargs="?",   # makes it optional 
-                        metavar="MODEL",
-                        help="the model to use, e.g., 'ff3', 'q'."
+                        metavar="MODEL", help="the model to use, e.g., 'ff3', 'q'."
                         " Accepts 3, 4, 5, 6 in place of ff3, carhart, ff5, ff6.")
 
     parser.add_argument('-f', '--frequency', type=str, default='m',
@@ -72,34 +82,22 @@ def parse_args() -> argparse.Namespace:
                         help='filename/filepath to save the data to.')
 
     parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR', 
-                        help="drop specific factor(s) from a model. Name should match column value.")
+                        help="drop specific factor(s) from a model.")
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
-                        help='extract specific factor(s) from a model, name should match column value.')
+                        help='extract specific factor(s) from a model.')
 
     parser.add_argument('-r', '--region', dest='region', metavar='REGION',
-                        help="Region or country code for AQR/FF models. Use --list-regions to see all valid regions."
-                        "Fama-French: us, emerging, developed, europe, japan, ex-us. "
-                        "AQR models: usa, japan, global ex us, etc.")
-
+                        help="Region or country code for AQR/FF models. "
+                        "Use `--list-regions` to see all valid regions.")
     parser.add_argument('--list-regions', action='store_true', help="show all supported regions and exit")
     parser.add_argument('--verbose', action='store_true', help="verbose output (set log to debug)")
     
     args = parser.parse_args()
+
     if args.verbose:
         logging.getLogger("getfactormodels").setLevel(logging.DEBUG)
     else:
         logging.getLogger("getfactormodels").setLevel(logging.WARNING)
-
-    if args.list_regions:
-        print(f"\nFama-French: {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), 
-                                              width=70, subsequent_indent='    ')}")
-        print(f"AQR Models:  {textwrap.fill(', '.join(_AQRModel.list_regions()), 
-                                            width=70, subsequent_indent='    ')}")
-        print("\nNote: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
-        sys.exit(0)
-
-    if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
-        parser.error(f"'w2w' frequency is not supported by '{args.model}'.")
 
     return args
