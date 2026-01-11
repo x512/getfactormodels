@@ -39,10 +39,6 @@ class MispricingFactors(FactorModel):
     @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
     def _precision(self) -> int: return 10
 
-    def __init__(self, **kwargs: Any) -> None:
-        """Initialize the Mispricing Factors model."""
-        super().__init__(**kwargs)
-        
     @property
     def schema(self) -> pa.Schema:
         date_col = "DATE" if self.frequency == "d" else "YYYYMM"

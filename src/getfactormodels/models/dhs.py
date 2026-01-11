@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 from typing import Any
 import pyarrow as pa
@@ -22,61 +11,42 @@ from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
+    select_table_columns,
     scale_to_decimal,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class DHSFactors(FactorModel):
-    """Download and process the DHS Behavioural Factors.
-
-    Behavioural Factors of Kent Daniel, David Hirshleifer, and 
-    Lin Sun (DHS). Data from July 1972 - December, 2023. Factors: FIN, PEAD
-
-    Args:
-        frequency (str): The data frequency, 'm'.
-        start_date (str, optional): The start date YYYY-MM-DD.
-        end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file.
-            Supports csv, pkl.
-        cache_ttl (int, optional): Cached download time-to-live in 
-            seconds (default: 86400).
+    """The Behavioural Factors of Daniel, Hirshleifer and Sun (2020).
+    
+    FIN and PEAD factors. Data from July 1972 - December, 2023.
 
     References:
-    - Short and Long Horizon Behavioral Factors," Kent Daniel, David 
-    Hirshleifer and Lin Sun, Review of Financial Studies, 2020, 33 (4):
-    1673-1736.
+        K. Daniel, D. Hirshleifer and L. Sun, 2020. Short and Long Horizon
+        Behavioral Factors. Review of Financial Studies, 33 (4): 1673-1736.
 
     """
-    # Data source: https://sites.google.com/view/linsunhome/
     # copyright/attribution info! TODO
     @property
-    def _frequencies(self) -> list[str]:
-        return ['d', 'm']
-
-    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        """Initialize the DHS factor model."""
-        super().__init__(frequency=frequency, **kwargs)
-
+    def _frequencies(self) -> list[str]: return ['d', 'm']
+    
     @property
-    def _precision(self) -> int:
-        return 12
+    def _precision(self) -> int: return 12
 
     @property  
     def schema(self) -> pa.Schema:
-        """DHS schema"""
-        _date = [('Date', pa.string())]   # 197202
-        _fin = [('FIN', pa.float64())]
-        _pead = [('PEAD', pa.float64())]
+        date = [('Date', pa.string())]   # 197202
+        fin = [('FIN', pa.float64())]
+        pead = [('PEAD', pa.float64())]
         
         # FIN and PEAD, swap cols between frequencies.
         if self.frequency == 'd':
-            return pa.schema(_date + _fin + _pead)
+            return pa.schema(date + fin + pead)
+        return pa.schema(date + pead + fin)
 
-        return pa.schema(_date + _pead + _fin)
 
     def _get_url(self) -> str:
-        """(Internal) Constructs the Google Sheet URL for DHS monthly and daily factors."""
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
@@ -88,9 +58,8 @@ class DHSFactors(FactorModel):
 
         return  f'{base_url}{sheet_id}/export?format=xlsx'
 
-    # Exported as .xlsx from Google, then read with Calamine. 
-    # CSV export would only give 2 decimals.
 
+    # Precision fix: export as .xlsx, then read with Calamine. 
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
 
@@ -103,12 +72,9 @@ class DHSFactors(FactorModel):
         table = pa.Table.from_pydict(_dict)
 
         # Enforce schema here
-        table = table.select(self.schema.names).cast(self.schema)  # casts date to str here
+        table = table.select(self.schema.names).cast(self.schema)
         
-        # Requires scaling, source in pct
         table = scale_to_decimal(table)
-
-        # Offset, before FF
         table = offset_period_eom(table, self.frequency)
         
         if "Date" in table.column_names:
@@ -116,10 +82,7 @@ class DHSFactors(FactorModel):
 
         # Wrap in FF Mkt-RF and RF
         _ff = FamaFrenchFactors(model='3', 
-                                frequency=self.frequency)._extract_as_table(['Mkt-RF', 'RF'])
+                                frequency=self.frequency).load()
+        _ff = select_table_columns (_ff.data, ['Mkt-RF', 'RF'])
 
-        # join, then combine_chunks!
-        table = table.join(_ff, keys="date", join_type="inner")
-        
-        return table.combine_chunks() #.sort_by([("date", "descending")])
-
+        return table.join(_ff, keys="date", join_type="inner").combine_chunks()

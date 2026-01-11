@@ -279,11 +279,6 @@ class AQR6Factors(CompositeModel, RegionMixin):
     @property
     def _frequencies(self) -> list[str]: return ['m', 'd']
 
-    def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
-        """Initialize the AQR 6-Factor Model."""
-        super().__init__(frequency=frequency, **kwargs)
-        self.region = region
-
     def _construct(self, client: _HttpClient) -> pa.Table:
         bab_t = BABFactors(frequency=self.frequency, region=self.region).load(client=client)
         qmj_t = QMJFactors(frequency=self.frequency, region=self.region).load(client=client)
@@ -317,21 +312,20 @@ class AQR6Factors(CompositeModel, RegionMixin):
 class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
     @property
-    @override # only AQR model not avail in daily.
-    def _frequencies(self) -> list[str]:
-        return ["m"]
+    @override     # only AQR model not avail in daily.
+    def _frequencies(self) -> list[str]: return ["m"]
 
     @property
-    @override # different regions to other models.
+    @override     # different regions to other models.
     def _regions(self) -> list[str]:
         """Regions specific to the VME Excel layout."""
         return [ 
             'everywhere', 'all_equities', 'all_other', 
             'usa', 'uk', 'europe', 'japan',
-        ]  # all_equities by default? us?
+        ]         # all_equities by default? us?
 
 
-    @override  # workbook is different to the other models.
+    @override     # file is different to the other models.
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = wb.get_sheet_by_name("VME Factors").to_python()
