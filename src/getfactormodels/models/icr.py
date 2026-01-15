@@ -1,21 +1,9 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
-from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
@@ -30,27 +18,18 @@ class ICRFactors(FactorModel):
 
     Monthly and quarterly data start in 1970, daily begins on 1999-05-03.
 
-    Args:
-        frequency (str): The data frequency, 'd' 'm' 'q' (default: 'm')
-        start_date (str, optional): The start date YYYY-MM-DD
-        end_date (str, optional): The end date YYYY-MM-DD
-        output_file (str, optional): optional filepath to save data to. 
-          Supports .csv, .pkl.
-        cache_ttl (int): Time-to-live for cache in seconds 
-          (default: 86400).
-
     References:
-    - Z. He, B. Kelly, and A. Manela, ‘Intermediary asset pricing: New evidence
-    from many asset classes’, Journal of Financial Economics, vol. 126, no. 1, 
-    pp. 1–35, 2017. (https://doi.org/10.1016/j.jfineco.2017.08.002)
+        Z. He, B. Kelly, and A. Manela, 2017. Intermediary asset pricing: 
+        New evidence from many asset classes. Journal of Financial Economics, 
+        vol. 126, no. 1, pp. 1–35.
 
     ---
 
     Notes:
-    - quarterly data (as of Dec 2025) contains a duplicate entry
-      for 2025Q1.
-    - NaNs: daily IC_RISK factor doesn't begin until 2008.
-    - Precision: Quarterly: 4 decimals before 2013, 18 after.
+        - quarterly data (as of Dec 2025) contains a duplicate entry
+        for 2025Q1.
+        - NaNs: daily IC_RISK factor doesn't begin until 2008.
+        - Precision: Quarterly: 4 decimals before 2013, 18 after.
 
     Factors
     - IC_RATIO: Intermediary Capital Ratio 
@@ -59,15 +38,8 @@ class ICRFactors(FactorModel):
     - LEV_SQ: Intermediary Leverage Ratio Squared
 
     """
-    # Data source: https://zhiguohe.net
-
     @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m", "q"]
-
-    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        """Initialize the ICR Factor model."""
-        super().__init__(frequency=frequency, **kwargs)
+    def _frequencies(self) -> list[str]: return ["d", "m", "q"]
 
     @property
     def _precision(self) -> int: return 8 if self.frequency == 'd' else 4  # TODO: check 
@@ -93,7 +65,6 @@ class ICRFactors(FactorModel):
 
 
     def _read(self, data: bytes):
-        """Reads the source ICR factor data from zhiguohe.net."""
         try:
             reader = pv.open_csv(
                 io.BytesIO(data),

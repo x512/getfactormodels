@@ -20,8 +20,7 @@ import sys
 from pathlib import Path
 import pyarrow.csv as pv
 from getfactormodels import models as factor_models
-from getfactormodels.models.aqr_models import _AQRModel
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
 
@@ -53,7 +52,6 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         output_file (str): optional path or string to save data to disk.
         **kwargs: model specific parameters:
             - region (str): Geographic region (e.g., 'US', 'Developed')
-            - country (str): Specific country code (AQR only).
             - classic (bool): Use the 4-factor version of the Q-model.
 
     Returns:
@@ -71,6 +69,10 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         >>> model.extract(['SMB', 'HML'])
         >>> df = model.to_polars()
     """
+    if isinstance(model, list):
+        from getfactormodels.models.base import ModelCollection
+        return ModelCollection(model_keys=model, **kwargs)
+    region = kwargs.pop('region', None)
     model_key = _get_model_key(model)
 
     model_class_map = {
@@ -78,7 +80,9 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         "5": "FamaFrenchFactors",
         "6": "FamaFrenchFactors",
         "4": "CarhartFactors",
-        "Qclassic": "QFactors", # Handled via 'classic=True' in kwargs
+        "Qclassic": "QFactors",
+        "HCAPM": "HCAPM",
+        "ConditionalCAPM": "ConditionalCAPM",
     }
 
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
@@ -89,39 +93,50 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
 
     if model_key in ("3", "5", "6"):
         kwargs["model"] = model_key
+    
     if model_key == "Qclassic":
         kwargs["classic"] = True
 
+    if issubclass(factor_class, RegionMixin):
+        kwargs['region'] = region
+    elif region:
+        log.warning(f"  '{class_name}' does not support regions. Ignoring: region '{region}'")
+    
     return factor_class(**kwargs)
 
 
 def main():
     args = parse_args()
-    # TODO: list models
+
+    if args.list_regions:
+        from getfactormodels.utils.cli import _cli_list_regions
+        _cli_list_regions()
+        sys.exit(0)
+
     if not args.model:
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
 
-    try: #oops. Unless params match flags, do this:
+    if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
+        print(f"ERROR: 'w2w' frequency is not supported by '{args.model}'.", file=sys.stderr)
+        sys.exit(1)
+    
+    try:
         model_obj = get_factors(
             model=args.model,
             frequency=args.frequency,
             start_date=args.start,
             end_date=args.end,
-            region=args.region,
-            country=args.country,
+            region=args.region, 
         )
 
-        if args.country and not isinstance(model_obj, _AQRModel):
-            print(f"\tERROR: '{args.model}' doesn't support --country, "
-                "only AQR models do.", file=sys.stderr)
-            sys.exit(1)
-
+        model_obj.load()
+   
         if not len(model_obj):
             log.error("No data returned.")
             sys.exit(1)
+
     except (ValueError, RuntimeError) as e:
-        # print the error, not traceback, and exit.
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
@@ -155,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#TODO: style warnings in __init__ maybe.

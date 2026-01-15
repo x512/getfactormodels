@@ -14,28 +14,20 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+from .aqr_models import (
+    AQR6Factors,
+    BABFactors,
+    HMLDevilFactors,
+    QMJFactors,
+    VMEFactors,
+)
+from .barillas_shanken import BarillasShankenFactors
+from .carhart import CarhartFactors
+from .dhs import DHSFactors
 from .fama_french import FamaFrenchFactors
-
-
-class CarhartFactors(FamaFrenchFactors): # inheritence ooo
-    """Download and process the Carhart 4-Factor model data.
-    
-    This model extends the Fama-French 3-factor model to 4 factors, 
-    adding a momentum factor (MOM).
-
-    References:
-    - M. Carhart, ‘On Persistence in Mutual Fund Performance’, Journal
-      of Finance, vol. 52, no. 1, pp. 57–82, 1997.
-
-    Data source: 
-        https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/data_library.html
-    """
-    @property
-    def _frequencies(self) -> list[str]:
-        return ["d", "m", "y"]
-
-    def __init__(self, frequency='m', region=None, **kwargs):
-        super().__init__(frequency=frequency,
-                         model=4,   # enforce model for FF 
-                         region=region,
-                         **kwargs)
+from .hc_capm import HCAPM
+from .icr import ICRFactors
+from .jw_ccapm import ConditionalCAPM
+from .liquidity import LiquidityFactors
+from .mispricing import MispricingFactors
+from .q_factors import QFactors

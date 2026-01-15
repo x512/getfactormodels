@@ -17,6 +17,7 @@
 import logging
 from .main import get_factors
 from .models import (
+    AQR6Factors,
     BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
@@ -28,13 +29,17 @@ from .models import (
     MispricingFactors,
     QFactors,
     QMJFactors,
+    VMEFactors,
 )
 
-#logging.getLogger('getfactormodels').setLevel(logging.ERROR)
 logger = logging.getLogger('getfactormodels')
 logger.addHandler(logging.NullHandler())
 
-__version__ = "0.0.14"
+# TODO: setup logging 
+# see: https://docs.python.org/3/howto/logging-cookbook.html#logging-to-multiple-destinations
+# or use warnings??
+
+__version__ = "0.0.15"
 __all__ = [ 
     "get_factors",
     "BABFactors",
@@ -48,6 +53,8 @@ __all__ = [
     "MispricingFactors",
     "QFactors",
     "QMJFactors",
+    "VMEFactors",
+    "AQR6Factors",
 ]
 
 

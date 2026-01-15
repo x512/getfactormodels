@@ -1,29 +1,14 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
-from typing import Any
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
-from getfactormodels.utils.arrow_utils import (
-    round_to_precision,
-    scale_to_decimal,
-)
+from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
@@ -53,16 +38,16 @@ class QFactors(FactorModel):
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
 
-    def __init__(self, *, classic: bool = False, **kwargs: Any) -> None:
+    def __init__(self, *, classic: bool = False, **kwargs) -> None:
         """Initialize the QFactors model."""
-        self.classic = classic 
+        self.classic = classic
         super().__init__(**kwargs)
     
     @property
     def _precision(self) -> int: return 6
 
     @property
-    def schema(self) -> pa.Schema:   # TODO: make dynamic with self.classic
+    def schema(self) -> pa.Schema:
         factors = [
             ("R_F", pa.float64()),
             ("R_MKT", pa.float64()),
@@ -71,15 +56,14 @@ class QFactors(FactorModel):
             ("R_ROE", pa.float64()),
             ("R_EG", pa.float64()),
         ]
-        
+
         if self.frequency in ["m", "q"]:
             #force 'period' here
             time_cols = [("year", pa.string()), ("period", pa.string())]
         elif self.frequency == "y":
             time_cols = [("year", pa.string())]
-
         else: # d/w/w2w, force 'date'
-            time_cols = [("date", pa.string())] 
+            time_cols = [("date", pa.string())]
 
         return pa.schema(time_cols + factors)
 
@@ -98,8 +82,28 @@ class QFactors(FactorModel):
         return url
 
 
+    def _format_date_column(self, table: pa.Table) -> pa.Table:
+        freq = self.frequency
+        cols = table.column_names
+
+        if freq == 'q':
+            return parse_quarterly_dates(table=table)
+        
+        if "year" in cols and "period" in cols:
+            yr = table.column("year").cast(pa.string())
+            month = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
+            dates = pc.binary_join_element_wise(yr, month, "")
+            table = table.drop(["year", "period"]).combine_chunks()
+            return table.add_column(0, "date", dates)
+
+        if "year" in cols:
+            idx = cols.index("year")
+            return table.set_column(idx, "date", table.column(idx).cast(pa.string()))
+
+        return table
+
+
     def _read(self, data: bytes) -> pa.Table:
-        """Reads the Augmented q5 factors from q-global.com"""
         try:
             read_opts = pv.ReadOptions(
                 column_names=self.schema.names, 
@@ -114,33 +118,20 @@ class QFactors(FactorModel):
                 convert_options=conv_opts,
             )
             table = pa.Table.from_batches(reader)
-            
-            if self.frequency == "q":
-                table = parse_quarterly_dates(table=table)
-            elif self.frequency in ["m", "y"]:
-                # temp fix: FIXME: q factors annual data year col
-                yr = table.column("year").cast(pa.string())
-                if self.frequency == "m":
-                    m_str = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
-                    date_col = pc.cast(pc.binary_join_element_wise(yr, m_str, ""), pa.string())
-                    drop_cols = ["year", "period"]
-                else: # yearly
-                    date_col = yr
-                    drop_cols = ["year"]
 
-                table = table.add_column(0, "date", date_col).drop(drop_cols)
+            table = table.cast(self.schema).select(self.schema.names)
+            if self.classic and "R_EG" in table.column_names:
+                table = table.drop(["R_EG"])
+
+            table = self._format_date_column(table)
             table = offset_period_eom(table, self.frequency)
+
             table = scale_to_decimal(table)
-            table = round_to_precision(table, self._precision)
 
-            rename_map = {"R_F": "RF", "R_MKT": "Mkt-RF"}
-            table = table.rename_columns([rename_map.get(n, n) for n in table.column_names])
+            renames = {"R_F": "RF_Q", "R_MKT": "Mkt-RF"}
+            table = table.rename_columns([renames.get(n, n) for n in table.column_names])
 
-            col_order = ['date', 'Mkt-RF', 'R_ME', 'R_IA', 'R_ROE', 'RF']  
-            if not self.classic:
-                col_order.insert(4, 'R_EG') # Augmented q5 factor
-
-            return table.select(col_order).combine_chunks()
+            return table.combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
             msg = f"{self.__class__.__name__}: reading failed: {e}"

@@ -1,34 +1,23 @@
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import zipfile
 from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
-from getfactormodels.utils.http_client import _HttpClient
 
 
 #TODO: break up _read_zip
-class FamaFrenchFactors(FactorModel):
+class FamaFrenchFactors(FactorModel, RegionMixin):
     """Download Fama-French (and Carhart) factor models.
 
     Downloads the 3-factor (1993), 5-factor (2015), or 6-factor (2018)
@@ -48,42 +37,47 @@ class FamaFrenchFactors(FactorModel):
             model.
 
     References:
-    - E. F. Fama and K. R. French, ‘Common risk factors in the returns 
-      on stocks and bonds’, Journal of Financial Economics, vol. 33, 
-      no. 1, pp. 3–56, 1993.
-    - E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, 
-      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
-    - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of 
+    - E. F. Fama and K. R., 1993. French. Common risk factors in the returns 
+      on stocks and bonds. Journal of Financial Economics, vol. 33, no. 1,
+      pp. 3–56.
+    - E. F. Fama and K. R. French, 2015. A five-factor asset pricing model. 
+      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22.
+    - E. F. Fama and K. R. French, 2018. Choosing factors. Journal of 
       Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
 
-    Note: "-0.9999" should be NaNs! [TODO: FIXME]
-
     """
-    # TODO: NaNs in FamaFrench models!
-
+    # TODO: NaNs in FamaFrench models! check
+    #Note: "-0.9999" should be NaNs! [TODO: FIXME]
     @property
-    def _frequencies(self) -> list[str]:
-        return ['d', 'w', 'm', 'y']
+    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    
+    @property 
+    def _precision(self) -> int: return 6
 
     @property 
-    def _precision(self) -> int:
-        return 6
+    def _regions(self) -> list[str]:
+        return [
+            'us', 'emerging', 'developed', 'ex-us', 'europe',
+            'japan', 'asia-pacific-ex-japan', 'north-america', 
+        ]
 
     def __init__(self, 
                  frequency: str = 'm', 
                  model: int | str = '3', 
                  region: str | None = 'us', 
                  **kwargs: Any) -> None:
-        """Initialize the Fama-French factor model."""
+        """Initialize a Fama-French factor model."""
         self.model = str(model)
-        self.region = region.lower() if region else 'us'
         super().__init__(frequency=frequency, model=model, **kwargs)
+        
+        self.region = region
+
         self._validate_ff_input()
+    
 
     @property
     def schema(self) -> pa.Schema:
         """Fama-French schema for specific model/frequency/region."""
-        # all models
         cols = [("date", pa.string()), 
                 ("Mkt-RF", pa.float64()), 
                 ("SMB", pa.float64()), 
@@ -94,12 +88,10 @@ class FamaFrenchFactors(FactorModel):
             cols += [("RMW", pa.float64()), 
                      ("CMA", pa.float64())]
 
-        # momentum models
+        # mom models (4/6): dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
         if self.model in ["4", "6"]:
-            _intl = self.region not in ["us", None]
-            
-            # dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
-            mom_name = "WML" if _intl else ("UMD" if self.model == "6" else "MOM")
+            is_intl = self.region not in ["us", None]
+            mom_name = "WML" if is_intl else ("UMD" if self.model == "6" else "MOM")
             cols.append((mom_name, pa.float64()))
         cols.append(("RF", pa.float64()))
         
@@ -107,10 +99,7 @@ class FamaFrenchFactors(FactorModel):
 
     @property
     def _mom_schema(self) -> pa.Schema:
-        """Private helper: schema for momentum files.
-        'val' is a placeholder for the specific (model, region)
-          momentum factor, it gets renamed during the join process.
-        """
+        """Private helper: schema for momentum files. 'val' is placeholder."""
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
     @property
@@ -128,31 +117,6 @@ class FamaFrenchFactors(FactorModel):
             self._view = None
         self._model = val 
 
-    @property
-    def region(self) -> str:
-        return self._region
-    @region.setter
-    def region(self, value: str | None):
-        val = value.lower() if value else 'us'
-        
-        if val not in self.list_regions():
-            raise ValueError(f"Invalid region '{val}'. Supported: {self.list_regions()}")
-
-        if hasattr(self, '_region') and val != self._region:
-            self.log.info(f"Region changed from {self._region} to {val}.")
-            self._data = None
-            self._view = None
-            
-        self._region = val 
-
-    @classmethod
-    def list_regions(cls) -> list[str]:
-        """Returns the list of supported Fama-French regions (clean keys)."""
-        return [
-            'us', 'emerging', 'developed', 'ex-us', 
-            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america',
-        ]
-    
     @property
     def _ff_region_map(self) -> dict[str, str]:
         """Private: maps region input to region URL str"""
@@ -179,43 +143,40 @@ class FamaFrenchFactors(FactorModel):
             raise ValueError("Weekly Fama-French data is only available for the 3-factor model.")
  
 
-    def _get_url(self) -> str:
-        """Constructs the URL for downloading Fama-French data."""
+    def _get_url(self) -> dict[str, str]:
+        """Constructs the URLs for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        url_list = {}
+
         ff_url_name = self._ff_region_map.get(self.region)
-
-        # Emerging: only monthly 5-factors avail
+        
         if ff_url_name == 'Emerging':
-            return f"{base_url}/Emerging_5_Factors_CSV.zip"
-
-        if ff_url_name == 'US':
+            # Emerging: only monthly 5-factors avail
+            filename = "Emerging_5_Factors_CSV.zip"
+        elif ff_url_name == 'US':
             _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
             freq_map = {'d': '_daily', 'w': '_weekly'}
             suffix = freq_map.get(self.frequency, "")
-            
             filename = f"{_model}{suffix}_CSV.zip"
-
         else:
-            # regions: 3 and 4 use 3. 5 and 6 use the 5-factor file.
+            # International regions
             base_model = '3' if self.model in ['3', '4'] else '5'
             daily = '_Daily' if self.frequency == 'd' else ''
             filename = f"{ff_url_name}_{base_model}_Factors{daily}_CSV.zip"
+            
+        url_list['factors'] = f"{base_url}/{filename}"
+        
+        # Construct the momentum URL if needed.
+        if self.model in ["4", "6"]:
+            freq_suffix = "_daily" if self.frequency == 'd' else ""
+            if self.region in ['us', None]:
+                mom_filename = f"F-F_Momentum_Factor{freq_suffix}_CSV.zip"
+            else:
+                mom_filename = f"{self.region}_Mom_Factor{freq_suffix.title()}_CSV.zip"
+            
+            url_list['momentum'] = f"{base_url}/{mom_filename}"
 
-        return f"{base_url}/{filename}"
-
-
-    def _get_mom_url(self) -> str:
-        """Constructs the URL for the required momentum file."""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        freq_suffix = "_daily" if self.frequency == 'd' else ""
-
-        if self.region in ['us', None]:
-            filename = f"F-F_Momentum_Factor{freq_suffix}_CSV.zip"
-        else:
-            # regional, e.g., 'Europe_Mom_Factor_Daily_CSV.zip'
-            filename = f"{self.region}_Mom_Factor{freq_suffix.title()}_CSV.zip"
-
-        return f"{base_url}/{filename}"
+        return url_list
 
 
     def _read_zip(self, _data: bytes, use_schema: pa.Schema = None) -> pa.Table:
@@ -262,46 +223,31 @@ class FamaFrenchFactors(FactorModel):
         )   
     
 
-    def _add_momentum(self, table: pa.Table) -> pa.Table:
-        """Private helper to download and join the specific momentum
-        factor required.
-        """
-        with _HttpClient(timeout=15.0) as client:
-            mom_zip = client.download(self._get_mom_url(), self.cache_ttl)
-
-        mom_table = self._read_zip(mom_zip, use_schema=self._mom_schema)
+    def _read(self, data: dict[str, bytes]) -> pa.Table:
+        main_cols = [f for f in self.schema if f.name not in ["UMD", "MOM", "WML"]]
         
-        # WML for intl, UMD for US 6, MOM for US 4
-        mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
-        mom_table = mom_table.rename_columns(["date", mom_key])
-
-        return table.join(mom_table, keys="date", join_type="inner").combine_chunks()
-
-
-    def _read(self, data: bytes) -> pa.Table:
-        is_emerging = self.region == 'emerging'
-        
-        main_cols = []
-        for field in self.schema:
-            if field.name not in ["UMD", "MOM", "WML"]:
-                main_cols.append(field)
-
-        # fix: user asked for model=3 or 4, region='emerging' 
-        #   schema needs RMW/CMA anyway (only a 5 factor file)
-        if is_emerging and self.model in ["3", "4"]:
+        # Emerging Markets: base file is 5 factors (even for models 3/4)
+        if self.region == 'emerging' and self.model in ["3", "4"]:
             main_cols.insert(4, pa.field("RMW", pa.float64()))
             main_cols.insert(5, pa.field("CMA", pa.float64()))
 
         main_schema = pa.schema(main_cols)
+        # data['factors']
+        table = self._read_zip(data['factors'], use_schema=main_schema)
 
-        table = self._read_zip(data, use_schema=main_schema)
-
-        if self.model in {"4", "6"}:
-            table = self._add_momentum(table)
+        if 'momentum' in data:
+            mom_table = self._read_zip(data['momentum'], use_schema=self._mom_schema)
+            
+            # momentum column name based on schema
+            mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
+            mom_table = mom_table.rename_columns(["date", mom_key])
+            
+            table = table.join(mom_table, keys="date", join_type="inner").combine_chunks()
 
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
+        
+        table = round_to_precision(table, self._precision)
 
-        # using select with schema.names drops the cols the user doesn't want
         return table.select(self.schema.names).combine_chunks()

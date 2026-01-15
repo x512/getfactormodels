@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -40,27 +29,24 @@ def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
     """
     # auto resolve to: precision arg, else model's ._precision or '6'.
     prec_val = precision or getattr(table, '_precision', 6)
-    rf_cols = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} # TODO: fix this up.
+    rf_cols = {'RF', 'R_F'} # TODO: fix this up.
 
     new_cols = []
     for i, field in enumerate(table.schema):
         col = table.column(i)
         if pa.types.is_floating(field.type):
-            p = 4 if field.name.upper() in rf_cols else prec_val
-            col = pc.round(col, p)
+            p = 4 if field.name.upper() in rf_cols else 6 if field.name.upper() == "RF_AQR" else prec_val
+            col = pc.round(col, ndigits=p, round_mode='half_to_even')
         new_cols.append(col)
 
     return pa.Table.from_arrays(new_cols, schema=table.schema)
 
 
 def rearrange_columns(table: pa.Table) -> pa.Table:
-    """Internal helper: Standardize column orders.
-
-    * Always returns: 'date', [FACTORS...], 'RF'
-    """
+    """Standardize column orders: 'date', [FACTORS], 'RF'"""
     cols = table.column_names
     front = [c for c in ['date', 'Mkt-RF'] if c in cols]
-    back = [c for c in ['RF', 'AQR_RF'] if c in cols]
+    back = [c for c in ['RF_AQR', 'RF_Q', 'RF'] if c in cols]
     fixed = set(front + back) #fix: don't define set in the loop! Now list comp is O(1)
     mid = [c for c in cols if c not in fixed]
     return table.select(front + mid + back)
@@ -95,16 +81,16 @@ def _validate_columns(table: pa.Table, names: str | list[str] | None) -> list[st
     Returns the list of validated factors or raises if missing.
     """
     if table.num_rows == 0:
-        raise RuntimeError("Table is empty.")   ## TEST ERR
+        raise RuntimeError("Table is empty.")
 
     if not names:
-        return []     ### TEST THIS
+        return []
 
     input_list = [names] if isinstance(names, str) else list(names)
 
     cols = set(table.column_names)
-    missing = [f for f in input_list if f not in cols]
 
+    missing = [f for f in input_list if f not in cols]
     if missing:
         raise ValueError(f"Columns not found in Table: {missing}")
 
@@ -138,7 +124,6 @@ def select_table_columns(table: pa.Table, factors: str | list[str]) -> pa.Table:
 
 def _format_for_preview(val, col_name, precision=6):
     """Private helper for print_table_preview output. Rounds for display converts None to NaNs."""
-    #if val is None or (isinstance(val, float) and math.isnan(val)):   #math over pycompute just for this
     if val is None or (isinstance(val, float) and val != val): 
         return "NaN"
 

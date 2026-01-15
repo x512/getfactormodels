@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import calendar
 import logging
 import re
@@ -26,16 +15,13 @@ import pyarrow.compute as pc
 log = logging.getLogger(__name__)
 
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
-    """Private helper to offset a pa.Table's col 0 to EOM.
-
-    Standardizes col 0 to EOM for m/q freqs.
-    """
+    """Private helper to offset a pa.Table's col 0 to EOM. No-op for below monthly."""
     if table.num_columns == 0:
         raise ValueError("Table has no columns.")
 
     first_col = table.column(0).cast(pa.string())
 
-    # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars). 
+    # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars).
     # HML_Devil is the only model that needs/needed this.
     d_str = pc.utf8_slice_codeunits(first_col.cast(pa.string()), 
                                     start=0, stop=10)
@@ -57,12 +43,17 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
             clean,
         ),
     )
-    dates = pc.strptime(date_str, format="%Y%m%d", unit="ms")
+    dates = pc.strptime(date_str, format="%Y%m%d", unit="s")
 
     if frequency in ['m', 'q']:
         _next_mth = pc.ceil_temporal(dates, 1, unit='month')
         _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
         eom_dates = pc.subtract(_next_mth, _one_day_ms)
+
+    elif frequency == 'y': #fix: if freq = year with dates
+        _next_year = pc.ceil_temporal(dates, 1, unit='year')
+        _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
+        eom_dates = pc.subtract(_next_year, _one_day_ms)
     else:
         eom_dates = dates
 
@@ -82,34 +73,37 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     if table.num_rows == 0:
         return table
 
-    # q-factors, 2 col, year and period:
+    # q-factors: 2 cols - 'year' and 'period'
     if "year" in table.column_names and "period" in table.column_names:
         year = table.column("year").cast(pa.string())
-        qtr  = table.column("period").cast(pa.int32())
+        qtr = table.column("period").cast(pa.int32())
         table = table.drop(["year", "period"])
-    else:
-        # ICR factors: 20231
+    else: 
+        # ICR factors: YYYYQ
         dates = table.column(0).cast(pa.string())
-        year  = pc.utf8_slice_codeunits(dates, 0, 4)
-        qtr   = pc.utf8_slice_codeunits(dates, 4, 5).cast(pa.int32())
+        year = pc.utf8_slice_codeunits(dates, 0, 4)
+        qtr = pc.utf8_slice_codeunits(dates, 4, 5).cast(pa.int32())
         table = table.remove_column(0)
-    # multiply 'q' to it's month.
-    m_ints = pc.multiply(qtr, 3).cast(pa.string())
-    # pad month if needed
-    months = pc.utf8_lpad(m_ints, width=2, padding="0")
-    # add '01' for yyyymmdd (relies on offset_period_eom to shift to eom)
-    days   = pa.array(["01"] * table.num_rows, type=pa.string())
 
-    # make a yyyymmdd str
-    datestr = pc.binary_join_element_wise(year, months, days, "-")
+    # Find month (q*3) and make sure it's padded (9 to 09)
+    m_int = pc.multiply(qtr, 3).cast(pa.string())
+    month = pc.utf8_lpad(m_int, width=2, padding="0")
 
+    # Add '01' for days (offset will set to EOM)
+    days = pa.array(["01"] * table.num_rows, type=pa.string())
+
+    # Create a YYYYMMDD date str
+    datestr = pc.binary_join_element_wise(year, month, days, "-")
     try:
-        # cast to date32
+        # cast it to date32
         date_col = pc.cast(datestr, pa.date32())
-        # Replaces first col, 0, date:
+
+        # Set first col to 'date' (replaces col 0)
         table = table.add_column(0, "date", date_col)
-        #offset
-        return offset_period_eom(table, "q")
+        
+        # NOTE: don't offset_period_eom here. Causes models to offset twice.
+        return table.combine_chunks()
+
     except pa.ArrowInvalid as e:
         raise ValueError(f"Failed to parse quarterly dates: {e}")
 
