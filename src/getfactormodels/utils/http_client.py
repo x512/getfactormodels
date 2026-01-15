@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import hashlib
 import logging
 import ssl
@@ -74,6 +63,8 @@ class _HttpClient:
                 follow_redirects=True,
                 max_redirects=3,
             )
+            msg = f"http_client ENTER: (client: {self._client.__class__.__name__})"
+            log.debug(msg)
         return self
 
 
@@ -87,12 +78,10 @@ class _HttpClient:
         msg =f'closing {self.cache.__class__.__name__}'
         log.debug(msg)
         self.cache.close()
-        #if hasattr(self, 'cache') and self.cache:
-        #    self.cache.close()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        msg = f"closed: {self._client.__class__.__name__}"
+        msg = f"http_client EXIT: (client: {self._client.__class__.__name__})"
         log.debug(msg)
 
 

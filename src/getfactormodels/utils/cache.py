@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+# This file part of getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
 import time
 from pathlib import Path

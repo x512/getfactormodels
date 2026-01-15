@@ -1,30 +1,19 @@
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import zipfile
 from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.arrow_utils import \
-    round_to_precision  # dont know if need here
-from getfactormodels.utils.arrow_utils import scale_to_decimal
+from getfactormodels.utils.arrow_utils import (
+    round_to_precision,
+    scale_to_decimal,
+)
 from getfactormodels.utils.date_utils import offset_period_eom
-
-#from getfactormodels.utils.http_client import _HttpClient  #client/_download handles multi dls now
 
 
 #TODO: break up _read_zip
@@ -48,28 +37,28 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             model.
 
     References:
-    - E. F. Fama and K. R. French, ‘Common risk factors in the returns 
-      on stocks and bonds’, Journal of Financial Economics, vol. 33, 
-      no. 1, pp. 3–56, 1993.
-    - E. F. Fama and K. R. French, ‘A five-factor asset pricing model’, 
-      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22, 2015.
-    - E. F. Fama and K. R. French, ‘Choosing factors’, Journal of 
+    - E. F. Fama and K. R., 1993. French. Common risk factors in the returns 
+      on stocks and bonds. Journal of Financial Economics, vol. 33, no. 1,
+      pp. 3–56.
+    - E. F. Fama and K. R. French, 2015. A five-factor asset pricing model. 
+      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22.
+    - E. F. Fama and K. R. French, 2018. Choosing factors. Journal of 
       Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
 
-    Note: "-0.9999" should be NaNs! [TODO: FIXME]
-
     """
-    # TODO: NaNs in FamaFrench models!
-
+    # TODO: NaNs in FamaFrench models! check
+    #Note: "-0.9999" should be NaNs! [TODO: FIXME]
     @property
-    def _frequencies(self) -> list[str]:
-        return ['d', 'w', 'm', 'y']
+    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    
+    @property 
+    def _precision(self) -> int: return 6
 
     @property 
     def _regions(self) -> list[str]:
         return [
-            'us', 'emerging', 'developed', 'ex-us', 
-            'europe', 'japan', 'asia-pacific-ex-japan', 'north-america', 
+            'us', 'emerging', 'developed', 'ex-us', 'europe',
+            'japan', 'asia-pacific-ex-japan', 'north-america', 
         ]
 
     def __init__(self, 
@@ -77,20 +66,18 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  model: int | str = '3', 
                  region: str | None = 'us', 
                  **kwargs: Any) -> None:
-        """Initialize the Fama-French factor model."""
+        """Initialize a Fama-French factor model."""
         self.model = str(model)
         super().__init__(frequency=frequency, model=model, **kwargs)
+        
         self.region = region
+
         self._validate_ff_input()
     
-    @property 
-    def _precision(self) -> int:
-        return 6
 
     @property
     def schema(self) -> pa.Schema:
         """Fama-French schema for specific model/frequency/region."""
-        # all models
         cols = [("date", pa.string()), 
                 ("Mkt-RF", pa.float64()), 
                 ("SMB", pa.float64()), 
@@ -101,12 +88,10 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             cols += [("RMW", pa.float64()), 
                      ("CMA", pa.float64())]
 
-        # momentum models
+        # mom models (4/6): dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
         if self.model in ["4", "6"]:
-            _intl = self.region not in ["us", None]
-            
-            # dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
-            mom_name = "WML" if _intl else ("UMD" if self.model == "6" else "MOM")
+            is_intl = self.region not in ["us", None]
+            mom_name = "WML" if is_intl else ("UMD" if self.model == "6" else "MOM")
             cols.append((mom_name, pa.float64()))
         cols.append(("RF", pa.float64()))
         
@@ -114,11 +99,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
 
     @property
     def _mom_schema(self) -> pa.Schema:
-        """Private helper: schema for momentum files.
-        
-        - 'val' is a placeholder for the specific (model, region)
-          momentum factor, it gets renamed during the join process.
-        """
+        """Private helper: schema for momentum files. 'val' is placeholder."""
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
     @property
@@ -251,8 +232,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             main_cols.insert(5, pa.field("CMA", pa.float64()))
 
         main_schema = pa.schema(main_cols)
-
-        # access data['factors'] directly
+        # data['factors']
         table = self._read_zip(data['factors'], use_schema=main_schema)
 
         if 'momentum' in data:
@@ -267,5 +247,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
+        
+        table = round_to_precision(table, self._precision)
 
         return table.select(self.schema.names).combine_chunks()

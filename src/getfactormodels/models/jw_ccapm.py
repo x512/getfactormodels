@@ -1,9 +1,15 @@
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import pyarrow as pa
 import pyarrow.compute as pc
 from getfactormodels.models.base import CompositeModel
 from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.utils import read_from_fred
+
 
 # might rename PremiumLaboutCCAPM
 class ConditionalCAPM(CompositeModel):
@@ -42,7 +48,7 @@ class ConditionalCAPM(CompositeModel):
             "A033RC1A027NBEA": "income",
             "POPTHM": "pop",
             "BAA": "baa",
-            "AAA": "aaa"
+            "AAA": "aaa",
         }
 
         fred_table = read_from_fred(series=data_series, 

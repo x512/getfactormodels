@@ -26,7 +26,7 @@ from getfactormodels.utils.utils import _generate_filename, _get_model_key
 
 log = logging.getLogger("getfactormodels")
 
-def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Self
+def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
     """Get and process factor model data.
 
     This function initializes a specific FactorModel subclass based on the 
@@ -69,6 +69,10 @@ def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Se
         >>> model.extract(['SMB', 'HML'])
         >>> df = model.to_polars()
     """
+    if isinstance(model, list):
+        from getfactormodels.models.base import ModelCollection
+        return ModelCollection(model_keys=model, **kwargs)
+    region = kwargs.pop('region', None)
     model_key = _get_model_key(model)
 
     model_class_map = {
@@ -76,7 +80,9 @@ def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Se
         "5": "FamaFrenchFactors",
         "6": "FamaFrenchFactors",
         "4": "CarhartFactors",
-        "Qclassic": "QFactors", # 'classic=True' kwarg
+        "Qclassic": "QFactors",
+        "HCAPM": "HCAPM",
+        "ConditionalCAPM": "ConditionalCAPM",
     }
 
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
@@ -87,18 +93,16 @@ def get_factors(model: str | int = 3, region=None, **kwargs) -> FactorModel: #Se
 
     if model_key in ("3", "5", "6"):
         kwargs["model"] = model_key
+    
     if model_key == "Qclassic":
         kwargs["classic"] = True
- 
+
     if issubclass(factor_class, RegionMixin):
-        if region:
-            kwargs['region'] = region
+        kwargs['region'] = region
     elif region:
-        # check: if region passed to non regional model:
-        print(f"WARNING: Model '{class_name}' does not support regions. Ignoring '{region}'.", 
-              file=sys.stderr)
+        log.warning(f"  '{class_name}' does not support regions. Ignoring: region '{region}'")
     
-    return factor_class(**kwargs) # type: ignore
+    return factor_class(**kwargs)
 
 
 def main():
@@ -107,6 +111,7 @@ def main():
     if args.list_regions:
         from getfactormodels.utils.cli import _cli_list_regions
         _cli_list_regions()
+        sys.exit(0)
 
     if not args.model:
         print("Error: The -m/--model argument is required.", file=sys.stderr)
@@ -123,7 +128,9 @@ def main():
             start_date=args.start,
             end_date=args.end,
             region=args.region, 
-        ).load()
+        )
+
+        model_obj.load()
    
         if not len(model_obj):
             log.error("No data returned.")
@@ -163,4 +170,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#TODO: style warnings in __init__ maybe.

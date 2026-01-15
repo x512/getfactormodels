@@ -23,7 +23,6 @@ from getfactormodels.models.base import (
     RegionMixin,
 )
 from getfactormodels.utils.arrow_utils import (
-    rearrange_columns,
     round_to_precision,
     select_table_columns,
 )
@@ -63,6 +62,8 @@ class _AQRModel(FactorModel, RegionMixin):
             frequency (str): The frequency of the data. M, D (default: M)
             start_date (str, optional): The start date of the data, YYYY-MM-DD.
             end_date (str, optional): The end date of the data, YYYY-MM-DD.
+            region (str, optional): region or country to return data for 
+                excluding RF.
             output_file (str, optional): The filepath to save the output data.
             cache_ttl (str): cache time-to-live in seconds.
         """
@@ -96,8 +97,7 @@ class _AQRModel(FactorModel, RegionMixin):
         return str(d)
 
 
-    # New, let VME use it, and modularizes _process_sheet
-    def _get_header_idx(self, rows: list[list]) -> int:
+    def _get_header(self, rows: list[list]) -> int:
         """Finds row index containing 'DATE'."""
         for i, row in enumerate(rows):
             if row and str(row[0]).strip().upper() == 'DATE':
@@ -142,7 +142,7 @@ class _AQRModel(FactorModel, RegionMixin):
 
         for sheet_name in self._sheet_map:
             rows = wb.get_sheet_by_name(sheet_name).to_python()
-            headers = self._get_header_idx(rows)
+            headers = self._get_header(rows)
             
             t = self._process_sheet(sheet_name, rows, headers)
             tables.append(offset_period_eom(t, self.frequency))
@@ -154,7 +154,6 @@ class _AQRModel(FactorModel, RegionMixin):
         for next_t in tables[1:]:
             result = result.join(next_t, keys='date', join_type='left outer')
 
-        #table = rearrange_columns(result)   let base handle?
         return round_to_precision(result, self._precision).combine_chunks()
 
     @property
@@ -262,7 +261,6 @@ class BABFactors(_AQRModel):
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
 
-# NEW: CompositeModel, not a subclass of _AQRModel. --------------------------------- #
 class AQR6Factors(CompositeModel, RegionMixin):
     """AQR 6-Factor Model, Frazzini, Kabiller & Pederson (2018).
 
@@ -284,11 +282,11 @@ class AQR6Factors(CompositeModel, RegionMixin):
         qmj_t = QMJFactors(frequency=self.frequency, region=self.region).load(client=client)
 
         bab = select_table_columns(bab_t.data, ['BAB', 'Mkt-RF', 'SMB'])
-        qmj = select_table_columns(qmj_t.data, ['QMJ', 'HML', 'UMD'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
+        qmj = select_table_columns(qmj_t.data, ['QMJ', 'HML', 'UMD', 'RF_AQR'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
 
-        # Renaming HML to HML_FF: user doesn't know if it's HML Devil otherwise.
+        # Renaming HML to HML_FF: user doesn't know if it's HML Devil otherwise, and RF to RF_AQR. 
         qmj = qmj.rename_columns([
-            "HML_FF" if col == "HML" else col for col in qmj.column_names
+            "HML_FF" if col == "HML" else "RF_AQR" if col == "RF" else col for col in qmj.column_names
         ])
 
         table = bab.join(qmj, keys='date').combine_chunks()
@@ -304,11 +302,12 @@ class AQR6Factors(CompositeModel, RegionMixin):
             ('UMD', pa.float64()),
             ('BAB', pa.float64()),
             ('QMJ', pa.float64()),
+            ('RF_AQR', pa.float64()),
         ])
 
 
 # NEW/WIP/TESTING/ETC: Value and Momentum Everywhere. --------------------------------- #
-# Returns the 'everywhere' VAL and MOM by defult.
+# Returns the 'usa' VAL and MOM by defult.
 class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
     @property
@@ -329,7 +328,7 @@ class VMEFactors(_AQRModel):
     def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = wb.get_sheet_by_name("VME Factors").to_python()
-        header_idx = self._get_header_idx(rows)
+        header_idx = self._get_header(rows)
         _vme_map = {
             'everywhere': 1, 'all_equities': 3, 'all_other': 5,
             'usa': 7, 'uk': 9, 'europe': 11, 'japan': 13,
@@ -338,7 +337,7 @@ class VMEFactors(_AQRModel):
         start_idx = _vme_map.get(self.region.lower(), 7)
         
         dates, val, mom = [], [], []
-        # Use header_idx + 1 (or +2 if there are sub-headers)
+        # data is from header_idx + 1
         for r in rows[header_idx + 1:]:
             if not r or r[0] is None or r[start_idx] == '':
                 continue

@@ -434,7 +434,7 @@ class ModelCollection(CompositeModel):
                 final_table = final_table.join(
                     table_to_join, 
                     keys="date", 
-                    join_type="left outer"
+                    join_type="left outer",
                 )
             
         return final_table.sort_by([("date", "ascending")])

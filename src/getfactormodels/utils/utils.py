@@ -1,34 +1,24 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
 from datetime import datetime
+#import warnings
+from io import BytesIO
 from pathlib import Path
 from types import MappingProxyType
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-
-#import warnings
+from getfactormodels.utils.http_client import _HttpClient
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
 """Model utils and I/O utils."""
 
-_model_map = {
+_MODEL_ALIASES = {
     "3": ["3", "ff3", "famafrench3"],
     "4": ["4", "ff4", "carhart", "car"],
     "5": ["5", "ff5", "famafrench5"],
@@ -45,48 +35,48 @@ _model_map = {
     "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
     "VME": ["vme", "valmom", "valueandmomentumeverywhere"],
     "AQR6": ["aqr6", "aqr", "aqrfactors"],
+    "HCAPM": ["hccapm", 'hcapm', 'hc-capm'],
+    "ConditionalCAPM": ["jwcapm", "plcapm", "jwccapm", "plccapm", "ccapm"],
 }
 
-_MODEL_INPUT_MAP = MappingProxyType(_model_map)
+_LOOKUP = MappingProxyType({
+    alias: key 
+    for key, aliases in _MODEL_ALIASES.items() 
+    for alias in aliases
+})
 
-def _get_model_key(model_input: str | int) -> str:
+def _get_model_key(user_input: str | int) -> str:
     """Converts user input (e.g. 'ff3', 'hmld') to the model key.
     
-    >>> _get_model_key('3')
+    >>> _get_model_key('ff3')
     '3'
-    >>> _get_model_key('ff6')
-    '6'
-    >>> _get_model_key(icr)
-    'ICR'
     >>> _get_model_key('Bab')
     'BAB'
     """
-    val = str(model_input).lower().strip()
+    if not user_input:
+        return ""
+        
+    val = str(user_input).lower().strip()
     
-    for key, alias in _MODEL_INPUT_MAP.items():
-        if val in alias:
-            return key
-            
-    return val
+    return _LOOKUP.get(val, val)
 
 
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:
     if filepath is None:
         return Path.cwd() / filename
 
+    is_explicit_dir = str(filepath).endswith(("/", "\\"))
     user_path = Path(filepath).expanduser()
 
-    if user_path.is_dir():
-        # directory, append filename
+    if is_explicit_dir or user_path.is_dir():
         final_path = user_path / filename
     else:
-        # file path: add ext if missing (defaulting to .csv) 
         if not user_path.suffix:
             user_path = user_path.with_suffix(".csv")
-
-        user_path.parent.mkdir(parents=True, exist_ok=True)
         final_path = user_path
-
+    
+    # make sure it exists!
+    final_path.parent.mkdir(parents=True, exist_ok=True)
     return final_path
 
 
@@ -96,9 +86,6 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
     Used if directory is provided, or just an extension, intended to be used 
     for -o flag with no param.
     """
-    # TODO: one day add a name property to models...
-    # TODO: if user used 'carhart' use carhart, if they used (ff)4, use ff.
-
     # 3 to "ff3", FF models only ones that accept int.
     raw_name = getattr(model, 'model', model.__class__.__name__.replace('Factors', ''))
     model_name = f"ff{raw_name}" if str(raw_name).isdigit() else raw_name
@@ -128,11 +115,11 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
     
     - Uses pyarrow, falls back to pandas to write .pkl.
     """
-    #TODO: require user to have pandas installed for pkl, or use python's pickle...
     _name = _generate_filename(model_instance) if model_instance else "factors.csv"
+    
     full_path = _prepare_filepath(filepath, _name)
+    
     ext = full_path.suffix.lower()
-
     table = table.combine_chunks()
 
     try:
@@ -153,14 +140,9 @@ def _save_to_file(table: pa.Table, filepath: str | Path, model_instance=None):
             pv.write_csv(table, full_path, write_options=write_options)
 
         elif ext in ('.md', '.markdown'):
-            try:
-                with open(full_path, 'w', encoding='utf-8') as f:
-                    for line in _stream_table_to_md(table):
-                        f.write(line + '\n')
-            except Exception as e:
-                msg = f"Failed to write markdown to {full_path}"
-                log.exception(msg) 
-                raise OSError(f"{msg}: {e}")
+            with open(full_path, 'w', encoding='utf-8') as f:
+                for line in _stream_table_to_md(table, precision = 6):
+                    f.write(line + '\n')
 
         elif ext == '.pkl':
             df = table.to_pandas()
@@ -178,29 +160,86 @@ def _stream_table_to_md(table: pa.Table, precision: int = 4):
     
     - Reduces memory usage for writing larger tables.
     """
-    yield "| " + " | ".join(table.column_names) + " |"
-    yield "| " + " | ".join(["----"] * len(table.column_names)) + " |"
+    try:
+        yield "| " + " | ".join(table.column_names) + " |"
+        yield "| " + " | ".join(["----"] * len(table.column_names)) + " |"
 
-    str_columns = []
-    rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} 
+        str_columns = []
+        rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} 
 
-    # clean floats, col presentation
-    for name in table.column_names:
-        col = table.column(name)  
-        if pa.types.is_floating(col.type):
-            prec = 4 if name.upper() in rfs else precision
-            data = col.to_pylist()
-            # f-strings to force decimals.
-            # fix: prepend positives with an empty space.
-            # - a space bef the f-string dot: space for positive, '-' for neg.
-            # fix: alignment when col is all positives, rm the double spaces.
-            contains_negs = pc.any(pc.less(col.fill_null(0), 0)).as_py()
-            fmt = f" .{prec}f" if contains_negs else f".{prec}f"
-            clean_col = [f"{x:{fmt}}" if x is not None else "" for x in data]
-        else:
-            clean_col = col.cast(pa.string()).to_pylist()
-        str_columns.append(clean_col)
+        # clean floats, col presentation
+        for name in table.column_names:
+            col = table.column(name)  
+            if pa.types.is_floating(col.type):
+                prec = 4 if name.upper() in rfs else precision
+                data = col.to_pylist()
+                # f-strings to force decimals.
+                # fix: prepend positives with an empty space.
+                # - a space bef the f-string dot: space for positive, '-' for neg.
+                # fix: alignment when col is all positives, rm the double spaces.
+                contains_negs = pc.any(pc.less(col.fill_null(0), 0)).as_py()
+                fmt = f" .{prec}f" if contains_negs else f".{prec}f"
+                clean_col = [f"{x:{fmt}}" if x is not None else "" for x in data]
+            else:
+                clean_col = col.cast(pa.string()).to_pylist()
+            str_columns.append(clean_col)
 
-    for row in zip(*str_columns):
-        yield "| " + " | ".join(row) + " |"
+        for row in zip(*str_columns):
+            yield "| " + " | ".join(row) + " |"
+    except Exception as e:
+                    msg = f"Failed to write markdown to {full_path}"
+                    log.exception(msg) 
+                    raise OSError(f"{msg}: {e}")
 
+
+def read_from_fred(series: str | list[str] | dict[str, str], 
+                   frequency: str = 'a', 
+                   aggregate: str = 'avg', 
+                   client=None) -> pa.Table:
+    """Internal utility to download and align FRED time-series data into a pa.Table.
+
+    Simple helper. Each series is downloaded and aligned on the col 'date'. Date is 
+    cast to Date32. Not for the public API.
+
+    If models require data from FRED, re-use the client!
+
+    Args:
+        series: can be a single series ID ('GDP'), list of series ID's, or a 
+                dict to rename cols ({'A033RC1A027NBEA': 'income'}).
+        frequency: fred standard codes for frequency (y, q, m). Accepts 'y' as 'a'.
+        client: Optional _HttpClient. If None, manages its own lifecycle.
+
+    """
+    _freq = {'y': 'a', 'a': 'a', 'q': 'q', 'm': 'm'}
+    fred_freq = _freq.get(frequency.lower(), frequency)
+
+    if isinstance(series, str):
+        mapping = {series: series}
+    elif isinstance(series, list):
+        mapping = {s: s for s in series}
+    else:
+        mapping = series
+    
+    internal_client = client if client else _HttpClient()
+    
+    try:
+        tables = []
+        for s_id, col_name in mapping.items():
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s_id}&fq={fred_freq}&agg={aggregate}"
+            data = internal_client.download(url)
+            
+            t = pv.read_csv(BytesIO(data))
+            t = t.rename_columns(["date", col_name])
+            
+            schema = t.schema.set(0, pa.field("date", pa.date32()))
+            tables.append(t.cast(schema))
+       
+        result = tables[0]
+        for next_table in tables[1:]:
+            result = result.join(next_table, keys="date")
+            
+        return result.sort_by([("date", "ascending")])
+
+    finally:
+        if client is None:
+            internal_client.close()
