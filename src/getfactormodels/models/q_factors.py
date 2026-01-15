@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -65,10 +54,8 @@ class QFactors(FactorModel):
             ("R_ME", pa.float64()),
             ("R_IA", pa.float64()),
             ("R_ROE", pa.float64()),
+            ("R_EG", pa.float64()),
         ]
-
-        if not self.classic:
-            factors.append(("R_EG", pa.float64()))
 
         if self.frequency in ["m", "q"]:
             #force 'period' here
@@ -133,13 +120,15 @@ class QFactors(FactorModel):
             table = pa.Table.from_batches(reader)
 
             table = table.cast(self.schema).select(self.schema.names)
+            if self.classic and "R_EG" in table.column_names:
+                table = table.drop(["R_EG"])
 
             table = self._format_date_column(table)
             table = offset_period_eom(table, self.frequency)
 
             table = scale_to_decimal(table)
 
-            renames = {"R_F": "RF", "R_MKT": "Mkt-RF"}
+            renames = {"R_F": "RF_Q", "R_MKT": "Mkt-RF"}
             table = table.rename_columns([renames.get(n, n) for n in table.column_names])
 
             return table.combine_chunks()

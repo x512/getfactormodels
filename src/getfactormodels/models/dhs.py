@@ -11,8 +11,8 @@ from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
-    select_table_columns,
     scale_to_decimal,
+    select_table_columns,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
 
@@ -83,6 +83,6 @@ class DHSFactors(FactorModel):
         # Wrap in FF Mkt-RF and RF
         _ff = FamaFrenchFactors(model='3', 
                                 frequency=self.frequency).load()
-        _ff = select_table_columns (_ff.data, ['Mkt-RF', 'RF'])
+        _ff = select_table_columns(_ff.data, ['Mkt-RF', 'RF'])
 
         return table.join(_ff, keys="date", join_type="inner").combine_chunks()

@@ -4,7 +4,6 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
-from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel

@@ -1,22 +1,10 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import re
-from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
@@ -49,16 +37,10 @@ class LiquidityFactors(FactorModel):
         the leading 65 values of TRADED_LIQ are NaNs.
     """
     @property
-    def _frequencies(self) -> list[str]: 
-        return ["m"]
-
-    def __init__(self, frequency: str = 'm', **kwargs: Any) -> None:
-        """Initialize the Liquidity Factors model."""
-        super().__init__(frequency=frequency, **kwargs)
+    def _frequencies(self) -> list[str]: return ["m"]
 
     @property
-    def _precision(self) -> int:
-        return 8
+    def _precision(self) -> int: return 8
 
     @property
     def schema(self) -> pa.Schema:

@@ -2,28 +2,30 @@
 name = "getfactormodels"
 version = "0.0.14"
 description = "Download datasets for various multifactor asset pricing models."
+license = "AGPL-3.0-or-later"
 authors = [
     { name = "S. Martin", email = "x512@pm.me" }
 ]
 exclude = ["**/*.ipynb"]
-license = "AGPL-3.0-or-later"
 readme = "README.md"
 keywords = ['finance', 'asset pricing', 'multifactor models', 'finance',
     'price models', 'financial analysis']
 classifiers = [
     "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Investment",
     "Topic :: Scientific/Engineering :: Mathematics",
-    "Topic :: Scientific/Engineering :: Information Analysis",
     "Intended Audience :: Financial and Insurance Industry",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3 :: Only",
     "Operating System :: OS Independent",
     "Development Status :: 2 - Pre-Alpha",
+    "Natural Language :: English",
 ]
-urls = { Homepage = "https://github.com/x512/getfactormodels" }
-
 requires-python = ">=3.10"
 
 dependencies = [
@@ -38,6 +40,7 @@ dependencies = [
 packages = [
     { include = "getfactormodels", from = "src" }
 ]
+
 [tool.poetry.group.dev.dependencies]
 ruff = "0.14.8"
 pytest-cov = ">=7.0.0"
@@ -46,6 +49,9 @@ isort = "^7.0"
 pytest-randomly = ">=4.0.1"
 tox = "4.32.0"
 
+[project.urls]
+Homepage = "https://github.com/x512/getfactormodels"
+Download = "https://pypi.org/project/getfactormodels/"
 [project.scripts]
 getfactormodels = "getfactormodels.main:main"
 

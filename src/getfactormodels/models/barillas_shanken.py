@@ -18,22 +18,11 @@ class BarillasShankenFactors(CompositeModel):
     Combines: Mkt-RF, SMB (FF), IA, ROE (Hou-Xue-Zhang), 
     and UMD, HML_Devil (AQR).
 
-    Args:
-        frequency (str): the frequency of the data. d, m. (default: m).
-        start_date (str, optional): start date, YYYY-MM-DD.
-        end_date (str, optional): end date, YYYY-MM-DD.
-        cache_ttl (int, optional): Cache time-to-live in seconds 
-            (default: 86400).
-
     References:
         F. Barillas and J. Shanken, 2018. Comparing Asset Pricing Models. 
         Journal of Finance, vol. 73, no. 2, pp. 715–754.
 
     """
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 86400, **kwargs): 
-        """Initialize the Barillas-Shanken 6-Factor model."""
-        super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
-
     def _construct(self, client: _HttpClient) -> pa.Table:
         ff = FamaFrenchFactors(model='3', frequency=self.frequency).load(client=client)
         q = QFactors(frequency=self.frequency).load(client=client)

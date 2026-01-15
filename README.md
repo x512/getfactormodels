@@ -61,7 +61,7 @@ getfactormodels --model ff5 --frequency m
 getfactormodels -m q -f w --start 2000 -x “R_IA”
 
 # Australia, Quality Minus Junk (daily) saved to file:
-getfactormodels -m qmj -f d --country aus --output aus_bab.ipc
+getfactormodels -m qmj -f d --region aus --output aus_bab.ipc
 ```
 
 **Example**
@@ -136,14 +136,18 @@ from getfactormodels import FamaFrenchFactors
 # Initialize model instance
 m = FamaFrenchFactors(model='3', frequency='m', 
 			region='developed', start_date='2020-01-01')
-
 m.end_date = '2020'
+
+# Download the data 
+m = m.load()
 
 # Access/download the Arrow Table:
 table = m.data
 
 # As a dataframe:
 df = m.to_polars() # Helper method, see also `.to_pandas()`
+
+
 ```
 
 - Some other examples:
@@ -151,13 +155,16 @@ df = m.to_polars() # Helper method, see also `.to_pandas()`
 from getfactormodels import Qfactors, BABFactors, QMJFactors
 
 # Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
-q = QFactors(classic=True, frequency='w').data
+q = QFactors(classic=True, frequency='w').load()
 
 # AQR Models for different countries:
-nor_qmj_table = QMJFactors(frequency='m', country='nor').data
+nor_qmj_table = QMJFactors(frequency='m', region='nor').load()
 
-# Japan Betting Against Beta, daily:
-bab_jpn_df = BABFactors(frequency='d', country='JPN', start='2000-02-20', end '2010').to_polars()
+# Extract the Japan Betting Against Beta daily 'BAB' factor:
+bab_jpn_df = BABFactors(frequency='d', region='JPN', 
+                        start='2000-02-20', end '2010').load().extract("BAB").to_polars()
+
+
 ```
 
 *A list of model classes available:*

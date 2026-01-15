@@ -1,19 +1,8 @@
-#!/usr/bin/env python3
-# getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU Affero General Public License as published
-# by the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU Affero General Public License for more details.
-#
-# You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -83,10 +72,10 @@ class FactorModel(ABC):
         return len(self.data)
 
     def __str__(self) -> str:
-        try:
-            table = self.data
-        except Exception:
+        if self.data is None:
             return self.__repr__()
+        
+        table = self.data
 
         if isinstance(self, RegionMixin):
             region_label = f" ({self.region})"
@@ -173,7 +162,7 @@ class FactorModel(ABC):
     def data(self) -> pa.Table:
         """Returns a pa.Table with requested data (sliced)."""
         if self._data is None:
-            self.load()
+            self.load()   # Don't know if good idea
             
         table = self._data
 
@@ -192,20 +181,14 @@ class FactorModel(ABC):
 
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
-        """Select specific factors from the model. Str or list[str].
-
-        Stateful: Sets the view to only these factors.
-        """
+        """Select specific factors from the model. Str or list[str]."""
         table = select_table_columns(self.load(), factor)
         self._selected_factors = [f for f in table.column_names if f != 'date']
         return self
 
 
     def drop(self, factor: str | list[str]) -> "FactorModel": #Self
-        """Remove specific factors from the model. Str or list[str].
-
-        Stateful: Removes these factors from the view.
-        """
+        """Remove specific factors from the model. Str or list[str]."""
         t_cols = self.load().column_names
         to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
 
@@ -223,7 +206,8 @@ class FactorModel(ABC):
         """Save data to a file.
 
         Supports .parquet, .ipc, .feather, .csv, .txt, .pkl, .md
-        Args
+        
+        Args:
             filepath (str | Path, optional): filepath to save data to.
         """
         target = filepath if filepath else self.output_file
@@ -244,7 +228,6 @@ class FactorModel(ABC):
     def to_pandas(self) -> "pd.DataFrame":
         """Convert model to a pandas DataFrame.
 
-        - Wrapper around Arrow's `to_pandas()`.
         - Triggers the download if not loaded.
         """
         try:
@@ -254,7 +237,7 @@ class FactorModel(ABC):
                 df = df.set_index("date")
             return df
         except ImportError:
-            raise ImportError("Requires Pandas. `pip install pandas`") from None
+            raise ImportError("Requires Pandas. Try `pip install pandas`") from None
 
 
     def to_polars(self) -> "pl.DataFrame":
@@ -267,7 +250,7 @@ class FactorModel(ABC):
             import polars as pl
             return pl.from_arrow(self.data)
         except ImportError:
-            raise ImportError("Requires Polars. `pip install polars`") from None
+            raise ImportError("Requires Polars. Try `pip install polars`") from None
     # maybe
     #def preview(self, n: int = 4):
     #    """Prints the formatted table preview."""
@@ -355,8 +338,7 @@ class FactorModel(ABC):
 
 
     @property
-    def _precision(self) -> int:
-        return 8
+    def _precision(self) -> int: return 8
 
     @property
     @abstractmethod
@@ -379,10 +361,85 @@ class FactorModel(ABC):
         pass
 
 
-# ---------------------------------------------------------------------
-# New: regional mixin (this unifies country/region, and removes the region 
-# property from AQR/FF models). Adds list_regions, a regions property, 
-# getter/setter. 
+class CompositeModel(FactorModel):
+    """Base for models constructed from other models."""
+    def __init__(self, frequency: str = 'm', *, drop_null: bool = True, **kwargs):
+        self.drop_null = drop_null
+        super().__init__(frequency=frequency, **kwargs)
+
+    @abstractmethod
+    def _construct(self, client: _HttpClient) -> pa.Table:
+        pass
+    
+    def _get_url(self) -> str:
+        raise NotImplementedError("CompositeModel: no remote source.")
+    
+    def _read(self, data: bytes) -> pa.Table:
+        raise NotImplementedError("CompositeModel: _read called on a composite models.")
+
+
+# NEW: multimodel pa.Table
+class ModelCollection(CompositeModel):
+    """A ModelCollection holds multiple models of the same frequencies."""
+    def __init__(self, model_keys: list[str], **kwargs):
+        self.model_keys = model_keys
+        #avoids circular import, keep here
+        from getfactormodels.main import get_factors
+        self.instances = [get_factors(m, **kwargs) for m in model_keys]
+        super().__init__(**kwargs)
+
+    @property
+    def _frequencies(self) -> list[str]:
+        # the intersection of frequencies btw models
+        freqs = set(self.instances[0]._frequencies)
+        for inst in self.instances[1:]:
+            freqs &= set(inst._frequencies)
+        return list(freqs)
+
+    @property
+    def schema(self) -> pa.Schema:
+        seen = {'date'}
+        fields = [pa.field('date', pa.date32())]
+        for inst in self.instances:
+            for field in inst.schema:
+                if field.name not in seen:
+                    fields.append(field)
+                    seen.add(field.name)
+        return pa.schema(fields)
+    
+
+    def _construct(self, client: _HttpClient) -> pa.Table:
+        tables = []
+        for inst in self.instances:
+            inst.load(client=client)
+            table = inst.data
+            table = table.set_column(0, "date", table.column("date").cast(pa.date32()))
+            tables.append(table)
+
+        # start with the first table
+        final_table = tables[0]
+        
+        for i, next_table in enumerate(tables[1:], 1):
+            # finding (probable) duplicate columns (not 'date') TODO: rename some factors...
+            overlaps = set(final_table.column_names) & set(next_table.column_names)
+            overlaps.discard('date')
+            
+            keep_cols = [c for c in next_table.column_names 
+                                  if c not in overlaps and c != 'date']
+
+            if keep_cols:
+                cols_to_join = ['date'] + keep_cols
+                table_to_join = next_table.select(cols_to_join)
+
+                final_table = final_table.join(
+                    table_to_join, 
+                    keys="date", 
+                    join_type="left outer"
+                )
+            
+        return final_table.sort_by([("date", "ascending")])
+
+
 class RegionMixin:
     """Mixin for models that support international regions/countries."""
     #TODO: map properly!
@@ -402,7 +459,6 @@ class RegionMixin:
         # Note: AQR's 'pacific' includes japan.
         #for VME
         'global_stocks': 'all_equities',
-        'macro': 'all_other',
     }
 
     @property
@@ -412,56 +468,46 @@ class RegionMixin:
 
     @property
     def region(self) -> str:
-        # default set to 'us' or 'usa' (depends whats in _region!)
-        if not hasattr(self, "_region"):
-            return 'us' if 'us' in self._regions else 'usa'
-        return self._region
+        if hasattr(self, "_region") and self._region is not None:
+            return self._region
+        if not self._regions:
+            return ""
+
+        # set default: usa, else first region if no usa in model's regions... 
+        if 'us' in self._regions:
+            return 'us'
+        if 'usa' in self._regions:
+            return 'usa'
+        return self._regions[0]
+            
     @region.setter
     def region(self, value: str | None):
-        val = str(value).strip().lower() if value else self.region
+        if value is None:
+            self._region = None 
+            return 
 
-        resolved = None
-        if val in self._regions:
-            resolved = val
-        elif self._aliases.get(val) in self._regions:
-            resolved = self._aliases.get(val)
-        if not resolved:
+        val = str(value).strip().lower()
+        resolved = val if val in self._regions else self._aliases.get(val)
+
+        if resolved not in self._regions:
             raise ValueError(f"Invalid region '{value}'. Supported: {self._regions}")
-        if hasattr(self, "_region") and resolved != self._region:
-            msg = f"Region changed to {resolved}. Cache reset."
-            # Mixin can use self.log:
-            #   the child class that mixed it in inherited it.
-            self.log.info(msg)
+
+        if hasattr(self, "_region") and self._region != resolved:
             self._data = None
-            #self._selected_factors = None # Reset selected factors when region changes?
+            msg = f"Region changed to {resolved}. Cache reset."
+
+            log = getattr(self, "log", None)  # for safety & type, but mixin should be able to self.log 
+            if log:
+                log.info(msg)
+            self._data = None
+
         self._region = resolved
 
     @classmethod
     def list_regions(cls) -> list[str]:
-        """List available regions."""
-        # List regions without instantiation
+        """List available regions without instantiation."""
         if isinstance(cls._regions, property):
-            # if a property on an uninstantiated class, reach into the fget
+            # reach into the fget of the property
             return cls._regions.fget(cls) 
         return cls._regions
 
-
-# NEW: CHILD CLASS FOR CONSTRUCTED MODELS
-class CompositeModel(FactorModel):
-    """Base for models constructed by joining multiple other FactorModels.
-
-    Ensures a single `_HttpClient` session is shared across all models 
-    used for construction.
-    """
-    def __init__(self, frequency: str = 'm', *, drop_null: bool = True, **kwargs):
-        self.drop_null = drop_null
-        super().__init__(frequency=frequency, **kwargs)
-
-    @abstractmethod
-    def _construct(self, client: _HttpClient) -> pa.Table:
-        pass
-    
-    def _get_url(self) -> str:
-        raise NotImplementedError("CompositeModel: no remote source.")
-    def _read(self, data: bytes) -> pa.Table:
-        raise NotImplementedError("CompositeModel: _read called on a composite models.")

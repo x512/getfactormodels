@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
@@ -19,9 +19,6 @@ import logging
 import sys
 import textwrap
 from importlib.metadata import PackageNotFoundError, version
-
-#from getfactormodels.models.aqr_models import _AQRModel
-#from getfactormodels.models.fama_french import FamaFrenchFactors
 
 
 def _get_version():
@@ -62,8 +59,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
 
     parser.add_argument('-m', '--model', 
-                        #'model',    # no dash, makes it positional. Still enforced in main (if model's missing, after eg, --list)
-                        nargs="?",   # makes it optional 
+                        nargs="+", # new: multiple models. 
                         metavar="MODEL", help="the model to use, e.g., 'ff3', 'q'."
                         " Accepts 3, 4, 5, 6 in place of ff3, carhart, ff5, ff6.")
 
