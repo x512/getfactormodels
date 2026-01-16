@@ -26,7 +26,7 @@ from getfactormodels.utils.utils import _generate_filename, _get_model_key
 
 log = logging.getLogger("getfactormodels")
 
-def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
+def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel: #Self
     """Get and process factor model data.
 
     This function initializes a specific FactorModel subclass based on the 
@@ -70,9 +70,14 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
         >>> df = model.to_polars()
     """
     if isinstance(model, list):
-        from getfactormodels.models.base import ModelCollection
-        return ModelCollection(model_keys=model, **kwargs)
-    region = kwargs.pop('region', None)
+        if len(model) == 1:
+            model = model[0] # TODO: str should be here.
+        else:
+            from getfactormodels.models.base import ModelCollection
+            return ModelCollection(model_keys=model, **kwargs)
+
+    # don't pop, so can check later, or let class handle it.
+    region = kwargs.get('region', 'usa')
     model_key = _get_model_key(model)
 
     model_class_map = {
@@ -91,15 +96,15 @@ def get_factors(model: str | int = 3, **kwargs) -> FactorModel: #Self
     if not factor_class:
         raise ValueError(f"Model '{model}' not recognized.")
 
-    if model_key in ("3", "5", "6"):
-        kwargs["model"] = model_key
-    
-    if model_key == "Qclassic":
-        kwargs["classic"] = True
+    # ff and q handle these now...
+    #if model_key in ("3", "5", "6"):
+    #    kwargs["model"] = model_key
+    #if model_key == "Qclassic":
+    #    kwargs["classic"] = True
 
-    if issubclass(factor_class, RegionMixin):
-        kwargs['region'] = region
-    elif region:
+    
+    if 'region' in kwargs and not issubclass(factor_class, RegionMixin):
+        kwargs.pop('region')
         log.warning(f"  '{class_name}' does not support regions. Ignoring: region '{region}'")
     
     return factor_class(**kwargs)

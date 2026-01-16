@@ -382,11 +382,20 @@ class CompositeModel(FactorModel):
 class ModelCollection(CompositeModel):
     """A ModelCollection holds multiple models of the same frequencies."""
     def __init__(self, model_keys: list[str], **kwargs):
-        self.model_keys = model_keys
-        #avoids circular import, keep here
         from getfactormodels.main import get_factors
+
+        self.model_keys = model_keys
         self.instances = [get_factors(m, **kwargs) for m in model_keys]
         super().__init__(**kwargs)
+
+    def __str__(self) -> str:
+        if self._data is None:
+            return self.__repr__()
+
+        models_list = ", ".join(f"'{k}'" for k in self.model_keys)
+        header = f"{self.__class__.__name__} (models: {models_list})\n"
+        return header + print_table_preview(self.data)
+
 
     @property
     def _frequencies(self) -> list[str]:
@@ -483,31 +492,28 @@ class RegionMixin:
     @region.setter
     def region(self, value: str | None):
         if value is None:
-            self._region = None 
-            return 
+            self._region = None
+            return
 
         val = str(value).strip().lower()
-        resolved = val if val in self._regions else self._aliases.get(val)
-
+        # Try a direct match, then alias, else keep (to fail)
+        resolved = val if val in self._regions else self._aliases.get(val, val)
+        
         if resolved not in self._regions:
-            raise ValueError(f"Invalid region '{value}'. Supported: {self._regions}")
+            raise ValueError(f"Region '{value}' not supported for {self.__class__.__name__}. "
+                             f"Available: {self._regions}")
 
-        if hasattr(self, "_region") and self._region != resolved:
+        # Change detection
+        current = getattr(self, "_region", None)
+        if current is not None and current != resolved:
             self._data = None
-            msg = f"Region changed to {resolved}. Cache reset."
-
-            log = getattr(self, "log", None)  # for safety & type, but mixin should be able to self.log 
-            if log:
-                log.info(msg)
-            self._data = None
+            if hasattr(self, "log"):
+                self.log.info(f"Region changed to {resolved}. Cache reset.")
 
         self._region = resolved
-
+    
     @classmethod
     def list_regions(cls) -> list[str]:
-        """List available regions without instantiation."""
-        if isinstance(cls._regions, property):
-            # reach into the fget of the property
-            return cls._regions.fget(cls) 
+        """Returns the list of supported regions."""
         return cls._regions
 
