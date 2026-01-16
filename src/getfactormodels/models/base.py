@@ -4,7 +4,7 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod 
 from pathlib import Path
 from typing import Any
 import pyarrow as pa
@@ -378,7 +378,6 @@ class CompositeModel(FactorModel):
         raise NotImplementedError("CompositeModel: _read called on a composite models.")
 
 
-# NEW: multimodel pa.Table
 class ModelCollection(CompositeModel):
     """A ModelCollection holds multiple models of the same frequencies."""
     def __init__(self, model_keys: list[str], **kwargs):
@@ -386,16 +385,28 @@ class ModelCollection(CompositeModel):
 
         self.model_keys = model_keys
         self.instances = [get_factors(m, **kwargs) for m in model_keys]
+
+        regional_insts = [i for i in self.instances if isinstance(i, RegionMixin)]
+        
+        if regional_insts and len(regional_inst) < len(self.instances):
+            req_region = kwargs.get('region')
+            if req_region and req_region.lower() not in ['us', 'usa']: #allow USA through, as all models are US models. 
+                raise ValueError("Cannot combine regional models with non-regional models for non-US regions.")
         super().__init__(**kwargs)
+
 
     def __str__(self) -> str:
         if self._data is None:
             return self.__repr__()
 
-        models_list = ", ".join(f"'{k}'" for k in self.model_keys)
-        header = f"{self.__class__.__name__} (models: {models_list})\n"
-        return header + print_table_preview(self.data)
+        region_label = ""
+        regional_inst = next((i for i in self.instances if isinstance(i, RegionMixin)), None)
+        if regional_inst:
+            region_label = f" ({regional_inst.region})"
 
+        models_str = ", ".join(f"'{k}'" for k in self.model_keys)
+        header = f"{self.__class__.__name__}: {models_str} {region_label}\n"
+        return header + print_table_preview(self.data)
 
     @property
     def _frequencies(self) -> list[str]:
@@ -468,6 +479,9 @@ class RegionMixin:
         # Note: AQR's 'pacific' includes japan.
         #for VME
         'global_stocks': 'all_equities',
+        
+        # Aus
+        'australia': 'aus', 'au': 'aus',
     }
 
     @property
@@ -503,7 +517,6 @@ class RegionMixin:
             raise ValueError(f"Region '{value}' not supported for {self.__class__.__name__}. "
                              f"Available: {self._regions}")
 
-        # Change detection
         current = getattr(self, "_region", None)
         if current is not None and current != resolved:
             self._data = None
@@ -514,6 +527,9 @@ class RegionMixin:
     
     @classmethod
     def list_regions(cls) -> list[str]:
-        """Returns the list of supported regions."""
+        """List available regions without instantiation."""
+        if isinstance(cls._regions, property):
+            # reach into the fget of the property
+            return cls._regions.fget(cls) 
         return cls._regions
 

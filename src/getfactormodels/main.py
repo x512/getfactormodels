@@ -71,7 +71,7 @@ def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel
     """
     if isinstance(model, list):
         if len(model) == 1:
-            model = model[0] # TODO: str should be here.
+            model = model[0]  # Extract single item from list
         else:
             from getfactormodels.models.base import ModelCollection
             return ModelCollection(model_keys=model, **kwargs)
@@ -96,15 +96,16 @@ def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel
     if not factor_class:
         raise ValueError(f"Model '{model}' not recognized.")
 
-    # ff and q handle these now...
     #if model_key in ("3", "5", "6"):
     #    kwargs["model"] = model_key
+    
     #if model_key == "Qclassic":
     #    kwargs["classic"] = True
 
     
-    if 'region' in kwargs and not issubclass(factor_class, RegionMixin):
-        kwargs.pop('region')
+    if issubclass(factor_class, RegionMixin):
+        kwargs['region'] = region
+    elif region:
         log.warning(f"  '{class_name}' does not support regions. Ignoring: region '{region}'")
     
     return factor_class(**kwargs)
