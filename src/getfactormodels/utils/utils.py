@@ -12,6 +12,7 @@ from types import MappingProxyType
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
+from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
 log = logging.getLogger(__name__) #TODO: consistent logging.
@@ -192,54 +193,43 @@ def _stream_table_to_md(table: pa.Table, precision: int = 4):
                     raise OSError(f"{msg}: {e}")
 
 
-def read_from_fred(series: str | list[str] | dict[str, str], 
-                   frequency: str = 'a', 
-                   aggregate: str = 'avg', 
-                   client=None) -> pa.Table:
+def read_from_fred(series_map: dict, frequency: str, client) -> pa.Table:
     """Internal utility to download and align FRED time-series data into a pa.Table.
 
-    Simple helper. Each series is downloaded and aligned on the col 'date'. Date is 
-    cast to Date32. Not for the public API.
-
-    If models require data from FRED, re-use the client!
-
     Args:
-        series: can be a single series ID ('GDP'), list of series ID's, or a 
-                dict to rename cols ({'A033RC1A027NBEA': 'income'}).
-        frequency: fred standard codes for frequency (y, q, m). Accepts 'y' as 'a'.
+        series: dict of series_id, col renames
+        frequency: fred standard codes for frequency (y, q, m).
         client: Optional _HttpClient. If None, manages its own lifecycle.
 
     """
-    _freq = {'y': 'a', 'a': 'a', 'q': 'q', 'm': 'm'}
-    fred_freq = _freq.get(frequency.lower(), frequency)
-
-    if isinstance(series, str):
-        mapping = {series: series}
-    elif isinstance(series, list):
-        mapping = {s: s for s in series}
-    else:
-        mapping = series
+    freq_map = {'y': 'Annual', 'm': 'Monthly', 'q': 'Quarterly'}
+    fred_freq = freq_map.get(frequency[0], 'Monthly')
     
-    internal_client = client if client else _HttpClient()
+    _client = client if client else _HttpClient()
     
     try:
         tables = []
-        for s_id, col_name in mapping.items():
-            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s_id}&fq={fred_freq}&agg={aggregate}"
-            data = internal_client.download(url)
+        for s_id, col_name in series_map.items():
+            url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s_id}&fq={fred_freq}" #agg not needed yet
+            data = _client.download(url)
             
             t = pv.read_csv(BytesIO(data))
             t = t.rename_columns(["date", col_name])
             
-            schema = t.schema.set(0, pa.field("date", pa.date32()))
-            tables.append(t.cast(schema))
-       
+            t = t.cast(pa.schema([
+                ('date', pa.date32()),
+                (col_name, pa.float64()),
+            ]))
+            tables.append(t)
+
         result = tables[0]
         for next_table in tables[1:]:
             result = result.join(next_table, keys="date")
-            
-        return result.sort_by([("date", "ascending")])
+        
+        t = result.sort_by([("date", "ascending")])
+        return offset_period_eom(t, frequency)
 
     finally:
         if client is None:
-            internal_client.close()
+            _client.close()
+
