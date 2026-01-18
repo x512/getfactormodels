@@ -387,9 +387,9 @@ class ModelCollection(CompositeModel):
         self.model_keys = model_keys
         self.instances = [get_factors(m, **kwargs) for m in model_keys]
 
-        regional_insts = [i for i in self.instances if isinstance(i, RegionMixin)]
+        regional_inst = [i for i in self.instances if isinstance(i, RegionMixin)]
         
-        if regional_insts and len(regional_inst) < len(self.instances):
+        if regional_inst and len(regional_inst) < len(self.instances):
             req_region = kwargs.get('region')
             if req_region and req_region.lower() not in ['us', 'usa']: #allow USA through, as all models are US models. 
                 raise ValueError("Cannot combine regional models with non-regional models for non-US regions.")
