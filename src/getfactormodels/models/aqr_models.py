@@ -48,7 +48,7 @@ class _AQRModel(FactorModel, RegionMixin):
     
     @property
     def _precision(self) -> int: return 8
-
+    
     @property
     def _regions(self) -> list[str]:
         """List of supported AQR countries/regions."""
@@ -271,6 +271,10 @@ class AQR6Factors(CompositeModel, RegionMixin):
         Frazzini, Kabiller & Pedersen (2018). Buffett’s Alpha. 
         Financial Analysts Journal, 74:4, 35-55.
     """
+    def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
+        super().__init__(frequency=frequency, **kwargs)
+        self.region = region 
+
     @property
     def _regions(self) -> list[str]: return _AQR_REGIONS
 

@@ -4,7 +4,7 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
-from abc import ABC, abstractmethod 
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
 import pyarrow as pa
@@ -28,6 +28,7 @@ from getfactormodels.utils.utils import _save_to_file
   caching, and date-filtering logic implemented by all factor models.
 - RegionMixin: A mixin for models supporting international data.
 - CompositeModel: base class for models built from other models.
+- ModelCollection: for returning multiple models in a combined table.
 """
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class FactorModel(ABC):
         if self.data is None:
             return self.__repr__()
         
-        table = self.data
+       # table = self.data
 
         if isinstance(self, RegionMixin):
             region_label = f" ({self.region})"
@@ -83,7 +84,7 @@ class FactorModel(ABC):
             region_label = ""
 
         header = f"{self.__class__.__name__}{region_label}\n"
-        return header + print_table_preview(table)
+        return header + print_table_preview(self.data)
 
     def __repr__(self) -> str:
         params = []

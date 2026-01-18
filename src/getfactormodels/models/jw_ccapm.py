@@ -88,6 +88,7 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
         """
         # Per Capita Labor Income (L)
         l_pc = pc.divide(table.column("income"), table.column("pop"))
+        #l_pc = pc.multiply(..., 1000)
         
         # Credit spread/default risk (Baa - Aaa), pct to decimal here
         spread = pc.divide(pc.subtract(table.column("baa"), table.column("aaa")), 100.0)

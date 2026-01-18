@@ -88,6 +88,7 @@ def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel
         "Qclassic": "QFactors",
         "HCAPM": "HCAPM",
         "ConditionalCAPM": "ConditionalCAPM",
+        "SimpleCAPM": "SimpleCAPM",
     }
 
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
