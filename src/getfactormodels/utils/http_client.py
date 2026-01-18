@@ -56,6 +56,7 @@ class _HttpClient:
 
     def __enter__(self):
         if self._client is None:
+
             ssl_context = ssl.create_default_context(cafile=certifi.where())
             self._client = httpx.Client(
                 verify=ssl_context,
@@ -90,24 +91,34 @@ class _HttpClient:
         return hashlib.sha256(url.encode('utf-8')).hexdigest()
 
 
-    def download(self, url: str, cache_ttl: int | None = None) -> bytes:
-        """Uses the HTTP Client to download content from a URL.
-
-        Args:
-            url (str):
-            cache_ttl (int): cache ttl in seconds.
-        """
-        if self._client is None:
-            raise ClientNotOpenError(
-                "HttpClient is not open. It must be used within a 'with HttpClient(...) as client:' block.",
-            )
-
-        
+    def download(self, url: str, model_name: str = "Data", cache_ttl: int | None = None) -> bytes:
+        """Downloads content, automatically choosing between standard GET and streaming with progress."""
         key, data, expired = self._check_for_update(url)
-        if not expired: return data
+        if not expired:
+            return data
 
-        resp = self._client.get(url)
-        resp.raise_for_status()
+        if self._client is None:
+            raise ClientNotOpenError("HttpClient is not open. Use within a 'with' block.")
+
+        #try:
+        # stream request here to get headers without downloading body yet
+        with self._client.stream("GET", url) as resp:
+            resp.raise_for_status()
+            
+            total = int(resp.headers.get("Content-Length", 0))
+            # progress bar if over 1MB
+            if total > 1_048_576:
+                log.debug(f"File size: {total} bytes. Streaming...")
+                new_data = self._progress_bar(resp, model_name)
+            else:
+                # Small file: just read it directly from the existing stream
+                new_data = resp.read()
+
+        #except httpx.HTTPStatusError as e:
+        #    raise NetworkError(f"Server returned {e.response.status_code} for {url}") from e
+        #except httpx.RequestError as e:
+        #    raise NetworkError(f"Connection failed for {url}") from e
+
         ttl = cache_ttl or self.default_cache_ttl
         meta = {
             "etag": resp.headers.get("ETag"),
@@ -115,9 +126,8 @@ class _HttpClient:
             "expires_at": time.time() + ttl,
         }
         
-        self.cache.set(key, resp.content, metadata=meta)
-        return resp.content
-
+        self.cache.set(key, new_data, metadata=meta)
+        return new_data
 
     def stream(self, url: str, cache_ttl: int, model_name="Model") -> bytes:
         """Wrapper around Httpx's stream.
