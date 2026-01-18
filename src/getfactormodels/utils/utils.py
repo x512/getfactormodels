@@ -36,7 +36,7 @@ _MODEL_ALIASES = {
     "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
     "VME": ["vme", "valmom", "valueandmomentumeverywhere"],
     "AQR6": ["aqr6", "aqr", "aqrfactors"],
-    "HCAPM": ["hccapm", 'hcapm', 'hc-capm'],
+    "HighIncomeCCAPM": ["hccapm", 'hcapm', 'hc-capm'],
     "ConditionalCAPM": ["jwcapm", "plcapm", "jwccapm", "plccapm", "ccapm"],
 }
 

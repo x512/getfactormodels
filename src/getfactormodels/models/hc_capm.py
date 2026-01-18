@@ -8,7 +8,7 @@ from getfactormodels.utils.arrow_utils import select_table_columns
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
-class HCAPM(FactorModel):
+class HighIncomeCCAPM(FactorModel):
     """Human Capital CAPM (HCAPM), Campbell & Korniotis (2007).
 
     An implementation of the Human Capital CCAPM (HCAPM), "using the income 

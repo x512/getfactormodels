@@ -25,7 +25,7 @@ from .barillas_shanken import BarillasShankenFactors
 from .carhart import CarhartFactors
 from .dhs import DHSFactors
 from .fama_french import FamaFrenchFactors
-from .hc_capm import HCAPM
+from .hc_capm import HighIncomeCCAPM
 from .icr import ICRFactors
 from .jw_ccapm import ConditionalCAPM
 from .liquidity import LiquidityFactors
