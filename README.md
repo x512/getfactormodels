@@ -62,6 +62,9 @@ getfactormodels -m q -f w --start 2000 -x “R_IA”
 
 # Australia, Quality Minus Junk (daily) saved to file:
 getfactormodels -m qmj -f d --region aus --output aus_bab.ipc
+
+# Get multiple models in one table, e.g., ff3 + liquidity factors:
+getfactormodel -m ff3 liq
 ```
 
 **Example**
@@ -291,9 +294,7 @@ contains the shortest identifier for each model. These should all work in python
 - Documentation
 - Example notebook
 - better error handling
-- HML Devil: progress bar on download, smarter caching.
 - this README
 - metadata on model (copyright, construction, factors)
-- Drop pandas
 - Refactor of FF models
 
