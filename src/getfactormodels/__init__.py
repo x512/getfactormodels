@@ -42,7 +42,7 @@ logger.addHandler(logging.NullHandler())
 # see: https://docs.python.org/3/howto/logging-cookbook.html#logging-to-multiple-destinations
 # or use warnings??
 
-__version__ = "0.0.16"
+__version__ = "0.0.18"
 __all__ = [ 
     "get_factors",
     "BABFactors",
