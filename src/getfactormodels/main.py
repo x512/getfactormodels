@@ -96,11 +96,11 @@ def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel
     if not factor_class:
         raise ValueError(f"Model '{model}' not recognized.")
 
-    #if model_key in ("3", "5", "6"):
-    #    kwargs["model"] = model_key
+    if model_key in ("3", "5", "6"):
+        kwargs["model"] = model_key
     
-    #if model_key == "Qclassic":
-    #    kwargs["classic"] = True
+    if model_key == "Qclassic":
+        kwargs["classic"] = True
 
     
     if issubclass(factor_class, RegionMixin):
@@ -123,10 +123,6 @@ def main():
         print("Error: The -m/--model argument is required.", file=sys.stderr)
         sys.exit(1)
 
-    if args.frequency == 'w2w' and args.model.lower() not in {'q', 'qclassic'}:
-        print(f"ERROR: 'w2w' frequency is not supported by '{args.model}'.", file=sys.stderr)
-        sys.exit(1)
-    
     try:
         model_obj = get_factors(
             model=args.model,

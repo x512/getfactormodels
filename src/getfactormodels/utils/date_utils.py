@@ -15,60 +15,52 @@ import pyarrow.compute as pc
 log = logging.getLogger(__name__)
 
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
-    """Private helper to offset a pa.Table's col 0 to EOM. No-op for below monthly."""
+    """Utility to offset a pa.Table's date column to the last day of its period."""
     if table.num_columns == 0:
-        raise ValueError("Table has no columns.")
+        return table
+        
+    orig_name = table.column_names[0]
+    freq = frequency.lower()
 
-    first_col = table.column(0).cast(pa.string())
+    # remove non digits 
+    raw = pc.replace_substring_regex(table.column(0).cast(pa.string()), r"\D", "")
+    lengths = pc.utf8_length(raw)
 
-    # fix(hmld, type): trims everything after yyyy-mm-dd (10 chars).
-    # HML_Devil is the only model that needs/needed this.
-    d_str = pc.utf8_slice_codeunits(first_col.cast(pa.string()), 
-                                    start=0, stop=10)
-
-    clean = pc.replace_substring_regex(d_str, pattern=r"(\.0$|[-/ ])", replacement="")
-
-    lengths = pc.utf8_length(clean)
-    #is_year = pc.equal(lengths, 4)   # YYYY
-    #is_month = pc.equal(lengths, 6)  # YYYYMM
-
-    # use pc.if_else to build a YYYYMMDD string
-    # chain logic: year adds '1231', month adds '01'
-    date_str = pc.if_else(
-        pc.equal(lengths, 4),
-        pc.binary_join_element_wise(clean, pa.scalar("1231"), ""),
-        pc.if_else(
-            pc.equal(lengths, 6),
-            pc.binary_join_element_wise(clean, pa.scalar("01"), ""),
-            clean,
-        ),
+    # Constructs a valid date str. If 8 chars, keep. If 4 or 6 append 0101 or 01. 
+    clean = pc.case_when(
+        pc.make_struct(pc.equal(lengths, 8), pc.equal(lengths, 6), pc.equal(lengths, 4)),
+        raw,                                                    # 8
+        pc.binary_join_element_wise(raw, pa.scalar("01"), ""),  # 6
+        pc.binary_join_element_wise(raw, pa.scalar("0101"), ""), # 4
     )
-    dates = pc.strptime(date_str, format="%Y%m%d", unit="s")
+    dates = pc.strptime(clean, format="%Y%m%d", unit="s")
 
-    if frequency in ['m', 'q']:
-        _next_mth = pc.ceil_temporal(dates, 1, unit='month')
-        _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
-        eom_dates = pc.subtract(_next_mth, _one_day_ms)
+    if freq in ['m', 'q', 'y']:
+        # Map the frequency to ceil_temporal's unit. 
+        unit_map = {'m': 'month', 'q': 'quarter', 'y': 'year'}
+        unit = unit_map[freq]
 
-    elif frequency == 'y': #fix: if freq = year with dates
-        _next_year = pc.ceil_temporal(dates, 1, unit='year')
-        _one_day_ms = pa.scalar(86400000, type=pa.duration('ms'))
-        eom_dates = pc.subtract(_next_year, _one_day_ms)
-    else:
-        eom_dates = dates
+        # Add a day to make sure we're strictly inside the period.
+        _one_day = pa.scalar(86400000, type=pa.duration('ms'))
+        extra_day = pc.add(dates, _one_day)
 
-    return table.set_column(0, table.column_names[0], eom_dates.cast(pa.date32()))
+        # From the start of the next period, subtract one day to get EOM/Q/Y
+        next_period_start = pc.ceil_temporal(extra_day, unit=unit)
+        final_dates = pc.subtract(next_period_start, _one_day)
+    else: # 'd' or unknown, just return the parsed dates.
+        final_dates = dates
+
+    return table.set_column(0, orig_name, final_dates.cast(pa.date32()))
 
 
+# ALL retreived quarterly dates: Q factors, ABS, ICR, fred
 def parse_quarterly_dates(table: pa.Table) -> pa.Table:
-    """Internal: converts quarterly dates in source data to iso date str.
+    """Converts quarterly dates to a datetime str.
 
     Converts 1 column, "yyyyq", or two columns, "year" and "period" to a single 
     'date' column, of iso datestr yyyy-mm-dd, set to the end of the period.
 
-    Note:
-    - Used by ICRFactors() and QFactors(). Functions removed and combined
-      here, needs rework.
+    - Used by ICRFactors() and QFactors().
     """
     if table.num_rows == 0:
         return table
@@ -95,6 +87,7 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
         return table.add_column(0, "date", date_col).combine_chunks()
     except pa.ArrowInvalid as e:
         raise ValueError(f"Failed to parse quarterly dates: {e}")
+
 
 def validate_date_range(start: str | None, end: str | None) -> tuple[str | None, str | None]:
     """Validates start and end date range. Sets end to today if in the future.
@@ -130,19 +123,16 @@ def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None
         return None
 
     raw_str = str(date_input).strip()
-    
-    # Standardize dashed inputs without assuming a day exists
+
     if '-' in raw_str:
         parts = raw_str.split('-')
         year = parts[0]
-        month = parts[1].zfill(2)
+        month = parts[1].zfill(2) # don't assume a day exists
         
         if len(parts) >= 3:
-            # Full YYYY-MM-DD
             day = parts[2].zfill(2)
             raw_str = f"{year}-{month}-{day}"
         else:
-            # Short YYYY-MM (subscript safe)
             raw_str = f"{year}-{month}"
 
     clean_str = re.sub(r'\D', '', raw_str) 

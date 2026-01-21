@@ -8,10 +8,12 @@ import zipfile
 from typing import Any
 import pyarrow as pa
 import pyarrow.csv as pv
+import pyarrow.compute as pc
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
+    print_table_preview,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
 
@@ -251,3 +253,146 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         table = round_to_precision(table, self._precision)
 
         return table.select(self.schema.names).combine_chunks()
+
+
+
+# Idea, testing something
+#----------------------------------------------------------------------------
+class FFIndustryPortfolios(FactorModel):  #usa only, no RegionMixin.
+    _INDUSTRY_PORTFOLIO_SIZES = {5, 10, 12, 17, 30, 38, 48, 49} #TODO
+    #TODO: maybe FactorModel to BaseModel or something if Portfolios are using it.
+    def __init__(self, 
+                 n_portfolios: int = 5, 
+                 frequency: str = 'm',
+                 weights: str = 'vw',
+                 *,
+                 dividends: bool = True,
+                 **kwargs: Any) -> None:
+        self.n_portfolios = n_portfolios
+        self.dividends = dividends
+        self.weights = weights
+        
+        super().__init__(frequency=frequency, **kwargs)
+    # Validate portfolio size TODO 
+    # TODO:__str__
+        
+    @property
+    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
+    
+    @property 
+    def _precision(self) -> int: return 6
+
+    @property 
+    def _regions(self) -> list[str]: return ['us']
+
+    def _get_url(self) -> str:
+        """Get a specific industry portfolio URL."""
+        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        
+        if self.frequency == 'd':
+            suffix = "daily_CSV.zip"
+        elif not self.dividends:
+            suffix = "Wout_Div_CSV.zip"
+        else:
+            suffix = "CSV.zip"
+
+        filename = f"{self.n_portfolios}_Industry_Portfolios_{suffix}"
+        return f"{base_url}/{filename}"
+
+    @property
+    def schema(self, column_names: list[str]) -> pa.Schema:
+        """Fama-French industry portfolio schema. Uses extracted headers."""
+        fields = []
+        for name in column_names:
+            if name.lower() == 'date':  #note this is applied after rename
+                fields.append(pa.field("date", pa.int32()))
+            else:
+                fields.append(pa.field(name, pa.float64()))
+                
+        return pa.schema(fields)
+
+    
+    def _prepare_file(self, lines: list[str]) -> str:
+        """Select correct table and clean whitespace for CSV parsing."""
+        w_str = "Value Weighted" if self.weights == 'vw' else "Equal Weighted"
+        
+        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly'}
+        freq_str = freq_map.get(self.frequency, "Monthly")
+        
+        start_line = f"Average {w_str} Returns -- {freq_str}"
+        
+        # Find start line 
+        idx = next((i for i, ln in enumerate(lines) if start_line in ln), None)
+        if idx is None:
+            raise ValueError(f"Could not find section: {start_line}")
+        
+        cleaned = []
+
+        # Extract the headers as lowercase: 'date' + [industries] 
+        headers = ("date " + " ".join(lines[idx + 1].split())).lower().replace("-", "_")
+        cleaned.append(headers)
+
+        # data begins 2 lines after the headers
+        for line in lines[idx + 2:]:
+            clean = line.strip()
+            
+            # stop on a blank or non-numeric line
+            if not clean or not clean[0].isdigit():
+                break
+                
+            # 2 spaces for the CSV parser
+            cleaned.append("  ".join(clean.split()))
+        return "\n".join(cleaned)
+
+
+    # TODO: Implement in factor class
+    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
+        """Helper to transform Fama-French values representing NaNs to nulls.
+
+        Converts -99.99, -999 values to null.
+        """
+        # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
+        #   As unlikely as it may be, there are >1.0 values (e.g., Insurance industry,
+        #   annual, 1927), so this could convert a legitmate 0.9999 to null.
+        ff_nans = [-99.99, -999.0, -0.9999, -9.99, -99.9]
+        
+        for i, name in enumerate(table.column_names):
+            if name.lower() == "date": continue
+            col = table.column(name)
+            
+            # Create a boolean mask which yields True if ff_nans is_in a col of floats.
+            mask = pc.is_in(col, value_set=pa.array(ff_nans, type=pa.float64()))
+            
+            # replace matches with a true null (NaN).
+            _null = pa.scalar(None, type=col.type)
+            new_col = pc.if_else(mask, _null, col)
+            
+            table = table.set_column(i, name, new_col)
+            
+        return table
+
+
+    def _read(self, data: bytes) -> pa.Table:
+        with zipfile.ZipFile(io.BytesIO(data)) as z:  #noqa
+            with z.open(z.namelist()[0]) as f:
+                lines = f.read().decode('utf-8').splitlines()
+
+        clean_csv = self._prepare_file(lines)
+
+        table = pv.read_csv(
+            io.BytesIO(clean_csv.encode('utf-8')),
+            parse_options=pv.ParseOptions(),
+            convert_options=pv.ConvertOptions(
+                null_values=["-99.99", "-999", "-0.9999"],
+                column_types={"date": pa.string()}, # str for offset 
+            )
+        )
+        ## FIXME: temp fix. 
+        table = self._fix_ff_nulls(table)
+        
+        table = offset_period_eom(table, self.frequency)
+        table = scale_to_decimal(table)
+        # NOTE: don't round_to_precision on portfolios
+        return table.combine_chunks()
+
+## TODO: LT_rev, ST_rev...

@@ -46,6 +46,7 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
             ('PREM', pa.float64()),
         ])
 
+
     def _construct(self, client) -> pa.Table:
         m_series = {
             "POPTHM": "pop",        # Total Population
@@ -65,9 +66,10 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
 
 
     def _resample(self, table: pa.Table) -> pa.Table:
-        """Downsample monthly to Q or Y by taking the last available month."""
+        """Downsample monthly data to Q or Y using the EOP values."""
         if self.frequency == 'm':
             return table
+
         months = pc.month(table.column("date"))
 
         if self.frequency == 'q':
@@ -88,7 +90,7 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
         """
         # Per Capita Labor Income (L)
         l_pc = pc.divide(table.column("income"), table.column("pop"))
-        #l_pc = pc.multiply(..., 1000)
+        l_pc = pc.multiply(l_pc, 1000.0)
         
         # Credit spread/default risk (Baa - Aaa), pct to decimal here
         spread = pc.divide(pc.subtract(table.column("baa"), table.column("aaa")), 100.0)
@@ -99,13 +101,12 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
         if n_final <= 0:
             raise ValueError("Insufficient data to calculate lags.")
 
-        # Calculate R_LBR:
-        # slice for the formula
+        # Calculate R_LBR: slice for the formula
         l_tm1 = l_pc.slice(2, n_final)
         l_tm2 = l_pc.slice(1, n_final)
         l_tm3 = l_pc.slice(0, n_final)
 
-        # calc: (l_tm1 + l_tm2) / (l_tm2 + l_tm3) - 1
+        # (l_tm1 + l_tm2) / (l_tm2 + l_tm3) - 1
         r_lbr = pc.subtract(pc.divide(pc.add(l_tm1, l_tm2), pc.add(l_tm2, l_tm3)), 1.0)
 
         # PREM is the spread at t-1. Return period t at index 3, t-1 is index 2
@@ -118,3 +119,12 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
             names=["date", "LBR", "PREM"],
         )
 
+
+
+### TESTS:
+# The calc. Assert to known answer(s) 
+# JW freqs: m, q, y last m q4 == 12 == q4 value == yearly value 
+# Test not enough data, error  (not enough data returned and range too small, same err) 
+# Err: FRED 429 
+# docstr test the actual calc 
+# 
