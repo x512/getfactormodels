@@ -5,7 +5,7 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import zipfile
-from typing import Any
+from typing_extensions import override
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
@@ -16,7 +16,7 @@ from getfactormodels.utils.arrow_utils import (
     scale_to_decimal,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
-
+from abc import ABC, abstractmethod
 
 #TODO: break up _read_zip
 class FamaFrenchFactors(FactorModel, RegionMixin):
@@ -67,7 +67,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  frequency: str = 'm', 
                  model: int | str = '3', 
                  region: str | None = 'us', 
-                 **kwargs: Any) -> None:
+                 **kwargs) -> None:
         """Initialize a Fama-French factor model."""
         self.model = str(model)
         super().__init__(frequency=frequency, model=model, **kwargs)
@@ -261,41 +261,113 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
 # Rough implementation of Fama-French portfolio returns. Lots of redundancies
 # btw Industry portfolios and these. Need TODO: FactorModel to BaseModel. Just... 
 # it works right now.
-class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactoring...
-    # This will handle Univariate, Bivariate and 3-Way sorts, and possibly Industry Portfolios. 
-    # Univariate only at the moment. Not ready for CLI until bivariate/3-way added, and 
-    # CLI gonna need a refactor, eg: getfactormodels [[--]model], getfactormodels portfolios
-    @property
-    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
 
+class _FFPortfolioBase(FactorModel, ABC):
+    """A base class for Fama French portfolio return data."""
     @property
     def _precision(self) -> int: return 6
 
+    @abstractmethod
+    def _get_ff_table(self, lines: list[str]) -> str:
+        """Abstract method to select and clean portfolio files"""
+        ...
+
     def __init__(self,
-            frequency: str = 'm',
-            formed_on: str | list[str] | set | tuple = 'size', # using FF terminology. Uni only for now. Bivariate: set/tuple/list[str]
-            weights: str = 'vw',
-            sort: str | int | None = None,  # Default None to assign if none provided
-            *,
-            dividends: bool = True,
-            **kwargs) -> None:
-        """Download Fama-French portfolio return data.
-
-        Univariate only. WIP.
-
-        Args:
-            frequency: 'm', 'y', 'd'
-            formed_on: 'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp',
-                'mom', 'st_rev', 'lt_rev', 'ac', 'beta', 'net_shares',
-                'var', 'resvar',
-            weights: 'vw', 'ew' for value weighted or equal weighted.
-            sort (str | int): 'decile', 'quintile', 'tertile', 10, 5, 3.
-            dividends (bool): if False returns the ex-divs data, if available.
-                Default: True.
-
-        """
-        # TODO: docstr, help.
+                 frequency: str = 'm',
+                 weights: str = 'vw',
+                 *,
+                 dividends: bool = True,
+                 **kwargs) -> None:
         super().__init__(frequency=frequency, **kwargs)
+
+        self.dividends = dividends
+        self.weights = weights.lower()
+
+        if self.weights not in ('vw', 'ew'):
+            raise ValueError(
+                f"`weights` must be 'vw' or 'ew', got '{self.weights}'"
+            )
+
+    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
+        """Helper to transform Fama-French values representing NaNs to nulls.
+
+        Converts -99.99, -999 values to null.
+        """
+        # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
+        #   As unlikely as it may be, there's >1.0 values (e.g., Insurance industry,
+        #   annual, 1927), so this could convert a legitmate 0.9999 to null.
+        ff_nans = [-99.99, -999.0, -99.9] # fix: use before scale_to_decimal. Will NaN a 0.999% or 9.99% return.
+
+        for i, name in enumerate(table.column_names):
+            if name.lower() == "date": continue
+            col = table.column(name)
+            
+            # Create a boolean mask which yields True if ff_nans is_in a col of floats.
+            mask = pc.is_in(col, value_set=pa.array(ff_nans, type=pa.float64()))
+            null_scalar = pa.scalar(None, type=col.type)
+            new_col = pc.if_else(mask, null_scalar, col)
+            table = table.set_column(i, name, new_col)
+
+        return table
+
+
+    def _clean_column_names(self, table: pa.Table) -> pa.Table:
+        """Standardize column names across all portfolio types."""
+        renames = [
+            name.strip().lower().replace(" ", "_").replace("-", "_")
+            for name in table.column_names
+        ]
+        return table.rename_columns(renames)
+
+
+    def _read(self, data: bytes) -> pa.Table:
+        """Common _read for all Fama-French portfolios."""
+        with zipfile.ZipFile(io.BytesIO(data)) as z:
+            with z.open(z.namelist()[0]) as f:
+                lines = f.read().decode('utf-8').splitlines()
+
+        clean_csv = self._get_ff_table(lines)
+
+        table = pv.read_csv(
+            io.BytesIO(clean_csv.encode('utf-8')),
+            parse_options=pv.ParseOptions(),
+            convert_options=pv.ConvertOptions(
+                null_values=["-99.99", "-999", "-99.9"],
+                column_types={"date": pa.string()},
+            ),
+        )
+        table = self._fix_ff_nulls(table)
+
+        table = offset_period_eom(table, self.frequency)
+        table = scale_to_decimal(table)
+        table = self._clean_column_names(table)
+
+        return table.combine_chunks()
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Fama-French portfolio schema. Returns actual schema if loaded."""
+        if self._data is not None:
+            return self._data.schema
+        # Date only if not loaded? 
+        return pa.schema([pa.field("date", pa.date32())])
+
+
+class _FamaFrenchFactorPortfolios(_FFPortfolioBase):
+    """Fama-French factor-sorted portfolios (univariate, bivariate, three-way)."""
+    @property
+    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    def __init__(self,
+                 frequency: str = 'm',
+                 formed_on: str | list[str] = 'size',
+                 weights: str = 'vw',
+                 sort: str | int | None = None,
+                 *,
+                 dividends: bool = True,
+                 **kwargs) -> None:
+
+        super().__init__(frequency=frequency, weights=weights,
+                         dividends=dividends, **kwargs)
 
         if isinstance(formed_on, str):
             self.formed_on = [formed_on.lower()]
@@ -305,87 +377,80 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
         self.is_multivariate = len(self.formed_on) > 1
 
         if sort is None:
-            if len(self.formed_on) == 1: 
+            if len(self.formed_on) == 1:
                 sort = 'decile'
-            elif len(self.formed_on) == 2: 
-                sort = '2x3'
-            else: 
+            elif len(self.formed_on) == 2:
+                if any(f in {'ep', 'cfp', 'dp'} for f in self.formed_on):
+                    sort = '2x3' # these are only avail as 2x3 sorts
+                else:
+                    sort = '5x5' 
+            else:
                 sort = '2x4x4'
-        
+
         self.sort = str(sort).lower()
-        self.frequency = frequency
-        self.dividends = dividends
-        self.weights = weights.lower()
 
         sort_to_n = {
             'tertile': 3, 'quintile': 5, 'decile': 10,
             '3': 3, '5': 5, '10': 10,
-            '2x3': 6, '6': 6, 
-            '5x5': 25, '25': 25, 
+            '2x3': 6, '6': 6,
+            '5x5': 25, '25': 25,
             '10x10': 100, '100': 100,
             '2x4x4': 32, '32': 32,
         }
 
         if self.sort not in sort_to_n:
-            raise ValueError(f"sort must be one of {list(sort_to_n.keys())}, got '{self.sort}'")
+            raise ValueError(
+                f"sort must be one of {list(sort_to_n.keys())}, got '{self.sort}'"
+            )
 
         self.n_portfolios = sort_to_n[self.sort]
-
-        self._validate_ff_pf_params()
-
-        if self.is_multivariate and self.n_portfolios not in [6, 25, 100, 32]:
-            raise ValueError(f"Bivariate sorts only support 6, 25, or 100, and "
-                            f"three-way sorts only support 32. Got '{self.n_portfolios}'")
-    
-    def __repr__(self):
-        return (f"FamaFrenchPortfolios(factor={self.formed_on}, "
-                f"sort={self.n_portfolios}, freq={self.frequency}, "
-                f"weights={self.weights})")
-
-    @property
-    def schema(self, column_names: list[str]) -> pa.Schema:
-        """Fama-French portfolio schema. Uses extracted headers."""
-        fields = []
-        for name in column_names:
-            if name.lower() == 'date':  # note this is applied after rename
-                fields.append(pa.field("date", pa.int32()))
-            else:
-                fields.append(pa.field(name, pa.float64()))
-        return pa.schema(fields)
+        self._validate_params()
 
 
-    def _validate_ff_pf_params(self) -> None:
+    def _validate_params(self) -> None:
         valid_factors = {
-            'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom', 'st_rev',
-            'lt_rev', 'ac', 'beta', 'net_shares', 'var', 'resvar',
+            'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom',
+            'st_rev', 'lt_rev', 'ac', 'beta', 'net_shares', 'var', 'resvar'
         }
+
         for f in self.formed_on:
             if f not in valid_factors:
                 raise ValueError(
                 f"Invalid factor: '{self.formed_on}'. "
                 f"Valid factors: {sorted(valid_factors)}"
             )
+        if self.is_multivariate:
+            if self.n_portfolios not in {6, 25, 100, 32}:
+                raise ValueError(
+                    f"Multivariate sorts (factors: {self.formed_on}) only support "
+                    f"sorts for 2x3, 5x5, 10x10 (6, 25, 100). Got {self.n_portfolios}."
+                )
+        else:
+            if self.n_portfolios not in {3, 5, 10}:
+                raise ValueError(
+                    f"Univariate sorts (factor: {self.formed_on[0]}) "
+                    f"must be 3, 5, or 10. Got {self.n_portfolios}."
+                ) 
 
-        if self.weights not in ('vw', 'ew'): # ux: v[[al]ue], e[[q]ual], ew, vw ?
+        month_year_only = {'ep', 'cfp', 'dp', 'beta', 'ac',
+                           'net_shares', 'var', 'resvar'}
+        if (self.frequency == 'd' and
+                any(f in month_year_only for f in self.formed_on)):
             raise ValueError(
-                f"`weights` must be 'vw' (value weighted) or 'ew' (equal weighted), got '{self.weights}'"
+                f"Daily data not available for {self.formed_on}. "
+                f"Use frequency='m' or 'y'."
             )
 
-        # "Univariate sorts on E/P, CF/P, D/P", and "Sorts involving Accruals,
-        # Market Beta..." don't provide daily data
-        _month_year_only = {'ep', 'cfp', 'dp', 'beta', 'ac', 'net_shares', 'var', 'resvar'}
-        if self.frequency == 'd' and self.formed_on in _month_year_only:
-            msg = (f"Daily data is not available for {self.formed_on}. "
-                f"Use frequency='m' (monthly) or 'y' (yearly).")
-            raise ValueError(msg)
-
-        # "Sorts involving prior rets" are decile only
-        if self.formed_on in ['mom', 'st_rev', 'lt_rev'] and self.sort not in ['10', 'decile', 10]:
-            raise ValueError(f'{self.formed_on} is only available in deciles.')
-
+        # Sorts on prior returns are decile only
+        prior_return_factors = {'mom', 'st_rev', 'lt_rev'}
+        if (any(f in prior_return_factors for f in self.formed_on) and
+                self.n_portfolios != 10):
+            raise ValueError(
+                f'{self.formed_on} is only available in deciles.'
+            )
 
     def _get_url(self) -> str:
-        """Construct a Fama-French portfolio URL."""
+        """Construct Fama-French portfolio URL."""
         if self.is_multivariate:
             return self._multivariate_url()
         return self._univariate_url()
@@ -394,8 +459,7 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
     def _univariate_url(self) -> str:
         """Helper to map input to slug in URL"""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-
-        # Map input to a slug for URL construction. Comments are the sub-
+        # Maps input to a slug for URL construction. Comments are the sub-
         # headers on the page.
         mapping = {
             # Univariate sorts
@@ -419,17 +483,16 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
             'resvar': 'Portfolios_Formed_on_RESVAR', # residual variance
         }
 
-        factor = self.formed_on[0] #fix: unhashable type list 
+        factor = self.formed_on[0]
         base_name = mapping.get(factor)
 
         if not base_name:
-            raise ValueError(f"Unknown factor: {self.formed_on}")
+            raise ValueError(f"Unknown factor: {factor}")
 
-        # mom/revs (no ex-divs) - Warning, not err
         if factor in {'mom', 'lt_rev', 'st_rev'} and not self.dividends:
             self.log.warning(
                 "Fama-French does not provide ex-div momentum portfolios. "
-                "Ignoring dividends=True."
+                "Ignoring dividends=False."
             )
             suffix = "_CSV.zip"
         elif self.frequency == 'd':
@@ -441,72 +504,66 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
 
         return f"{base_url}/{base_name}{suffix}"
 
+
     def _multivariate_url(self) -> str:
+        """Construct URL for multivariate sorts."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        factors = frozenset([f.lower() for f in self.formed_on])
-        n = int(self.n_portfolios)
+        factors = frozenset(self.formed_on)
+        n = self.n_portfolios
 
         three_way_map = {
-            frozenset(['size', 'bm', 'op']):  "32_Portfolios_ME_BEME_OP_2x4x4",
-            frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
-            frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
-        }
-        # not all, but a lot of the avail bivariate sorts:
-        bivariate_map = {
-            # All: "Bivariate sorts on Size, B/M, OP and Inv"
-            frozenset(['size', 'bm']): "",
-            frozenset(['size', 'op']): "ME_OP",
-            frozenset(['size', 'inv']): "ME_INV",
-            # n=25 only
-            frozenset(['bm', 'op']): "BEME_OP",
-            frozenset(['bm', 'inv']): "BEME_INV",
-            frozenset(['op', 'inv']): "OP_INV",
-
-            # All " Bivariate sorts on Size, E/P, CF/P, and D/P"
-            # n=6 only
-            frozenset(['size', 'ep']): "ME_EP",
-            frozenset(['size', 'cfp']): "ME_CFP",
-            frozenset(['size', 'dp']): "ME_DP",
-
-            # All bivariate sorts in "Sorts involving Accruals, Market Beta,
-            # Net Share Issues, Daily Variance, and Daily Residual Variance"
-            # n = 25 only
-            frozenset(['size', 'accruals']): "ME_AC",
-            frozenset(['size', 'beta']): "ME_BETA",
-            frozenset(['size', 'nsi']): "ME_NI",      # net share issues
-            frozenset(['size', 'var']): "ME_VAR",      # variance
-            frozenset(['size', 'resvar']): "ME_RESVAR",   # residual variance
-
-            # Sorts involving Prior Returns
-            #n=6,25,10, and no option for excluding divs.
-            frozenset(['size', 'mom']): "ME_Prior_12_2", # zzz these done use the grid in the url
-            frozenset(['size', 'st_rev']): "ME_Prior_1_0",   # need to do the univariates still.
-            frozenset(['size', 'lt_rev']): "ME_Prior_60_13",  # TODO: these filenames...
-            
-            # "Three-way sorts on Size, B/M, OP, and Inv"
-            # https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/32_Portfolios_ME_BEME_OP_2x4x4_CSV.zip 
+            # "Three-way sorts on Size, B/M, OP, and Inv" 
             frozenset(['size', 'bm', 'op']): "32_Portfolios_ME_BEME_OP_2x4x4",
             frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
             frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
         }
+
+        if len(factors) == 3:
+            slug = three_way_map.get(factors)
+            if not slug:
+                raise ValueError(f"3-way sort {self.formed_on} not supported.")
+        else:
+            bivariate_map = {
+                # All: "Bivariate sorts on Size, B/M, OP and Inv"
+                frozenset(['size', 'bm']): "",
+                frozenset(['size', 'op']): "ME_OP",
+                frozenset(['size', 'inv']): "ME_INV",
+                # n=25 only
+                frozenset(['bm', 'op']): "BEME_OP",
+                frozenset(['bm', 'inv']): "BEME_INV",
+                frozenset(['op', 'inv']): "OP_INV",
+                # All "Bivariate sorts on Size, E/P, CF/P, and D/P"  n=6 only
+                frozenset(['size', 'ep']): "ME_EP",
+                frozenset(['size', 'cfp']): "ME_CFP",
+                frozenset(['size', 'dp']): "ME_DP",
+                # All bivariate sorts in "Sorts involving Accruals, Market Beta,
+                # Net Share Issues, Daily Variance, and Daily Residual Variance"
+                # n = 25 only
+                frozenset(['size', 'ac']): "ME_AC",     # accruals
+                frozenset(['size', 'beta']): "ME_BETA",
+                frozenset(['size', 'ni']): "ME_NI",      # net share issues
+                frozenset(['size', 'var']): "ME_VAR",
+                frozenset(['size', 'resvar']): "ME_RESVAR",   # residual variance
+                # Sorts involving Prior Returns - no option for excluding divs.
+                frozenset(['size', 'mom']): "ME_Prior_12_2",
+                frozenset(['size', 'st_rev']): "ME_Prior_1_0",
+                frozenset(['size', 'lt_rev']): "ME_Prior_60_13",
+            }
+            slug = bivariate_map.get(factors)
+            if slug is None:
+                raise ValueError(f"Multivariate combination '{self.formed_on}' not supported.")
+
         if self.frequency == 'd':
             file_ext = "Daily_CSV.zip"
         elif not self.dividends:
             file_ext = "Wout_Div_CSV.zip"
         else:
             file_ext = "CSV.zip"
-    
-        # 3 way maps
+
+        # 3-way sorts
         if len(factors) == 3:
-            slug = three_way_map.get(factors)
-            if not slug:
-                raise ValueError(f"3-way sort {self.formed_on} not supported.")
             return f"{base_url}/{slug}_{file_ext}"
-
-        slug = bivariate_map.get(factors)
-        if slug is None:
-            raise ValueError(f" Multivariate combination '{self.formed_on}' not supported.")
-
+        
         grid_parts = {
             6: ("6_Portfolios", "2x3"),
             25: ("25_Portfolios", "5x5"),
@@ -515,122 +572,47 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
         }
         prefix, suffix = grid_parts[n]
 
+        # Bivariate sorts
         if not slug:
             return f"{base_url}/{prefix}_{suffix}_{file_ext}"
-        if "Prior" in slug:
+        if "Prior" in slug: # prior rets
             return f"{base_url}/{prefix}_{slug}_{file_ext}"
-        #default bivariate 
+        
+        # Univariate
         return f"{base_url}/{prefix}_{slug}_{suffix}_{file_ext}"
 
-    # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
-    #   As unlikely as it may be, there are >1.0 values (e.g., Insurance industry,
-    #   annual, 1927), and this could convert a legitmate 0.9999 to null.
-    # NOTE: use before scaling to decimal else ~1%/10% returns will be made null.
-    # TODO: improve, make module for this and ind portfolios.
-    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
-        """Helper to transform Fama-French values representing NaNs to nulls.
 
-        Converts -99.99, -999 values to null.
-        """
-        ff_nans = [-99.99, -999.0, -99.9]
-
-        for i, name in enumerate(table.column_names):
-            if name.lower() == "date": continue
-            col = table.column(name)
-            # Create a boolean mask which yields True if ff_nans is_in a col of floats.
-            mask = pc.is_in(col, value_set=pa.array(ff_nans, type=pa.float64()))
-            # replace matches with a true null (NaN).
-            _null = pa.scalar(None, type=col.type)
-            new_col = pc.if_else(mask, _null, col)
-            table = table.set_column(i, name, new_col)
-
-        return table
-
-
-    def _read(self, data: bytes) -> pa.Table:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            with z.open(z.namelist()[0]) as f:
-                lines = f.read().decode('utf-8').splitlines()
-
-        csv = self._prepare_file(lines)
-
-        table = pv.read_csv(
-            io.BytesIO(csv.encode('utf-8')),
-            parse_options=pv.ParseOptions(),
-            convert_options=pv.ConvertOptions(
-                null_values=["-99.99", "-999", "-99.9"],
-                column_types={"date": pa.string()},  # str for offset
-            ),
-        )
-
-        # Sorts on prior returns files are decile only, so just use the
-        # whole table. Relies on validation.
-
-        # Univariate models (excluding 'Sorts on prior returns') are tables 
-        # of date/tertile/quintile/decile. Bivariate and prior ret models 
-        # are single tables.
-        needs_slicing = not self.is_multivariate and self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}
-
-        #if self.formed_on not in {'mom', 'st_rev', 'lt_rev'}:
-        if needs_slicing:
-            mapping = {             # Uni sort cols: [0]=date, [1]="<= 0",
-                3: slice(2, 5),     # Lo 30/Med 40/Hi 30
-                5: slice(5, 10),    # Lo 20 Qnt 2...4 Hi 20
-                10: slice(10, 20)   # Lo 10 Dec 2...9 Hi 10
-            }
-            target_slice = mapping.get(self.n_portfolios)
-
-            # Only slicing if the table has deciles/quintiles/tertiles -- otherwise it's a 
-            # 'formed on prior returns' portfolio (decile only).
-            if target_slice and table.num_columns > 16: #or == 21
-                indices = [0] + list(range(target_slice.start, target_slice.stop))
-                indices = [i for i in indices if i < table.num_columns]
-                table = table.select(indices)
-
-        table = self._fix_ff_nulls(table)
-        table = offset_period_eom(table, self.frequency)
-        table = scale_to_decimal(table)
-
-        # Rename, keep source structure: Hi PRIOR to hi_prior, qnt 2 to qnt_2, dec-2 to dec_2, etc.)
-        renames = [
-            name.strip().lower().replace(" ", "_").replace("-", "_") #date has trail whitespace, strip
-            for name in table.column_names
-        ]
-        table = table.rename_columns(renames)
-
-        return table.combine_chunks()
-
-
-    def _prepare_file(self, lines: list[str]) -> str:
+    def _get_ff_table(self, lines: list[str]) -> str:
         """Select correct table and clean whitespace for CSV parsing."""
-        # Copy paste from Industry then made changes... got to combine em TODO
-        # Headers are slightly different btw files, some are the same as factors,
-        # others have 'Weight' instead of 'Weighted', momentum files have
-        # 'Prior' in the line. All contain the freq string.
-        #
-        # todo, wrap in io.TextIOWrapper, stream to find header/table
         weight_ln = "Value" if self.weights == 'vw' else "Equal"
-        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly'}
+        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly', 'w': 'Weekly'}
         freq_str = freq_map.get(self.frequency, "Monthly")
 
         table_start = None
         for i, ln in enumerate(lines):
-            if weight_ln in ln and freq_str in ln and ("Returns" in ln or "Prior" in ln):
+            if (weight_ln in ln and freq_str in ln and
+                    ("Returns" in ln or "Prior" in ln)):
                 table_start = i
                 break
-        if table_start is None:
-            raise ValueError(f"Could not find `{weight_ln}` section for `{freq_str}`")
 
+        if table_start is None:
+            raise ValueError(
+                f"Could not find `{weight_ln}` section for `{freq_str}`"
+            )
+
+        # header line
         header_line = table_start + 1
-        while not lines[header_line].strip():
+        while header_line < len(lines) and not lines[header_line].strip():
             header_line += 1
 
-        headers = ("date " + " ".join(lines[header_line].split())).lower() #bivariate 2 headers in TXT files, 1 in CSV. Good.
+        if header_line >= len(lines):
+            raise ValueError("No header found in table")
+
+        headers = ("date " + " ".join(lines[header_line].split())).lower()
         cleaned = [headers]
 
-        data_start = header_line + 1
-
-        for line in lines[data_start:]:
+        # Extract data
+        for line in lines[header_line + 1:]:
             clean = line.strip()
             if not clean or not clean[0].isdigit():
                 break
@@ -639,37 +621,66 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
         return "\n".join(cleaned)
 
 
-class FFIndustryPortfolios(FactorModel):  #usa only, no RegionMixin.
-    _INDUSTRY_PORTFOLIO_SIZES = {5, 10, 12, 17, 30, 38, 48, 49} #TODO
-    #TODO: maybe FactorModel to BaseModel or something if Portfolios are using it.
-    def __init__(self, 
-                 n_portfolios: int = 5, 
+    @override
+    def _read(self, data: bytes) -> pa.Table:
+        table = super()._read(data) # base _read, then slice
+
+        if (not self.is_multivariate and
+                self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}):
+
+            # fix(?): col handling when <=0 in cols.
+            has_negative_col = any("<=" in name for name in table.column_names[:2])
+            mapping = {
+                3: slice(2, 5) if has_negative_col else slice(1, 4),
+                5: slice(5, 10) if has_negative_col else slice(4, 9),
+                10: slice(10, 20) if has_negative_col else slice(9, 19),
+            }
+            
+            target_slice = mapping.get(self.n_portfolios)
+
+            # 'prior returns' portfolios are decile only. Only slicing 
+            # if the table has deciles/quintiles/tertiles.
+            if target_slice and table.num_columns > 16: #or == 21
+                indices = [0] + list(range(target_slice.start, target_slice.stop))
+                indices = [i for i in indices if i < table.num_columns]
+                table = table.select(indices)
+
+        return table.combine_chunks()
+
+
+class _FFIndustryPortfolios(_FFPortfolioBase):
+    """Fama-French industry portfolios."""
+    _INDUSTRY_PORTFOLIO_SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
+
+    @property
+    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
+    
+    #@property
+    #def _regions(self) -> list[str]: return ['us']
+
+    def __init__(self,
+                 n_portfolios: int = 5,
                  frequency: str = 'm',
                  weights: str = 'vw',
                  *,
                  dividends: bool = True,
-                 **kwargs: Any) -> None:
-        self.n_portfolios = n_portfolios
-        self.dividends = dividends
-        self.weights = weights
-        
-        super().__init__(frequency=frequency, **kwargs)
-    # Validate portfolio size TODO 
-    # TODO:__str__
-        
-    @property
-    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
-    
-    @property 
-    def _precision(self) -> int: return 6
+                 **kwargs) -> None:
 
-    #@property 
-    #def _regions(self) -> list[str]: return ['us']
+        if n_portfolios not in self._INDUSTRY_PORTFOLIO_SIZES:
+            raise ValueError(
+                f"n_portfolios must be one of {sorted(self._INDUSTRY_PORTFOLIO_SIZES)}, "
+                f"got {n_portfolios}"
+            )
+
+        self.n_portfolios = n_portfolios
+        super().__init__(frequency=frequency, weights=weights,
+                         dividends=dividends, **kwargs)
+
 
     def _get_url(self) -> str:
-        """Get a specific industry portfolio URL."""
+        """Get industry portfolio URL."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        
+
         if self.frequency == 'd':
             suffix = "daily_CSV.zip"
         elif not self.dividends:
@@ -680,138 +691,74 @@ class FFIndustryPortfolios(FactorModel):  #usa only, no RegionMixin.
         filename = f"{self.n_portfolios}_Industry_Portfolios_{suffix}"
         return f"{base_url}/{filename}"
 
-    @property
-    def schema(self, column_names: list[str]) -> pa.Schema:
-        """Fama-French industry portfolio schema. Uses extracted headers."""
-        fields = []
-        for name in column_names:
-            if name.lower() == 'date':  #note this is applied after rename
-                fields.append(pa.field("date", pa.int32()))
-            else:
-                fields.append(pa.field(name, pa.float64()))
-                
-        return pa.schema(fields)
 
-    
-    def _prepare_file(self, lines: list[str]) -> str:
-        """Select correct table and clean whitespace for CSV parsing."""
+    def _get_ff_table(self, lines: list[str]) -> str:
+        """Select correct industry portfolio table and clean whitespace."""
         w_str = "Value Weighted" if self.weights == 'vw' else "Equal Weighted"
-        
         freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly'}
         freq_str = freq_map.get(self.frequency, "Monthly")
-        
+
         start_line = f"Average {w_str} Returns -- {freq_str}"
-        
-        # Find start line 
+
         idx = next((i for i, ln in enumerate(lines) if start_line in ln), None)
         if idx is None:
             raise ValueError(f"Could not find section: {start_line}")
-        
-        cleaned = []
 
-        # Extract the headers as lowercase: 'date' + [industries] 
-        headers = ("date " + " ".join(lines[idx + 1].split())).lower().replace("-", "_")
+        cleaned = []
+        headers = ("date " + " ".join(lines[idx + 1].split())
+                   ).lower().replace("-", "_")
+        
         cleaned.append(headers)
 
-        # data begins 2 lines after the headers
+        # Extract data
         for line in lines[idx + 2:]:
             clean = line.strip()
-            
-            # stop on a blank or non-numeric line
             if not clean or not clean[0].isdigit():
                 break
-                
-            # 2 spaces for the CSV parser
             cleaned.append("  ".join(clean.split()))
+
         return "\n".join(cleaned)
 
 
-    # TODO: Implement in factor class
-    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
-        """Helper to transform Fama-French values representing NaNs to nulls.
+# Public, prob. to main, here for now.
+def FamaFrenchPortfolios(
+        formed_on: str | list[str] = 'size',
+        sort: str | int | None = None,
+        industry: int | None = None,
+        frequency: str = 'm',
+        weights: str = 'vw',
+        **kwargs) -> pa.Table:
+    # TODO: This docstr properly. really properly.
+    """Factory for Fama French portfolios.
 
-        Converts -99.99, -999 values to null.
-        """
-        # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
-        #   As unlikely as it may be, there are >1.0 values (e.g., Insurance industry,
-        #   annual, 1927), so this could convert a legitmate 0.9999 to null.
-        ff_nans = [-99.99, -999.0, -99.9] # fix: this is used before scale_to_decimal. Would NaN a 0.999% or 9.99% return.
-        
-        for i, name in enumerate(table.column_names):
-            if name.lower() == "date": continue
-            col = table.column(name)
-            
-            # Create a boolean mask which yields True if ff_nans is_in a col of floats.
-            mask = pc.is_in(col, value_set=pa.array(ff_nans, type=pa.float64()))
-            
-            # replace matches with a true null (NaN).
-            _null = pa.scalar(None, type=col.type)
-            new_col = pc.if_else(mask, _null, col)
-            
-            table = table.set_column(i, name, new_col)
-            
-        return table
+    Args:
+        frequency (str): 'd', 'w', 'm', 'y'
+        formed_on (str | list[str] | set | tuple): 
+        sort (str, int): 'decile', 'quintile', 'tertile', '2x3', '5x5'
+            '10x10', '2x2x4'. Accepts int: 10, 5, 3, 6, 25, 100, 32.
+        industry (int): for Fama French Industry Portfolios. Specify 
+            n portfolios, industry=12
+        weights: 'vw', 'ew'
 
-
-    def _read(self, data: bytes) -> pa.Table:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:  #noqa
-            with z.open(z.namelist()[0]) as f:
-                lines = f.read().decode('utf-8').splitlines()
-
-        clean_csv = self._prepare_file(lines)
-
-        table = pv.read_csv(
-            io.BytesIO(clean_csv.encode('utf-8')),
-            parse_options=pv.ParseOptions(),
-            convert_options=pv.ConvertOptions(
-                null_values=["-99.99", "-999"],
-                column_types={"date": pa.string()}, # str for offset 
-            ),
+    Examples:
+        ff = FamaFrenchPortfolios(industry=12)
+        ff = FamaFrenchPortfolios(formed_on='mom', sort='decile')
+        ff = FamaFrenchPortfolios(frequency = 'd', formed_on=['op', 'size'], sort='2x3')
+        ff = FamaFrenchPortfolios(formed_on='size', sort=6, weights='ew')
+        ff = FamaFrenchPortfolios(industry=30, frequency='m', weights='vw')
+    """
+    # we industry?
+    if industry is not None:
+        return _FFIndustryPortfolios(
+            frequency=frequency, weights=weights, n_portfolios=industry, **kwargs
         )
-        ## FIXME: temp fix. 
-        table = self._fix_ff_nulls(table)
-        
-        table = offset_period_eom(table, self.frequency)
-        table = scale_to_decimal(table)
-        # NOTE: don't round_to_precision on portfolios
-        return table.combine_chunks()
+
+    # keep formed_on None, let class handle it.
+    return _FamaFrenchFactorPortfolios(
+        frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs
+    )
+
+
+
 
 ## TODO: LT_rev, ST_rev...
-
-
-
-""" 
-
- Bivariate sorts on Size, B/M, OP and Inv 
-
-formed_on, or sorted_by accepted values would be? 
-
-size AND bm, eg, {'size', 'bm'} 
-
-# basically a matrix of 3x3 
-m/d, divs/no divs 
-size AND bm (only oen available in weekly also)
-size AND op or inv 
-bm AND op 
-bm AND inv 
-op and inv 
-All, n=6,25,100
-
-Easy enough for bivariate section here... 
-
-month only: E/P, CF/P, and D/P bivariate sorts  
-n=6 only. 
-size AND EP 
-size AND CFP 
-size and div yield 
-
- Sorts involving Accruals, Market Beta, Net Share Issues, Daily Variance, and Daily Residual Variance 
- half of these are bivartiate, other half univariate.
-
-
-Then we got these:  Sorts involving Prior Returns 
-d/m, n=6 for bivariates, n=10 for mom, st_rev, lt_rev 
-size and mom 
-
-
-""" 
