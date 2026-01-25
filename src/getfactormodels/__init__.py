@@ -24,6 +24,8 @@ from .models import (
     ConditionalCAPM,
     DHSFactors,
     FamaFrenchFactors,
+    FFIndustryPortfolios,
+    FamaFrenchPortfolios,
     HighIncomeCCAPM,
     HMLDevilFactors,
     ICRFactors,
@@ -32,7 +34,6 @@ from .models import (
     QFactors,
     QMJFactors,
     VMEFactors,
-    FFIndustryPortfolios,
 )
 
 logger = logging.getLogger('getfactormodels')
@@ -52,6 +53,7 @@ __all__ = [
     "FamaFrenchFactors",
     "HMLDevilFactors",
     "FFIndustryPortfolios",
+    "FamaFrenchPortfolios",
     "ICRFactors",
     "LiquidityFactors",
     "MispricingFactors",
