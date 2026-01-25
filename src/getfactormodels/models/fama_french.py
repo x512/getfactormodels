@@ -273,9 +273,9 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
 
     def __init__(self,
             frequency: str = 'm',
-            formed_on: str = 'size', # using FF terminology. Uni only for now. Bivariate: set/tuple/list[str]
+            formed_on: str | list[str] | set | tuple = 'size', # using FF terminology. Uni only for now. Bivariate: set/tuple/list[str]
             weights: str = 'vw',
-            sort: str | int = 'decile',
+            sort: str | int | None = None,  # Default None to assign if none provided
             *,
             dividends: bool = True,
             **kwargs) -> None:
@@ -297,27 +297,50 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
         # TODO: docstr, help.
         super().__init__(frequency=frequency, **kwargs)
 
+        if isinstance(formed_on, str):
+            self.formed_on = [formed_on.lower()]
+        else:
+            self.formed_on = sorted([f.lower() for f in formed_on])
+
+        self.is_multivariate = len(self.formed_on) > 1
+
+        if sort is None:
+            if len(self.formed_on) == 1: 
+                sort = 'decile'
+            elif len(self.formed_on) == 2: 
+                sort = '2x3'
+            else: 
+                sort = '2x4x4'
+        
+        self.sort = str(sort).lower()
         self.frequency = frequency
-        self.formed_on = formed_on.lower()
-        self.sort = str(sort).lower()  #allowing 3/5/10 int or str inputs
         self.dividends = dividends
         self.weights = weights.lower()
 
-        self._validate_ff_pf_params()
-
-        # Mapping `sort` to an int used internally. This is primarily for
-        # bivariate sorts. For univariate, this just allows for shorthand
-        # int input. Did have a n_portfolios param in func but got messy.
-        # Converted to str in init.
         sort_to_n = {
             'tertile': 3, 'quintile': 5, 'decile': 10,
-            '10': 10, '3': 3, '5': 5,
+            '3': 3, '5': 5, '10': 10,
+            '2x3': 6, '6': 6, 
+            '5x5': 25, '25': 25, 
+            '10x10': 100, '100': 100,
+            '2x4x4': 32, '32': 32,
         }
+
         if self.sort not in sort_to_n:
-            raise ValueError(
-                f"sort must be one of {list(sort_to_n.keys())}, got '{sort}'"
-            )
+            raise ValueError(f"sort must be one of {list(sort_to_n.keys())}, got '{self.sort}'")
+
         self.n_portfolios = sort_to_n[self.sort]
+
+        self._validate_ff_pf_params()
+
+        if self.is_multivariate and self.n_portfolios not in [6, 25, 100, 32]:
+            raise ValueError(f"Bivariate sorts only support 6, 25, or 100, and "
+                            f"three-way sorts only support 32. Got '{self.n_portfolios}'")
+    
+    def __repr__(self):
+        return (f"FamaFrenchPortfolios(factor={self.formed_on}, "
+                f"sort={self.n_portfolios}, freq={self.frequency}, "
+                f"weights={self.weights})")
 
     @property
     def schema(self, column_names: list[str]) -> pa.Schema:
@@ -336,8 +359,9 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
             'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom', 'st_rev',
             'lt_rev', 'ac', 'beta', 'net_shares', 'var', 'resvar',
         }
-        if self.formed_on not in valid_factors:
-            raise ValueError(
+        for f in self.formed_on:
+            if f not in valid_factors:
+                raise ValueError(
                 f"Invalid factor: '{self.formed_on}'. "
                 f"Valid factors: {sorted(valid_factors)}"
             )
@@ -362,6 +386,8 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
 
     def _get_url(self) -> str:
         """Construct a Fama-French portfolio URL."""
+        if self.is_multivariate:
+            return self._multivariate_url()
         return self._univariate_url()
 
 
@@ -393,7 +419,7 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
             'resvar': 'Portfolios_Formed_on_RESVAR', # residual variance
         }
 
-        factor = self.formed_on
+        factor = self.formed_on[0] #fix: unhashable type list 
         base_name = mapping.get(factor)
 
         if not base_name:
@@ -414,6 +440,87 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
             suffix = "_CSV.zip"
 
         return f"{base_url}/{base_name}{suffix}"
+
+    def _multivariate_url(self) -> str:
+        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        factors = frozenset([f.lower() for f in self.formed_on])
+        n = int(self.n_portfolios)
+
+        three_way_map = {
+            frozenset(['size', 'bm', 'op']):  "32_Portfolios_ME_BEME_OP_2x4x4",
+            frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
+            frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
+        }
+        # not all, but a lot of the avail bivariate sorts:
+        bivariate_map = {
+            # All: "Bivariate sorts on Size, B/M, OP and Inv"
+            frozenset(['size', 'bm']): "",
+            frozenset(['size', 'op']): "ME_OP",
+            frozenset(['size', 'inv']): "ME_INV",
+            # n=25 only
+            frozenset(['bm', 'op']): "BEME_OP",
+            frozenset(['bm', 'inv']): "BEME_INV",
+            frozenset(['op', 'inv']): "OP_INV",
+
+            # All " Bivariate sorts on Size, E/P, CF/P, and D/P"
+            # n=6 only
+            frozenset(['size', 'ep']): "ME_EP",
+            frozenset(['size', 'cfp']): "ME_CFP",
+            frozenset(['size', 'dp']): "ME_DP",
+
+            # All bivariate sorts in "Sorts involving Accruals, Market Beta,
+            # Net Share Issues, Daily Variance, and Daily Residual Variance"
+            # n = 25 only
+            frozenset(['size', 'accruals']): "ME_AC",
+            frozenset(['size', 'beta']): "ME_BETA",
+            frozenset(['size', 'nsi']): "ME_NI",      # net share issues
+            frozenset(['size', 'var']): "ME_VAR",      # variance
+            frozenset(['size', 'resvar']): "ME_RESVAR",   # residual variance
+
+            # Sorts involving Prior Returns
+            #n=6,25,10, and no option for excluding divs.
+            frozenset(['size', 'mom']): "ME_Prior_12_2", # zzz these done use the grid in the url
+            frozenset(['size', 'st_rev']): "ME_Prior_1_0",   # need to do the univariates still.
+            frozenset(['size', 'lt_rev']): "ME_Prior_60_13",  # TODO: these filenames...
+            
+            # "Three-way sorts on Size, B/M, OP, and Inv"
+            # https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp/32_Portfolios_ME_BEME_OP_2x4x4_CSV.zip 
+            frozenset(['size', 'bm', 'op']): "32_Portfolios_ME_BEME_OP_2x4x4",
+            frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
+            frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
+        }
+        if self.frequency == 'd':
+            file_ext = "Daily_CSV.zip"
+        elif not self.dividends:
+            file_ext = "Wout_Div_CSV.zip"
+        else:
+            file_ext = "CSV.zip"
+    
+        # 3 way maps
+        if len(factors) == 3:
+            slug = three_way_map.get(factors)
+            if not slug:
+                raise ValueError(f"3-way sort {self.formed_on} not supported.")
+            return f"{base_url}/{slug}_{file_ext}"
+
+        slug = bivariate_map.get(factors)
+        if slug is None:
+            raise ValueError(f" Multivariate combination '{self.formed_on}' not supported.")
+
+        grid_parts = {
+            6: ("6_Portfolios", "2x3"),
+            25: ("25_Portfolios", "5x5"),
+            100: ("100_Portfolios", "10x10"),
+            32: ("32_Portfolios", "2x4x4"),
+        }
+        prefix, suffix = grid_parts[n]
+
+        if not slug:
+            return f"{base_url}/{prefix}_{suffix}_{file_ext}"
+        if "Prior" in slug:
+            return f"{base_url}/{prefix}_{slug}_{file_ext}"
+        #default bivariate 
+        return f"{base_url}/{prefix}_{slug}_{suffix}_{file_ext}"
 
     # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
     #   As unlikely as it may be, there are >1.0 values (e.g., Insurance industry,
@@ -458,7 +565,14 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
 
         # Sorts on prior returns files are decile only, so just use the
         # whole table. Relies on validation.
-        if self.formed_on not in {'mom', 'st_rev', 'lt_rev'}:
+
+        # Univariate models (excluding 'Sorts on prior returns') are tables 
+        # of date/tertile/quintile/decile. Bivariate and prior ret models 
+        # are single tables.
+        needs_slicing = not self.is_multivariate and self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}
+
+        #if self.formed_on not in {'mom', 'st_rev', 'lt_rev'}:
+        if needs_slicing:
             mapping = {             # Uni sort cols: [0]=date, [1]="<= 0",
                 3: slice(2, 5),     # Lo 30/Med 40/Hi 30
                 5: slice(5, 10),    # Lo 20 Qnt 2...4 Hi 20
@@ -511,8 +625,7 @@ class FamaFrenchPortfolios(FactorModel): #will need RegionMixin, after refactori
         while not lines[header_line].strip():
             header_line += 1
 
-        # Univariates have a single header line (note: bivariate 2 headers)
-        headers = ("date " + " ".join(lines[header_line].split())).lower()
+        headers = ("date " + " ".join(lines[header_line].split())).lower() #bivariate 2 headers in TXT files, 1 in CSV. Good.
         cleaned = [headers]
 
         data_start = header_line + 1
