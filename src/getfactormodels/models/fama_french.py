@@ -9,7 +9,7 @@ from typing_extensions import override
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-from getfactormodels.models.base import FactorModel, RegionMixin
+from getfactormodels.models.base import FactorModel, RegionMixin, PortfolioBase
 from getfactormodels.utils.arrow_utils import (
     print_table_preview,
     round_to_precision,
@@ -255,73 +255,60 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         return table.select(self.schema.names).combine_chunks()
 
 
-# Idea, testing something
-#----------------------------------------------------------------------------
-# Extremely roughed in
-# Rough implementation of Fama-French portfolio returns. Lots of redundancies
-# btw Industry portfolios and these. Need TODO: FactorModel to BaseModel. Just... 
-# it works right now.
-
-class _FFPortfolioBase(FactorModel, ABC):
-    """A base class for Fama French portfolio return data."""
-    @property
-    def _precision(self) -> int: return 6
+# WIP ---------------------------------------------------------------------- #
+# TODO: FactorModel to BaseModel.
+class _FFPortfolioBase(PortfolioBase, ABC):
+    """Base class for Fama-French portfolio return data."""
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     @abstractmethod
-    def _get_ff_table(self, lines: list[str]) -> str:
-        """Abstract method to select and clean portfolio files"""
+    def _find_table_start(self) -> str:
+        """A pattern to identify the specific table's start."""
         ...
 
-    def __init__(self,
-                 frequency: str = 'm',
-                 weights: str = 'vw',
-                 *,
-                 dividends: bool = True,
-                 **kwargs) -> None:
-        super().__init__(frequency=frequency, **kwargs)
+    def _get_ff_table(self, lines: list[str]) -> str:
+        weight_ln = "Value" if self.weights == 'vw' else "Equal"
+        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly', 'w': 'Weekly'}
+        freq_str = freq_map.get(self.frequency, "Monthly")
 
-        self.dividends = dividends
-        self.weights = weights.lower()
+        # Find the title line for freq/weight
+        table_start = None
+        for i, ln in enumerate(lines):
+            if (weight_ln in ln and freq_str in ln and 
+                    ("Returns" in ln or "Prior" in ln)):
+                table_start = i
+                break
 
-        if self.weights not in ('vw', 'ew'):
+        if table_start is None:
             raise ValueError(
-                f"`weights` must be 'vw' or 'ew', got '{self.weights}'"
+                f"Could not find `{weight_ln}` returns section for `{freq_str}` frequency."
             )
 
-    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
-        """Helper to transform Fama-French values representing NaNs to nulls.
+        # Skip title line, find first non empty line
+        header_idx = table_start + 1
+        while header_idx < len(lines) and not lines[header_idx].strip():
+            header_idx += 1
 
-        Converts -99.99, -999 values to null.
-        """
-        # TODO: FIXME: pyarrow.csv should be able to parse the nulls properly. Isn't.
-        #   As unlikely as it may be, there's >1.0 values (e.g., Insurance industry,
-        #   annual, 1927), so this could convert a legitmate 0.9999 to null.
-        ff_nans = [-99.99, -999.0, -99.9] # fix: use before scale_to_decimal. Will NaN a 0.999% or 9.99% return.
+        if header_idx >= len(lines):
+            raise ValueError("Couldn't find table header (found table title).")
 
-        for i, name in enumerate(table.column_names):
-            if name.lower() == "date": continue
-            col = table.column(name)
-            
-            # Create a boolean mask which yields True if ff_nans is_in a col of floats.
-            mask = pc.is_in(col, value_set=pa.array(ff_nans, type=pa.float64()))
-            null_scalar = pa.scalar(None, type=col.type)
-            new_col = pc.if_else(mask, null_scalar, col)
-            table = table.set_column(i, name, new_col)
+        headers = ("date " + " ".join(lines[header_idx].split())).lower().replace("-", "_")
+        cleaned = [headers]
 
-        return table
+        # Extract lines
+        for line in lines[header_idx + 1:]:
+            clean = line.strip()
+            # Table's over if line doesn't start with a number
+            if not clean or not clean[0].isdigit():
+                break
+            cleaned.append("  ".join(clean.split()))
 
-
-    def _clean_column_names(self, table: pa.Table) -> pa.Table:
-        """Standardize column names across all portfolio types."""
-        renames = [
-            name.strip().lower().replace(" ", "_").replace("-", "_")
-            for name in table.column_names
-        ]
-        return table.rename_columns(renames)
+        return "\n".join(cleaned)
 
 
     def _read(self, data: bytes) -> pa.Table:
-        """Common _read for all Fama-French portfolios."""
+        """FF portfolio read."""
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             with z.open(z.namelist()[0]) as f:
                 lines = f.read().decode('utf-8').splitlines()
@@ -330,413 +317,309 @@ class _FFPortfolioBase(FactorModel, ABC):
 
         table = pv.read_csv(
             io.BytesIO(clean_csv.encode('utf-8')),
-            parse_options=pv.ParseOptions(),
             convert_options=pv.ConvertOptions(
                 null_values=["-99.99", "-999", "-99.9"],
                 column_types={"date": pa.string()},
             ),
         )
-        table = self._fix_ff_nulls(table)
 
+        table = self._fix_ff_nulls(table)
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
-        table = self._clean_column_names(table)
+
+        renames = [n.strip().lower().replace(" ", "_").replace("-", "_") for n in table.column_names]
+        table = table.rename_columns(renames)
 
         return table.combine_chunks()
 
+
+    def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
+        ff_nans = pa.array([-99.99, -999.0, -99.9], type=pa.float64())
+        for i, name in enumerate(table.column_names):
+            if name.lower() == "date": continue
+            col = table.column(name)
+            mask = pc.is_in(col, value_set=ff_nans)
+            table = table.set_column(i, name, pc.if_else(mask, pa.scalar(None, type=col.type), col))
+        return table
+
+
     @property
     def schema(self) -> pa.Schema:
-        """Fama-French portfolio schema. Returns actual schema if loaded."""
+        """Fama-French portfolio schema."""
         if self._data is not None:
             return self._data.schema
-        # Date only if not loaded? 
         return pa.schema([pa.field("date", pa.date32())])
 
 
-class _FamaFrenchFactorPortfolios(_FFPortfolioBase):
-    """Fama-French factor-sorted portfolios (univariate, bivariate, three-way)."""
+class _FamaFrenchSorts(_FFPortfolioBase):
+    """Fama-French factor-sorted portfolios (Univariate and Multivariate)."""
+
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    def _frequencies(self) -> list[str]:
+        return ['d', 'w', 'm', 'y']
+
     def __init__(self,
-                 frequency: str = 'm',
                  formed_on: str | list[str] = 'size',
-                 weights: str = 'vw',
                  sort: str | int | None = None,
-                 *,
-                 dividends: bool = True,
-                 **kwargs) -> None:
+                 **kwargs):
+        super().__init__(**kwargs)
+        # TODO: REGIONS
 
-        super().__init__(frequency=frequency, weights=weights,
-                         dividends=dividends, **kwargs)
-
+        # formed_on: sorted list of lowercase strings
         if isinstance(formed_on, str):
             self.formed_on = [formed_on.lower()]
         else:
             self.formed_on = sorted([f.lower() for f in formed_on])
 
+        self.sort = str(sort).lower() if sort is not None else self._get_default_sort()
+        self.n_portfolios = self._map_sort_to_count()
         self.is_multivariate = len(self.formed_on) > 1
 
-        if sort is None:
-            if len(self.formed_on) == 1:
-                sort = 'decile'
-            elif len(self.formed_on) == 2:
-                if any(f in {'ep', 'cfp', 'dp'} for f in self.formed_on):
-                    sort = '2x3' # these are only avail as 2x3 sorts
-                else:
-                    sort = '5x5' 
-            else:
-                sort = '2x4x4'
+        self._validate_params()
 
-        self.sort = str(sort).lower()
 
-        sort_to_n = {
-            'tertile': 3, 'quintile': 5, 'decile': 10,
-            '3': 3, '5': 5, '10': 10,
+    def _find_table_start(self) -> str:
+        """Identify the table section based on weights."""
+        return "Equal Weighted Returns" if self.weights == 'ew' else "Value Weighted Returns"
+
+
+    def _map_sort_to_count(self) -> int:
+        """Map sort string/int to total portfolio count."""
+        mapping = {
+            'tertile': 3, '3': 3,
+            'quintile': 5, '5': 5,
+            'decile': 10, '10': 10,
             '2x3': 6, '6': 6,
             '5x5': 25, '25': 25,
             '10x10': 100, '100': 100,
             '2x4x4': 32, '32': 32,
         }
-
-        if self.sort not in sort_to_n:
-            raise ValueError(
-                f"sort must be one of {list(sort_to_n.keys())}, got '{self.sort}'"
-            )
-
-        self.n_portfolios = sort_to_n[self.sort]
-        self._validate_params()
+        if self.sort not in mapping:
+            raise ValueError(f"Sort '{self.sort}' not recognized. Try 'decile', '5x5', etc.")
+        return mapping[self.sort]
 
 
-    def _validate_params(self) -> None:
-        valid_factors = {
-            'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom',
-            'st_rev', 'lt_rev', 'ac', 'beta', 'net_shares', 'var', 'resvar'
-        }
+    def _get_default_sort(self) -> str:
+        """Assigns a default sort if none provided."""
+        if len(self.formed_on) == 1:
+            return 'decile'
+        if len(self.formed_on) == 2:
+            if any(f in {'ep', 'cfp', 'dp'} for f in self.formed_on):
+                return '2x3'
+            return '5x5'
+        return '2x4x4'
 
+
+    def _validate_params(self):
+        """Validates factors, frequency and sort types."""
+        valid = {'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom',
+                 'st_rev', 'lt_rev', 'ac', 'beta', 'ni', 'var', 'resvar'}
         for f in self.formed_on:
-            if f not in valid_factors:
-                raise ValueError(
-                f"Invalid factor: '{self.formed_on}'. "
-                f"Valid factors: {sorted(valid_factors)}"
-            )
-        if self.is_multivariate:
-            if self.n_portfolios not in {6, 25, 100, 32}:
-                raise ValueError(
-                    f"Multivariate sorts (factors: {self.formed_on}) only support "
-                    f"sorts for 2x3, 5x5, 10x10 (6, 25, 100). Got {self.n_portfolios}."
-                )
-        else:
-            if self.n_portfolios not in {3, 5, 10}:
-                raise ValueError(
-                    f"Univariate sorts (factor: {self.formed_on[0]}) "
-                    f"must be 3, 5, or 10. Got {self.n_portfolios}."
-                ) 
+            if f not in valid:
+                raise ValueError(f"Invalid factor: {f}. Must be one of {sorted(valid)}")
 
-        month_year_only = {'ep', 'cfp', 'dp', 'beta', 'ac',
-                           'net_shares', 'var', 'resvar'}
-        if (self.frequency == 'd' and
-                any(f in month_year_only for f in self.formed_on)):
-            raise ValueError(
-                f"Daily data not available for {self.formed_on}. "
-                f"Use frequency='m' or 'y'."
-            )
+        no_daily = {'ep', 'cfp', 'dp', 'beta', 'ac', 'ni', 'var', 'resvar'}
+        if self.frequency == 'd' and any(f in no_daily for f in self.formed_on):
+            raise ValueError(f"Daily data is not available for sorts involving {self.formed_on}")
 
-        # Sorts on prior returns are decile only
-        prior_return_factors = {'mom', 'st_rev', 'lt_rev'}
-        if (any(f in prior_return_factors for f in self.formed_on) and
-                self.n_portfolios != 10):
-            raise ValueError(
-                f'{self.formed_on} is only available in deciles.'
-            )
-
-    def _get_url(self) -> str:
-        """Construct Fama-French portfolio URL."""
-        if self.is_multivariate:
-            return self._multivariate_url()
-        return self._univariate_url()
+        prior_rets = {'mom', 'st_rev', 'lt_rev'}
+        if not self.is_multivariate and self.formed_on[0] in prior_rets: #noqa
+            if self.n_portfolios != 10:
+                raise ValueError(f"{self.formed_on[0]} is only available in deciles.")
 
 
-    def _univariate_url(self) -> str:
-        """Helper to map input to slug in URL"""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        # Maps input to a slug for URL construction. Comments are the sub-
-        # headers on the page.
-        mapping = {
-            # Univariate sorts
-            'size': 'Portfolios_Formed_on_ME',
-            'bm': 'Portfolios_Formed_on_BE-ME',
-            'op': 'Portfolios_Formed_on_OP',
-            'inv': 'Portfolios_Formed_on_INV',
-            # Univariate sorts on E/P, CF/P, D/P. [Month/year only]
-            'ep': 'Portfolios_Formed_on_E-P',
-            'cfp': 'Portfolios_Formed_on_CF-P',
-            'dp': 'Portfolios_Formed_on_D-P',
-            # Sorts involving prior returns
-            'mom': '10_Portfolios_Prior_12_2',
-            'st_rev': '10_Portfolios_Prior_1_0',
-            'lt_rev': '10_Portfolios_Prior_60_13',
-            # Sorts involving Accruals[...] [month/year only]
-            'ac': 'Portfolios_Formed_on_AC',
-            'beta': 'Portfolios_Formed_on_BETA',
-            'ni': 'Portfolios_Formed_on_NI', # Net share issues
-            'var': 'Portfolios_Formed_on_VAR',       # variance
-            'resvar': 'Portfolios_Formed_on_RESVAR', # residual variance
-        }
-
-        factor = self.formed_on[0]
-        base_name = mapping.get(factor)
-
-        if not base_name:
-            raise ValueError(f"Unknown factor: {factor}")
-
-        if factor in {'mom', 'lt_rev', 'st_rev'} and not self.dividends:
-            self.log.warning(
-                "Fama-French does not provide ex-div momentum portfolios. "
-                "Ignoring dividends=False."
-            )
-            suffix = "_CSV.zip"
-        elif self.frequency == 'd':
-            suffix = "_Daily_CSV.zip"
-        elif not self.dividends:
-            suffix = "_Wout_Div_CSV.zip"
-        else:
-            suffix = "_CSV.zip"
-
-        return f"{base_url}/{base_name}{suffix}"
-
-
-    def _multivariate_url(self) -> str:
-        """Construct URL for multivariate sorts."""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
-        factors = frozenset(self.formed_on)
-        n = self.n_portfolios
-
-        three_way_map = {
-            # "Three-way sorts on Size, B/M, OP, and Inv" 
-            frozenset(['size', 'bm', 'op']): "32_Portfolios_ME_BEME_OP_2x4x4",
-            frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
-            frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
-        }
-
-        if len(factors) == 3:
-            slug = three_way_map.get(factors)
-            if not slug:
-                raise ValueError(f"3-way sort {self.formed_on} not supported.")
-        else:
-            bivariate_map = {
-                # All: "Bivariate sorts on Size, B/M, OP and Inv"
-                frozenset(['size', 'bm']): "",
-                frozenset(['size', 'op']): "ME_OP",
-                frozenset(['size', 'inv']): "ME_INV",
-                # n=25 only
-                frozenset(['bm', 'op']): "BEME_OP",
-                frozenset(['bm', 'inv']): "BEME_INV",
-                frozenset(['op', 'inv']): "OP_INV",
-                # All "Bivariate sorts on Size, E/P, CF/P, and D/P"  n=6 only
-                frozenset(['size', 'ep']): "ME_EP",
-                frozenset(['size', 'cfp']): "ME_CFP",
-                frozenset(['size', 'dp']): "ME_DP",
-                # All bivariate sorts in "Sorts involving Accruals, Market Beta,
-                # Net Share Issues, Daily Variance, and Daily Residual Variance"
-                # n = 25 only
-                frozenset(['size', 'ac']): "ME_AC",     # accruals
-                frozenset(['size', 'beta']): "ME_BETA",
-                frozenset(['size', 'ni']): "ME_NI",      # net share issues
-                frozenset(['size', 'var']): "ME_VAR",
-                frozenset(['size', 'resvar']): "ME_RESVAR",   # residual variance
-                # Sorts involving Prior Returns - no option for excluding divs.
-                frozenset(['size', 'mom']): "ME_Prior_12_2",
-                frozenset(['size', 'st_rev']): "ME_Prior_1_0",
-                frozenset(['size', 'lt_rev']): "ME_Prior_60_13",
-            }
-            slug = bivariate_map.get(factors)
-            if slug is None:
-                raise ValueError(f"Multivariate combination '{self.formed_on}' not supported.")
-
-        if self.frequency == 'd':
-            file_ext = "Daily_CSV.zip"
-        elif not self.dividends:
-            file_ext = "Wout_Div_CSV.zip"
-        else:
-            file_ext = "CSV.zip"
-
-        # 3-way sorts
-        if len(factors) == 3:
-            return f"{base_url}/{slug}_{file_ext}"
-        
-        grid_parts = {
-            6: ("6_Portfolios", "2x3"),
-            25: ("25_Portfolios", "5x5"),
-            100: ("100_Portfolios", "10x10"),
-            32: ("32_Portfolios", "2x4x4"),
-        }
-        prefix, suffix = grid_parts[n]
-
-        # Bivariate sorts
-        if not slug:
-            return f"{base_url}/{prefix}_{suffix}_{file_ext}"
-        if "Prior" in slug: # prior rets
-            return f"{base_url}/{prefix}_{slug}_{file_ext}"
-        
-        # Univariate
-        return f"{base_url}/{prefix}_{slug}_{suffix}_{file_ext}"
-
-
-    def _get_ff_table(self, lines: list[str]) -> str:
-        """Select correct table and clean whitespace for CSV parsing."""
-        weight_ln = "Value" if self.weights == 'vw' else "Equal"
-        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly', 'w': 'Weekly'}
-        freq_str = freq_map.get(self.frequency, "Monthly")
-
-        table_start = None
-        for i, ln in enumerate(lines):
-            if (weight_ln in ln and freq_str in ln and
-                    ("Returns" in ln or "Prior" in ln)):
-                table_start = i
-                break
-
-        if table_start is None:
-            raise ValueError(
-                f"Could not find `{weight_ln}` section for `{freq_str}`"
-            )
-
-        # header line
-        header_line = table_start + 1
-        while header_line < len(lines) and not lines[header_line].strip():
-            header_line += 1
-
-        if header_line >= len(lines):
-            raise ValueError("No header found in table")
-
-        headers = ("date " + " ".join(lines[header_line].split())).lower()
-        cleaned = [headers]
-
-        # Extract data
-        for line in lines[header_line + 1:]:
-            clean = line.strip()
-            if not clean or not clean[0].isdigit():
-                break
-            cleaned.append("  ".join(clean.split()))
-
-        return "\n".join(cleaned)
-
-
+    #TODO: put in base ff as static method?
     @override
     def _read(self, data: bytes) -> pa.Table:
-        table = super()._read(data) # base _read, then slice
+        """Read FF data and slice columns if it's a univariate file."""
+        table = super()._read(data)
 
         if (not self.is_multivariate and
                 self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}):
 
-            # fix(?): col handling when <=0 in cols.
             has_negative_col = any("<=" in name for name in table.column_names[:2])
             mapping = {
                 3: slice(2, 5) if has_negative_col else slice(1, 4),
                 5: slice(5, 10) if has_negative_col else slice(4, 9),
                 10: slice(10, 20) if has_negative_col else slice(9, 19),
             }
-            
+
             target_slice = mapping.get(self.n_portfolios)
 
-            # 'prior returns' portfolios are decile only. Only slicing 
-            # if the table has deciles/quintiles/tertiles.
-            if target_slice and table.num_columns > 16: #or == 21
+            if target_slice and table.num_columns > 16:
                 indices = [0] + list(range(target_slice.start, target_slice.stop))
                 indices = [i for i in indices if i < table.num_columns]
                 table = table.select(indices)
 
         return table.combine_chunks()
 
+    @override
+    def _read(self, data: bytes) -> pa.Table:
+        table = super()._read(data)
+        # Sorts on prior rets are decile only, the rest are a table 
+        # of tertiles, quintiles, deciles.
+        if not self.is_multivariate and self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}:
+            table = self._slice_univariate(table)
 
-class _FFIndustryPortfolios(_FFPortfolioBase):
-    """Fama-French industry portfolios."""
-    _INDUSTRY_PORTFOLIO_SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
+        return table.combine_chunks()
 
-    @property
-    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
-    
-    #@property
-    #def _regions(self) -> list[str]: return ['us']
 
-    def __init__(self,
-                 n_portfolios: int = 5,
-                 frequency: str = 'm',
-                 weights: str = 'vw',
-                 *,
-                 dividends: bool = True,
-                 **kwargs) -> None:
+    def _slice_univariate(self, table: pa.Table) -> pa.Table:
+        # If univariate, and not prior rets, slices the sort from table.
+        has_negative_col = any("<=" in name for name in table.column_names[:3])
+        mapping = {
+            3: slice(2, 5) if has_negative_col else slice(1, 4),
+            5: slice(5, 10) if has_negative_col else slice(4, 9),
+            10: slice(10, 20) if has_negative_col else slice(9, 19),
+        }
+        target_slice = mapping.get(self.n_portfolios)
 
-        if n_portfolios not in self._INDUSTRY_PORTFOLIO_SIZES:
-            raise ValueError(
-                f"n_portfolios must be one of {sorted(self._INDUSTRY_PORTFOLIO_SIZES)}, "
-                f"got {n_portfolios}"
-            )
+        if target_slice and table.num_columns > 16:
+            indices = [0] + list(range(target_slice.start, target_slice.stop))
+            indices = [i for i in indices if i < table.num_columns]
+            return table.select(indices)
 
-        self.n_portfolios = n_portfolios
-        super().__init__(frequency=frequency, weights=weights,
-                         dividends=dividends, **kwargs)
+        return table
 
 
     def _get_url(self) -> str:
-        """Get industry portfolio URL."""
-        base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+        """Constructs a URL for a portfolio .zip on the Ken French library."""
+        base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
+
+        # suffix
+        if self.frequency == 'd':
+            suffix = "_Daily_CSV.zip"
+        elif not self.dividends:
+            suffix = "_Wout_Div_CSV.zip"
+        else:
+            suffix = "_CSV.zip"
+
+        # Univariate sorts
+        if not self.is_multivariate:
+            mapping = {
+                'size': 'Portfolios_Formed_on_ME',
+                'bm': 'Portfolios_Formed_on_BE-ME',
+                'op': 'Portfolios_Formed_on_OP',
+                'inv': 'Portfolios_Formed_on_INV',
+                'ep': 'Portfolios_Formed_on_E-P',
+                'cfp': 'Portfolios_Formed_on_CF-P',
+                'dp': 'Portfolios_Formed_on_D-P',
+                'mom': '10_Portfolios_Prior_12_2',
+                'st_rev': '10_Portfolios_Prior_1_0',
+                'lt_rev': '10_Portfolios_Prior_60_13',
+                'ac': 'Portfolios_Formed_on_AC',
+                'beta': 'Portfolios_Formed_on_BETA',
+                'ni': 'Portfolios_Formed_on_NI',
+                'var': 'Portfolios_Formed_on_VAR',
+                'resvar': 'Portfolios_Formed_on_RESVAR',
+            }
+            return f"{base}/{mapping[self.formed_on[0]]}{suffix}"
+
+        # Multivariate sorts
+        factors = frozenset(self.formed_on)
+
+        # 3-way sorts  # NOTE REGIONAL AVAIL.
+        if len(factors) == 3:
+            three_way = {
+                frozenset(['size', 'bm', 'op']): "32_Portfolios_ME_BEME_OP_2x4x4",
+                frozenset(['size', 'bm', 'inv']): "32_Portfolios_ME_BEME_INV_2x4x4",
+                frozenset(['size', 'op', 'inv']): "32_Portfolios_ME_OP_INV_2x4x4",
+            }
+            slug = three_way.get(factors)
+            if not slug: 
+                raise ValueError("3-way sort not supported.")
+
+            return f"{base}/{slug}{suffix}"
+
+        # Bivariate sorts
+        bivariate_map = {
+            frozenset(['size', 'bm']): "",
+            frozenset(['size', 'op']): "ME_OP",
+            frozenset(['size', 'inv']): "ME_INV",
+            frozenset(['bm', 'op']): "BEME_OP",
+            frozenset(['bm', 'inv']): "BEME_INV",
+            frozenset(['op', 'inv']): "OP_INV",
+            frozenset(['size', 'ep']): "ME_EP",
+            frozenset(['size', 'cfp']): "ME_CFP",
+            frozenset(['size', 'dp']): "ME_DP",
+            frozenset(['size', 'ac']): "ME_AC",
+            frozenset(['size', 'beta']): "ME_BETA",
+            frozenset(['size', 'ni']): "ME_NI",
+            frozenset(['size', 'var']): "ME_VAR",
+            frozenset(['size', 'resvar']): "ME_RESVAR",
+            frozenset(['size', 'mom']): "ME_Prior_12_2",
+            frozenset(['size', 'st_rev']): "ME_Prior_1_0",
+            frozenset(['size', 'lt_rev']): "ME_Prior_60_13",
+        }
+
+        slug_part = bivariate_map.get(factors)
+        if slug_part is None:
+            raise ValueError(f"Bivariate combination {self.formed_on} not supported.")
+
+        grid_map = {6: ("6_Portfolios", "2x3"),
+                    25: ("25_Portfolios", "5x5"),
+                    100: ("100_Portfolios", "10x10")}
+        prefix, grid = grid_map.get(self.n_portfolios, ("25_Portfolios", "5x5"))
+
+        if not slug_part: # bivariate
+            return f"{base}/{prefix}_{grid}{suffix}"
+        if "Prior" in slug_part: # bivariate sorts on prior returns
+            return f"{base}/{prefix}_{slug_part}{suffix}"
+
+        return f"{base}/{prefix}_{slug_part}_{grid}{suffix}"
+
+
+class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
+    """Fama-French industry portfolios."""
+    _SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
+
+    @property
+    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
+
+    def __init__(self, n_portfolios: int | str = 5, **kwargs):
+        n_portfolios = int(n_portfolios) # allow str through
+        if n_portfolios not in self._SIZES:
+            raise ValueError(f"Industry count must be one of {self._SIZES}")
+        self.n_portfolios = n_portfolios
+        super().__init__(**kwargs)
+
+
+    def _find_table_start(self) -> str:
+        w_str = "Value Weighted" if self.weights == 'vw' else "Equal Weighted"
+        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly'}
+
+        return f"Average {w_str} Returns -- {freq_map.get(self.frequency, 'Monthly')}"
+
+
+    def _get_url(self) -> str:
+        base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
         if self.frequency == 'd':
             suffix = "daily_CSV.zip"
-        elif not self.dividends:
-            suffix = "Wout_Div_CSV.zip"
         else:
-            suffix = "CSV.zip"
+            suffix = "Wout_Div_CSV.zip" if not self.dividends else "CSV.zip"
 
-        filename = f"{self.n_portfolios}_Industry_Portfolios_{suffix}"
-        return f"{base_url}/{filename}"
-
-
-    def _get_ff_table(self, lines: list[str]) -> str:
-        """Select correct industry portfolio table and clean whitespace."""
-        w_str = "Value Weighted" if self.weights == 'vw' else "Equal Weighted"
-        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly'}
-        freq_str = freq_map.get(self.frequency, "Monthly")
-
-        start_line = f"Average {w_str} Returns -- {freq_str}"
-
-        idx = next((i for i, ln in enumerate(lines) if start_line in ln), None)
-        if idx is None:
-            raise ValueError(f"Could not find section: {start_line}")
-
-        cleaned = []
-        headers = ("date " + " ".join(lines[idx + 1].split())
-                   ).lower().replace("-", "_")
-        
-        cleaned.append(headers)
-
-        # Extract data
-        for line in lines[idx + 2:]:
-            clean = line.strip()
-            if not clean or not clean[0].isdigit():
-                break
-            cleaned.append("  ".join(clean.split()))
-
-        return "\n".join(cleaned)
+        return f"{base}/{self.n_portfolios}_Industry_Portfolios_{suffix}"
 
 
-# Public, prob. to main, here for now.
 def FamaFrenchPortfolios(
-        formed_on: str | list[str] = 'size',
-        sort: str | int | None = None,
-        industry: int | None = None,
-        frequency: str = 'm',
-        weights: str = 'vw',
+    formed_on: str | list[str] = 'size', #on=, sorted_on=, might rename
+    sort: str | int | None = None, #2x3, decile, 25
+    industry: int | None = None, #industries= ? allow str through, "12" 
+    frequency: str = 'm',
+    weights: str = 'vw',
         **kwargs) -> pa.Table:
-    # TODO: This docstr properly. really properly.
+    # TODO: This docstr properly.
     """Factory for Fama French portfolios.
+
+    Either `industry` or `formed_on` required.
 
     Args:
         frequency (str): 'd', 'w', 'm', 'y'
-        formed_on (str | list[str] | set | tuple): 
+        formed_on (str | list[str] | set | tuple):
         sort (str, int): 'decile', 'quintile', 'tertile', '2x3', '5x5'
             '10x10', '2x2x4'. Accepts int: 10, 5, 3, 6, 25, 100, 32.
-        industry (int): for Fama French Industry Portfolios. Specify 
+        industry (int): for Fama French Industry Portfolios. Specify
             n portfolios, industry=12
         weights: 'vw', 'ew'
 
@@ -749,16 +632,13 @@ def FamaFrenchPortfolios(
     """
     # we industry?
     if industry is not None:
-        return _FFIndustryPortfolios(
+        return _FamaFrenchIndustryPortfolios(
             frequency=frequency, weights=weights, n_portfolios=industry, **kwargs
         )
 
     # keep formed_on None, let class handle it.
-    return _FamaFrenchFactorPortfolios(
+    return _FamaFrenchSorts(
         frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs
     )
 
-
-
-
-## TODO: LT_rev, ST_rev...
+# TODO: setters/getters, regions, tests, aggregates for q? prob not. 

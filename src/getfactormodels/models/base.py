@@ -7,6 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
+from typing import Literal, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     filter_table_by_date,
@@ -534,3 +535,22 @@ class RegionMixin:
             return cls._regions.fget(cls) 
         return cls._regions
 
+
+class PortfolioBase(FactorModel, ABC):
+    """Base class for portfolio return data."""
+    def __init__(self, frequency: str = 'm',
+                 weights: Literal['vw', 'ew'] = 'vw',
+                 *,
+                 dividends: bool = True,
+                 **kwargs):
+        super().__init__(frequency=frequency, **kwargs)
+
+        self.dividends = dividends
+        self.weights = weights.lower()
+
+        if self.weights not in ('vw', 'ew'):
+            msg = f'weights should be either "vw" or "ew", not {weights}'
+            raise ValueError(msg)
+
+    @property
+    def _precision(self) -> int: return 6
