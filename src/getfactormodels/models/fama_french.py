@@ -583,33 +583,17 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
         return f"{base}/{self.n_portfolios}_Industry_Portfolios_{suffix}"
 
 
-def FamaFrenchPortfolios(
+def _get_ff_portfolios(
     formed_on: str | list[str] = 'size', #on=, sorted_on=, might rename
     sort: str | int | None = None, #2x3, decile, 25
     industry: int | None = None, #industries= ? allow str through, "12" 
-    frequency: str = 'm',
     weights: str = 'vw',
-        **kwargs) -> pa.Table:
-    # TODO: This docstr properly.
-    """Factory for Fama French portfolios.
+    frequency: str = 'm',
+    **kwargs) -> pa.Table:
+    """Internal helper: factory to return.
 
-    Either `industry` or `formed_on` required.
-
-    Args:
-        frequency (str): 'd', 'w', 'm', 'y'
-        formed_on (str | list[str] | set | tuple):
-        sort (str, int): 'decile', 'quintile', 'tertile', '2x3', '5x5'
-            '10x10', '2x2x4'. Accepts int: 10, 5, 3, 6, 25, 100, 32.
-        industry (int): for Fama French Industry Portfolios. Specify
-            n portfolios, industry=12
-        weights: 'vw', 'ew'
-
-    Examples:
-        ff = FamaFrenchPortfolios(industry=12)
-        ff = FamaFrenchPortfolios(formed_on='mom', sort='decile')
-        ff = FamaFrenchPortfolios(frequency = 'd', formed_on=['op', 'size'], sort='2x3')
-        ff = FamaFrenchPortfolios(formed_on='size', sort=6, weights='ew')
-        ff = FamaFrenchPortfolios(industry=30, frequency='m', weights='vw')
+    Factory for Fama French portfolios. Either `industry` or 
+    `formed_on` required.
     """
     # we industry?
     if industry is not None:

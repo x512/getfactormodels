@@ -383,10 +383,10 @@ class CompositeModel(FactorModel):
 class ModelCollection(CompositeModel):
     """A ModelCollection holds multiple models of the same frequencies."""
     def __init__(self, model_keys: list[str], **kwargs):
-        from getfactormodels.main import get_factors
+        from getfactormodels.main import model
 
         self.model_keys = model_keys
-        self.instances = [get_factors(m, **kwargs) for m in model_keys]
+        self.instances = [model(m, **kwargs) for m in model_keys]
 
         regional_inst = [i for i in self.instances if isinstance(i, RegionMixin)]
         
