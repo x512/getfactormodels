@@ -22,13 +22,13 @@ from importlib.metadata import PackageNotFoundError, version
 
 
 def _get_version():
-    """Avoids importing __init__ for the ver. no."""
-    try:
-        return version("getfactormodels")
-    except PackageNotFoundError:
-        return "unknown"
+    # Avoids importing __init__ for the ver.
+    try: return version("getfactormodels")
+    except PackageNotFoundError: return "unknown"
 
-
+# TODO: 
+# TODO: move cli in main here
+# TODO: redo this list regions 
 def _cli_list_regions():
     """Helper to display regions and exit."""
     from getfactormodels.models.aqr_models import _AQRModel
@@ -89,8 +89,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--list-regions', action='store_true', help="show all supported regions and exit")
     parser.add_argument('--verbose', action='store_true', help="verbose output (set log to debug)")
     
-    args = parser.parse_args()
+    # Portfolios arg group test, prob will change
+    port_group = parser.add_argument_group('Portfolio Options')
+    port_group.add_argument('-p', '--portfolio', action='store_true', 
+                            help="Access portfolio return data. Fama-French only at the moment.")
+    
+    port_group.add_argument('-S', '--on', '--formed-on', nargs="+", metavar='FACTOR',
+                            help="Factors to sort on (size, bm, inv, etc.)")
+    
+    port_group.add_argument('-n', '--sort', metavar='SORT',
+                            help="Sort type/grid (10, decile, 25, 5x5, 2x3, etc.)")
+    port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw',
+                            help="Weighting scheme")
+    # --industry or --portfolio 
+    port_group.add_argument('-i', '--industry', type=int, metavar='N',
+                            help="FF Industry portfolios (5, 10, 12, 17, 30, 38, 48, 49)")
 
+    port_group.add_argument('--src', '--source', default='ff', choices=['ff'],
+                            help="Data source (ff portfolios only for now).")
+    
+    args = parser.parse_args()
+    
     if args.verbose:
         logging.getLogger("getfactormodels").setLevel(logging.DEBUG)
     else:
