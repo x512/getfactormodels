@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
-from .main import get_factors
+from .main import model, portfolio
 from .models import (
     AQR6Factors,
     BABFactors,
@@ -24,7 +24,6 @@ from .models import (
     ConditionalCAPM,
     DHSFactors,
     FamaFrenchFactors,
-    FamaFrenchPortfolios,
     HighIncomeCCAPM,
     HMLDevilFactors,
     ICRFactors,
@@ -44,14 +43,12 @@ logger.addHandler(logging.NullHandler())
 
 __version__ = "0.0.19"
 __all__ = [ 
-    "get_factors",
     "BABFactors",
     "BarillasShankenFactors",
     "CarhartFactors",
     "DHSFactors",
     "FamaFrenchFactors",
     "HMLDevilFactors",
-    "FamaFrenchPortfolios",
     "ICRFactors",
     "LiquidityFactors",
     "MispricingFactors",
@@ -61,6 +58,9 @@ __all__ = [
     "AQR6Factors",
     "ConditionalCAPM",
     "HighIncomeCCAPM",
+    "model",
+    "portfolio",
+    
 ]
 
 

@@ -134,61 +134,103 @@ def _format_for_preview(val, col_name, precision=6):
     return str(val)
 
 
-def print_table_preview(table, n_rows=4) -> str | None:
-    """Prints a pa.Table like a (simplified) pd.DataFrame.
 
-    Used by the cli, and base class __repr__ (TODO).
+def print_table_preview(table, n_rows=6, n_cols=6) -> str | None:
+    """Formats a str preview of a PyArrow table like a Pandas DataFrame.
 
-    Notes:
-        - Hardcoded 'date' and '[...]' for the index col and gap. 
-        - Head and tails (n_rows) 4 by default. 
-        - Table size is included in the footer (might change to a nice header)
-        - Will print whole table if total is less than (n_rows * 2) + 5. 
+    - If rows or columns exceed (n*2 + 2) then table is truncated.
+    - Hardcoded 'date' on its own line. 
+    - Prints "[...]" in place of truncated rows/cols.
+    - Prints a footer of [rows x cols, size]
+   
+    Args:
+        table (pa.Table): The table to preview.
+        n_rows: Number of rows to show at head and tail.
+        n_cols: Number of columns to show at start and end. Excludes date.
     """
+    # TODO: way too much going on. Needs refactor. Own file.
     total_rows = table.num_rows
-    if table.num_rows == 0:
-        log.warning("Empty Table")  # no sys
+    if total_rows == 0:
+        log.warning("Empty Table")
         return None
+    
+    precision = getattr(table, '_precision', 6) # model's own precision property
+    all_columns = table.column_names
+    total_cols = len(all_columns)
+    
+    # Makes sure at least 3 rows are hidden
+    is_row_gap = total_rows > (n_rows * 2) + 2
+    if is_row_gap:
+        head = table.slice(0, n_rows).to_pylist()
+        tail = table.slice(total_rows - n_rows, n_rows).to_pylist()
+    else:
+        head = table.to_pylist()
+        tail = []
 
-    # Get the model's own _precision property!
-    precision = getattr(table, '_precision', 6)
-    columns = table.column_names
+    # (total_cols-1) because all_columns[0] = 'date'
+    data_cols_count = total_cols - 1
+    is_col_gap = data_cols_count > (n_cols * 2) + 2
+    
+    if is_col_gap:
+        # date + first N + gap + last N
+        display_cols = (
+            [all_columns[0]] + 
+            all_columns[1 : n_cols + 1] + 
+            ["[...]"] + 
+            all_columns[-n_cols:]
+        )
+    else:
+        display_cols = all_columns
 
-    # if there's a gap, then the row is None. (Below, if None, prints "[...]")
-    is_gap = total_rows <= (n_rows * 2) + 5   # +5 to prevent hiding just a few cols
+    col_widths = {}
+    for col in display_cols:
+        if col == "[...]":
+            col_widths[col] = 7
+        else:
+            # Checks length of header and the formatted values in head/tail
+            header_len = len(col)
+            max_val_len = max(
+                (len(_format_for_preview(r[col], col, precision)) for r in head + tail), 
+                default=0
+            )
+            col_widths[col] = max(header_len, max_val_len) + 2
 
-    # slice a head and tail
-    head = table.slice(0, n_rows).to_pylist() if not is_gap else table.to_pylist()
-    tail = table.slice(total_rows - n_rows, n_rows).to_pylist() if not is_gap else []
-
-    # calc width of cols
-    col_widths = {
-        col: max(
-            len(col),
-            max((len(_format_for_preview(r[col], col, precision)) for r in head + tail), default=0),
-        ) + 2 
-        for col in columns
-    }
-
-    # construct header (collect into list, no printing to stderr)
     output = []
-    header_row = "".join(c.rjust(col_widths[c]) for c in columns[1:])
-    output.append(f"\t    {header_row}")
-    output.append("date")
+    
+    # headers
+    # 'date' is on a second line  (mimicing pandas)
+    header_row = ""
+    for col in display_cols[1:]:
+        if col == "[...]":
+            header_row += "[...]".center(col_widths[col])
+        else:
+            header_row += col.rjust(col_widths[col])
 
-    # print (head, gap, tail) rows. TODO: nice header, __str__ in base
-    display_rows = head + ([None] if tail else []) + tail
+    output.append(f"{' ' * col_widths[all_columns[0]]}{header_row}")
+    output.append(all_columns[0]) # word 'date'
+
+
+    # data
+    display_rows = head + ([None] if is_row_gap else []) + tail
     for row in display_rows:
-        if row is None:    # from above, row's None, because is_gap
-            output.append("  [...] ")   ### TEST THIS
+        if row is None:
+            output.append(" [...]")
             continue
 
-        # left align dates, other cols right
-        date_str = _format_for_preview(row['date'], 'date', precision).ljust(col_widths['date'])
-        factors_str = "".join(_format_for_preview(row[c], c, precision).rjust(col_widths[c]) for c in columns[1:])
-        output.append(f"{date_str}{factors_str}")
+        # date col format
+        line = _format_for_preview(row[all_columns[0]], 'date', precision).ljust(col_widths[all_columns[0]])
+        
+        # format all other data cols
+        for col in display_cols[1:]:
+            if col == "[...]":
+                line += "[...]".center(col_widths[col])
+            else:
+                val = _format_for_preview(row[col], col, precision)
+                line += val.rjust(col_widths[col])
+        output.append(line)
 
+    # footer: [X rows x Y columns, Z kb]
     buf_size = table.get_total_buffer_size()
-    output.append(f"\n[{total_rows} rows x {len(columns)} columns, {buf_size / 1024:.1f} kb]")
-    # change: return the str, not print
+    output.append(f"\n[{total_rows} rows x {total_cols} columns, {buf_size / 1024:.1f} kb]")
+    
     return "\n".join(output)
