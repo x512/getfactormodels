@@ -426,60 +426,41 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         if not self.is_multivariate and self.formed_on[0] in prior_rets: #noqa
             if self.n_portfolios != 10:
                 raise ValueError(f"{self.formed_on[0]} is only available in deciles.")
-
-
-    #TODO: put in base ff as static method?
-    @override
-    def _read(self, data: bytes) -> pa.Table:
-        """Read FF data and slice columns if it's a univariate file."""
-        table = super()._read(data)
-
-        if (not self.is_multivariate and
-                self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}):
-
-            has_negative_col = any("<=" in name for name in table.column_names[:2])
-            mapping = {
-                3: slice(2, 5) if has_negative_col else slice(1, 4),
-                5: slice(5, 10) if has_negative_col else slice(4, 9),
-                10: slice(10, 20) if has_negative_col else slice(9, 19),
-            }
-
-            target_slice = mapping.get(self.n_portfolios)
-
-            if target_slice and table.num_columns > 16:
-                indices = [0] + list(range(target_slice.start, target_slice.stop))
-                indices = [i for i in indices if i < table.num_columns]
-                table = table.select(indices)
-
-        return table.combine_chunks()
-
+    
     @override
     def _read(self, data: bytes) -> pa.Table:
         table = super()._read(data)
+        
+        # fix: drop the "<= 0" column here (bivariates can contain it)
+        neg_cols = [name for name in table.column_names if "<=" in name]
+        if neg_cols:
+            table = table.drop(neg_cols) #
+
         # Sorts on prior rets are decile only, the rest are a table 
-        # of tertiles, quintiles, deciles.
+        # of date [+ <= 0] + tertiles, quintiles, deciles.
         if not self.is_multivariate and self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}:
             table = self._slice_univariate(table)
-
+        
         return table.combine_chunks()
 
 
     def _slice_univariate(self, table: pa.Table) -> pa.Table:
-        # If univariate, and not prior rets, slices the sort from table.
-        has_negative_col = any("<=" in name for name in table.column_names[:3])
+        # No "< =" col now
         mapping = {
-            3: slice(2, 5) if has_negative_col else slice(1, 4),
-            5: slice(5, 10) if has_negative_col else slice(4, 9),
-            10: slice(10, 20) if has_negative_col else slice(9, 19),
+            3: slice(1, 4),
+            5: slice(4, 9),
+            10: slice(9, 19),
         }
+        
         target_slice = mapping.get(self.n_portfolios)
 
+        # Only slice if it's a table of tertile/quintile/decile:
         if target_slice and table.num_columns > 16:
             indices = [0] + list(range(target_slice.start, target_slice.stop))
-            indices = [i for i in indices if i < table.num_columns]
-            return table.select(indices)
+            return table.select([i for i in indices if i < table.num_columns])
 
         return table
+
 
 
     def _get_url(self) -> str:
