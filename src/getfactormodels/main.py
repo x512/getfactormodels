@@ -23,51 +23,26 @@ from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import parse_args
 from getfactormodels.utils.utils import _generate_filename, _get_model_key
+import warnings 
 
 log = logging.getLogger("getfactormodels")
 
-def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel: #Self
-    """Get and process factor model data.
 
-    This function initializes a specific FactorModel subclass based on the 
-    requested model param.
+def portfolio(source: str = 'ff', **kwargs):
+    """Factory to retrieve Portfolio Returns.
+    
+    Only Fama French industry portfolios and sorts at the min.
+    """
+    source = source.lower()
+    # FF only
+    if source in ['ff', 'famafrench']:
+        from getfactormodels.models.fama_french import _get_ff_portfolios
+        return _get_ff_portfolios(**kwargs)
+    raise ValueError(f"Portfolio source '{source}' not recognized.")
 
-    Args:
-        model (str | int): the the name of the factor model. Default: 3
-            - Fama-French: '3', '5', '6' ('ff3', 'famafrench3')
-            - Carhart: '4', 'carhart', 'car', 'ff4'.
-            - q-Factors: 'q', 'q5', or 'qclassic', 'q4'
-            - HML Devil: 'hmld' 
-            - Betting Against Beta: 'bab'
-            - Quality Minus Junk: 'qmj'
-            - Pastor-Stambaugh Liquidity: 'liq', 'liquidity'
-            - Stambaugh-Yuan Mispricing: 'misp', 'mispricing'
-            - Intermediary Capital Risk: 'icr'
-            - Daniel-Hirshleifer-Sun Behavioral Factors: 'dhs'
-            - Barillas Shanken 6-Factors: 'bs', 'bs6'
-        frequency (str): data frequency. Availability varies by model.
-            - One of: 'd' 'w' 'w2w' 'm' 'q' or 'y'. Default: 'm'.
-        start_date (str): optional start date, YYYY-MM-DD.
-        end_date (str): optional end date, YYYY-MM-DD.
-        output_file (str): optional path or string to save data to disk.
-        **kwargs: model specific parameters:
-            - region (str): Geographic region (e.g., 'US', 'Developed')
-            - classic (bool): Use the 4-factor version of the Q-model.
 
-    Returns:
-        FactorModel: a container object with the requested data. 
-            Provides the data as a pa.Table via `.data`, or DataFrame 
-            via `.to_pandas()` and `.to_polars()`. Supports the 
-            DataFrame Interchange Protocol.
-
-    Raises:
-        ValueError: the model key is unrecognized or date is invalid.
-        RuntimeError: the data download failed after retries.
-
-    Example:
-        >>> m = get_factors(3, start_date="2020-01", frequency='m')
-        >>> model.extract(['SMB', 'HML'])
-        >>> df = model.to_polars()
+def model(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel: #Self
+    """
     """
     if isinstance(model, list):
         if len(model) == 1:
@@ -111,6 +86,20 @@ def get_factors(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel
     return factor_class(**kwargs)
 
 
+def get_factors(*args, **kwargs):
+    """DEPRECATED: Use `model()` instead. 
+
+    This function will be removed in a future release.
+    """
+    warnings.warn(
+        "get_factors() is deprecated and will be removed in a future version. "
+            "Please use model() for factor data or portfolio() for return data.",
+        FutureWarning,
+        stacklevel=2
+    )
+    return model(*args, **kwargs)
+
+
 def main():
     args = parse_args()
 
@@ -119,21 +108,51 @@ def main():
         _cli_list_regions()
         sys.exit(0)
 
-    if not args.model:
-        print("Error: The -m/--model argument is required.", file=sys.stderr)
+    if args.portfolio and not args.on:
+        print("Error: --portfolio requires --on [factors] (e.g., --on size bm)", file=sys.stderr)
+        sys.exit(1)
+
+    if not args.portfolio and not args.on and not args.model:
+        print("Error: The -m/--model or --portfolio arguments are required.", file=sys.stderr)
         sys.exit(1)
 
     try:
-        model_obj = get_factors(
-            model=args.model,
-            frequency=args.frequency,
-            start_date=args.start,
-            end_date=args.end,
-            region=args.region, 
-        )
+        rhs = None
+        lhs = None
 
-        model_obj.load()
-   
+        # Factor models
+        if args.model:
+            rhs = model(
+                model=args.model,
+                frequency=args.frequency,
+                start_date=args.start,
+                end_date=args.end,
+                region=args.region,
+            )
+        # Portoflios
+        if args.on or args.industry:
+            lhs = portfolio(
+                source='ff', 
+                industry=args.industry,
+                formed_on=args.on,
+                sort=args.sort,
+                weights=args.weights,
+                frequency=args.frequency,
+                start_date=args.start,
+                end_date=args.end
+            )
+
+        if rhs and lhs:
+            rhs.load()
+            lhs.load()
+            _table = rhs.data.join(lhs.data, keys="date", join_type="left outer")
+            # a FactorModel object is needed (for to_file/extract/drop etc.),
+            # this uses the RHS instance, then updates its _data.
+            model_obj = rhs
+            model_obj._data = _table
+        else:
+            model_obj = rhs or lhs
+            model_obj.load()
         if not len(model_obj):
             log.error("No data returned.")
             sys.exit(1)
