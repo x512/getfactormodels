@@ -268,12 +268,21 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
     def _get_ff_table(self, lines: list[str]) -> str:
         weight_ln = "Value" if self.weights == 'vw' else "Equal"
-        # freq needed.
-        freq_label = "Annual" if self.frequency == 'y' else ("Daily" if self.frequency == 'd' else "Monthly")
-         
+    
+        # fix: US bivariate size/OP 2x3 sorts contain an error. Header line in the daily 
+        # file is labelled 'Monthly' 
+        is_size_op_2x3 = (
+            hasattr(self, 'formed_on') and 
+            frozenset(self.formed_on) == frozenset(['size', 'op']) and
+            getattr(self, 'n_portfolios', None) in [6, "6"]
+        )
+        
+        if is_size_op_2x3 and self.frequency == 'd':
+            freq_label = "Monthly" 
+        else:
+            freq_label = "Annual" if self.frequency == 'y' else ("Daily" if self.frequency == 'd' else "Monthly")
         table_start = None
         for i, ln in enumerate(lines):
-            # "Average Value Weighted Returns -- Annual" etc.
             if weight_ln in ln and "Returns" in ln and freq_label in ln:
                 table_start = i
                 break

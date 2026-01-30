@@ -180,7 +180,11 @@ class FactorModel(ABC):
     def shape(self) -> tuple[int, int]:
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
-
+    
+    def join(self, portfolio) -> "JoinedModel":
+        from getfactormodels.models.base import JoinedModel
+        # Doesn't call load. Just puts portfolio and returns in one container
+        return JoinedModel(self, portfolio)
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
         """Select specific factors from the model. Str or list[str]."""
@@ -554,3 +558,50 @@ class PortfolioBase(FactorModel, ABC):
 
     @property
     def _precision(self) -> int: return 6
+
+# TODO: possibly refactor, Joined/Composite/ModelCollection.
+# new: don't know about name. keeping it seperate from composite and modelcollection for now.
+class JoinedModel(CompositeModel):
+    """Combines a FactorModel and a Portfolio instance into one table."""
+    def __init__(self, factor_model: FactorModel, portfolio: PortfolioBase, **kwargs):
+        self.factor_model = factor_model
+        self.portfolio = portfolio
+        # Freq needs to be supported by both
+        if factor_model.frequency != portfolio.frequency:
+             raise ValueError(
+                f"Initial frequency mismatch: Model ({factor_model.frequency}) "
+                f", Portfolio ({portfolio.frequency})."
+            )
+
+        # Pass to CompositeModel to maintain the instance list
+        super().__init__(instances=[factor_model, portfolio], 
+                         frequency=factor_model.frequency, 
+                         **kwargs)
+
+    @property
+    def _frequencies(self) -> list[str]:
+        m_freqs = set(self.factor_model._frequencies)
+        p_freqs = set(self.portfolio._frequencies)
+        return list(m_freqs & p_freqs)
+
+    @property
+    def schema(self) -> pa.Schema:
+        fields = {f.name: f.type for f in self.factor_model.schema}
+        
+        for field in self.portfolio.schema:
+            if field.name not in fields:
+                fields[field.name] = field.type
+                
+        return pa.schema([pa.field(name, dtype) for name, dtype in fields.items()])
+
+    def _construct(self, client: _HttpClient) -> pa.Table:
+        self.factor_model.load(client=client)
+        self.portfolio.load(client=client)
+        
+        return self.factor_model.data.join(
+            self.portfolio.data, 
+            keys="date", 
+            join_type="inner"
+        )
+
+#TODO: fix RF col pos.
