@@ -120,7 +120,7 @@ class FactorModel(ABC):
                 "display: block;"
         )
 
-        # str(self) calls get_table_preview, wrap in <pre>
+        # str(self) calls print_table_preview, wrap in <pre>
         return f'<pre style="{style}">{str(self)}</pre>'
 
     @property

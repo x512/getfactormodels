@@ -269,20 +269,19 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
     def _get_ff_table(self, lines: list[str]) -> str:
         weight_ln = "Value" if self.weights == 'vw' else "Equal"
-        freq_map = {'y': 'Annual', 'd': 'Daily', 'm': 'Monthly', 'w': 'Weekly'}
-        freq_str = freq_map.get(self.frequency, "Monthly")
-
-        # Find the title line for freq/weight
+        
+        # FIX: daily size/op CSVs incorrectly have '-- Monthly' in the headers, the TXT files 
+        # are correct. Not using freq now..
         table_start = None
         for i, ln in enumerate(lines):
-            if (weight_ln in ln and freq_str in ln and 
-                    ("Returns" in ln or "Prior" in ln)):
+            # weights and rets, no freq
+            if weight_ln in ln and ("Returns" in ln or "Prior" in ln):
                 table_start = i
                 break
 
         if table_start is None:
             raise ValueError(
-                f"Could not find `{weight_ln}` returns section for `{freq_str}` frequency."
+                f"Could not find table header: `{weight_ln}`"
             )
 
         # Skip title line, find first non empty line
@@ -349,7 +348,9 @@ class _FFPortfolioBase(PortfolioBase, ABC):
         if self._data is not None:
             return self._data.schema
         return pa.schema([pa.field("date", pa.date32())])
-
+    
+    @property
+    def _precision(self) -> int: return 6
 
 class _FamaFrenchSorts(_FFPortfolioBase):
     """Fama-French factor-sorted portfolios (Univariate and Multivariate)."""
@@ -423,9 +424,18 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             raise ValueError(f"Daily data is not available for sorts involving {self.formed_on}")
 
         prior_rets = {'mom', 'st_rev', 'lt_rev'}
-        if not self.is_multivariate and self.formed_on[0] in prior_rets: #noqa
-            if self.n_portfolios != 10:
-                raise ValueError(f"{self.formed_on[0]} is only available in deciles.")
+        if not self.is_multivariate:
+            # Univariate sorts only support specific cuts (3, 5, 10)
+            # This fixes eg, "-p 2x3 --on op" returning the full table.
+            if self.n_portfolios not in {3, 5, 10}:
+                 raise ValueError(
+                     f"Sort '{self.sort}' ({self.n_portfolios}) is not a valid univariate sort. "
+                     f"Use 'tertile', 'quintile', 'decile' (or 3, 5 or 10)."
+                 )
+
+            if self.formed_on[0] in prior_rets: #noqa
+                if self.n_portfolios != 10:
+                    raise ValueError(f"{self.formed_on[0]} is only available in deciles.")
     
     @override
     def _read(self, data: bytes) -> pa.Table:
@@ -454,7 +464,11 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         
         target_slice = mapping.get(self.n_portfolios)
 
-        # Only slice if it's a table of tertile/quintile/decile:
+        # Not allowing NxN for univariates, or decile for multivariates etc.
+        if target_slice is None:
+             raise ValueError(f"Cannot slice univariate table: no mapping for {self.n_portfolios} portfolios.")
+
+        # Only slice if tertile/quintile/decile. (Sorts on prior rets are decile only)
         if target_slice and table.num_columns > 16:
             indices = [0] + list(range(target_slice.start, target_slice.stop))
             return table.select([i for i in indices if i < table.num_columns])
@@ -462,12 +476,10 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         return table
 
 
-
     def _get_url(self) -> str:
         """Constructs a URL for a portfolio .zip on the Ken French library."""
         base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
-        # suffix
         if self.frequency == 'd':
             suffix = "_Daily_CSV.zip"
         elif not self.dividends:
