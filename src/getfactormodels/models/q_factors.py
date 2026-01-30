@@ -128,7 +128,14 @@ class QFactors(FactorModel):
 
             table = scale_to_decimal(table)
 
-            renames = {"R_F": "RF_Q", "R_MKT": "Mkt-RF"}
+            # Removing R_ prefixes 
+            renames = {"R_F": "RF_Q", 
+                       "R_MKT": "Mkt-RF",  #TODO: make all Mkt-RF "rm_rf" and make all headers lowercase.  
+                       "R_ME": "ME",
+                       "R_IA": "IA",
+                       "R_ROE": "ROE",
+                       "R_EG": "EG",
+                       }
             table = table.rename_columns([renames.get(n, n) for n in table.column_names])
 
             return table.combine_chunks()

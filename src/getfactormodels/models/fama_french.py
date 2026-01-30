@@ -11,7 +11,6 @@ import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel, RegionMixin, PortfolioBase
 from getfactormodels.utils.arrow_utils import (
-    print_table_preview,
     round_to_precision,
     scale_to_decimal,
 )
@@ -307,7 +306,6 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
 
     def _read(self, data: bytes) -> pa.Table:
-        """FF portfolio read."""
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             with z.open(z.namelist()[0]) as f:
                 lines = f.read().decode('utf-8').splitlines()
@@ -353,9 +351,7 @@ class _FFPortfolioBase(PortfolioBase, ABC):
     def _precision(self) -> int: return 6
 
 
-class _FamaFrenchSorts(_FFPortfolioBase, RegionMixin):
-    """Fama-French factor-sorted portfolios (Univariate and Multivariate)."""
-
+class _FamaFrenchSorts(_FFPortfolioBase):
     @property
     def _frequencies(self) -> list[str]:
         return ['d', 'w', 'm', 'y']
