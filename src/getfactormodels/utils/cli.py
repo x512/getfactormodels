@@ -103,10 +103,13 @@ def parse_args() -> argparse.Namespace:
     
     # note: dest as 'portfolio_input'
     port_group.add_argument('-p', '--portfolio', dest='portfolio_input', nargs='+', 
-                            metavar=('SORT', 'N'),
-                            help="Sort (2x3) or 'industry N'")    
-    port_group.add_argument('-S', '--on', '--formed-on', nargs="+", metavar='FACTOR',
-                            help="Factors to sort on (size, bm, inv, etc.).")
+                            metavar=('SORT', 'N'), help="Sort: 10, decile, 2x3, etc., or 'industry N'")   
+    #--industry N = --portfolio industry N
+    port_group.add_argument('-I', '--industry', '--ind', type=int, 
+                            help="Fama-French industry portfolios. 5, 10, 12, 17, 30, 38, 48, 49")
+    port_group.add_argument('-b', '--by', '--sorted-by', '--formed-on', 
+                        nargs="+", metavar='FACTOR',
+                        help="Factors to sort on (e.g., size, bm, inv).")
     port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw', 
                             help="Weighting scheme (default: vw).")
     port_group.add_argument('-n', '--sort', metavar='SORT',
@@ -118,22 +121,31 @@ def parse_args() -> argparse.Namespace:
     parser.set_defaults(industry=None)
     args = parser.parse_args()
 
-    if args.portfolio_input:
-        # used for _cli check
-        args.portfolio = True 
+    if args.by:
+        args.by = [item.strip() for s in args.by for item in s.split(',')]
+    args.portfolio = False
+   
+    if args.industry is not None or args.portfolio_input:
+        args.portfolio = True
         
-        values = args.portfolio_input
-        if values[0].lower() in ['industry', 'ind']:
-            args.industry = int(values[1]) if len(values) > 1 else 30
-            # If -p set industry: sort is None [unless explicitly set by -n]
-            if not args.sort: 
+        if args.industry is not None:
+            # Error if industry and sort given to -p
+            if args.portfolio_input and args.portfolio_input[0].lower() not in ['industry', 'ind']:
+                parser.error("Use either --industry or --portfolio, not both.")
+            args.sort = None # industry is the sort
+            
+        # -p flag: "industry" or a sort (2x3, 10, quintile...)
+        elif args.portfolio_input:
+            val = args.portfolio_input[0].lower()
+            if val in ['industry', 'ind']:
+                args.industry = int(args.portfolio_input[1]) if len(args.portfolio_input) > 1 else 30
                 args.sort = None
-        else:
-            # If -p provided a sort (e.g. -p 10), override/set sort
-            args.sort = values[0]
-            args.industry = None
-    else:
-        args.portfolio = bool(args.sort or args.industry)
+            else:
+                args.sort = args.portfolio_input[0]
+                args.industry = None
+    else: # no portfolio 
+        args.sort = None
+        args.industry = None
 
     if args.verbose:
         logging.getLogger("getfactormodels").setLevel(logging.DEBUG)
@@ -141,6 +153,7 @@ def parse_args() -> argparse.Namespace:
         logging.getLogger("getfactormodels").setLevel(logging.WARNING)
 
     return args
+
 
 # From main.py
 def _cli():
@@ -151,7 +164,7 @@ def _cli():
         _cli_list_regions()
         sys.exit(0)
 
-    if args.portfolio and not (args.on or args.industry):
+    if args.portfolio and not (args.by or args.industry):
         print("Error: Portfolios sorts require --on [factors] (e.g., --on size bm).", file=sys.stderr)
         sys.exit(1)
 
@@ -170,7 +183,7 @@ def _cli():
             lhs = portfolio(
                 source=args.src, 
                 industry=args.industry,
-                formed_on=args.on,
+                formed_on=args.by,
                 sort=args.sort,
                 weights=args.weights,
                 frequency=args.frequency,
@@ -182,7 +195,7 @@ def _cli():
             lhs.load()
             _table = rhs.data.join(lhs.data, keys="date", join_type="left outer")
 
-            # fix: sort after join! (eg, -m misp ff3 -p 2x3 --on size op wasn't returning full table)
+            # fix: sort after join! (eg, -m misp ff3 -p 2x3 -b size op wasn't returning full table)
             _table = _table.sort_by("date")
             
             # A FactorModel object is needed (for to_file/extract/drop etc.),
