@@ -269,13 +269,13 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
     def _get_ff_table(self, lines: list[str]) -> str:
         weight_ln = "Value" if self.weights == 'vw' else "Equal"
-        
-        # FIX: daily size/op CSVs incorrectly have '-- Monthly' in the headers, the TXT files 
-        # are correct. Not using freq now..
+        # freq needed.
+        freq_label = "Annual" if self.frequency == 'y' else ("Daily" if self.frequency == 'd' else "Monthly")
+         
         table_start = None
         for i, ln in enumerate(lines):
-            # weights and rets, no freq
-            if weight_ln in ln and ("Returns" in ln or "Prior" in ln):
+            # "Average Value Weighted Returns -- Annual" etc.
+            if weight_ln in ln and "Returns" in ln and freq_label in ln:
                 table_start = i
                 break
 
@@ -352,19 +352,29 @@ class _FFPortfolioBase(PortfolioBase, ABC):
     @property
     def _precision(self) -> int: return 6
 
-class _FamaFrenchSorts(_FFPortfolioBase):
+
+class _FamaFrenchSorts(_FFPortfolioBase, RegionMixin):
     """Fama-French factor-sorted portfolios (Univariate and Multivariate)."""
 
     @property
     def _frequencies(self) -> list[str]:
         return ['d', 'w', 'm', 'y']
-
+    
+    #@property 
+    #def _regions(self) -> list[str]:
+    #    return [
+    #        'us', 'emerging', 'developed', 'ex-us', 'europe',
+    #        'japan', 'asia-pacific-ex-japan', 'north-america', 
+    #    ]
+    # TODO: regions
     def __init__(self,
                  formed_on: str | list[str] = 'size',
                  sort: str | int | None = None,
+    #            region: str = 'us', 
                  **kwargs):
         super().__init__(**kwargs)
-        # TODO: REGIONS
+        
+        #self.region = region
 
         # formed_on: sorted list of lowercase strings
         if isinstance(formed_on, str):
@@ -425,7 +435,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
 
         prior_rets = {'mom', 'st_rev', 'lt_rev'}
         if not self.is_multivariate:
-            # Univariate sorts only support specific cuts (3, 5, 10)
+            # Univariate sorts only support 3, 5, 10
             # This fixes eg, "-p 2x3 --on op" returning the full table.
             if self.n_portfolios not in {3, 5, 10}:
                  raise ValueError(

@@ -17,6 +17,9 @@ from .cache import _Cache
 log = logging.getLogger(__name__)
 
 # TODO: cleanup debug messages!
+
+# TODO: FIXME: opens, checks, closes, re-opens to d/l. Need to open - check, download if needed - close. 
+# 
 class _HttpClient:
     """Internal HTTP client with caching.
 
@@ -71,19 +74,13 @@ class _HttpClient:
 
     def close(self) -> None:
         if self._client is not None:
-            msg = f'closing {self._client.__class__.__name__}'
-            log.debug(msg)  # No print in log messages, ruff
             self._client.close()
             self._client = None
-
-        msg =f'closing {self.cache.__class__.__name__}'
-        log.debug(msg)
         self.cache.close()
+
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        msg = f"http_client EXIT: (client: {self._client.__class__.__name__})"
-        log.debug(msg)
 
 
     def _generate_cache_key(self, url: str) -> str:
@@ -230,39 +227,14 @@ class _HttpClient:
         log.debug("CACHE EXPIRED: Metadata mismatch or unavailable.")
         return cache_key, None, True
 
-    def check_connection(self, url: str):
-        """Simple url ping. Boolean."""
-        check_timeout = 4.0
 
-        if self._client is None:
-            raise ClientNotOpenError("HttpClient is not open. Use in a `with` block.")
-
-        try:
-            msg = f"Attempting HEAD: {url}..."
-            log.info(msg)
-
-            response = self._client.head(url, timeout=check_timeout)
-
-            if response.is_success:
-                msg = f"URL:{url}\nstatus: {response.status_code}"
-                log.info(msg)
-                return True
-
-            msg = "Falling back to GET..."
-            log.info(msg)
-
-            response = self._client.get(url, timeout=check_timeout)
-
-            if response.is_success:
-                return True
-
-            msg = "Couldn't establish connection."
-            log.info(msg)
-        
-        except httpx.RequestError: 
+    def check_connection(self, url: str) -> bool:
+        if self._client is None: 
             return False
-
-        return False
+        try:
+            return self._client.head(url, timeout=5.0).is_success
+        except:
+            return False
 
     # TODO: user needs to acces this. force, or clear cache?
     def _clear_cache(self) -> None:
