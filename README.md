@@ -65,6 +65,25 @@ getfactormodels -m qmj -f d --region aus --output aus_bab.ipc
 
 # Get multiple models in one table, e.g., ff3 + liquidity factors:
 getfactormodel -m ff3 liq
+
+# Attach a Fama-French portfolio (12 industry portfolios)
+getfactormodels -m ff6 -f d --industry 30
+
+# Alternately, --portfolio/-p accepts industry as the sort:
+getfactormodels -m ff5 -f m --portfolio industry 12
+
+# 10 portfolios formed on Momentum
+getfactormodels -m ff6 -f m --portfolio 10 --by mom 
+
+# univariate sorts support 'decile, 'quintile', 'tertile' or 10 5 3
+getfactormodels -m ff3 -f m -p quintile -b size
+
+# Add a FF bivariate sort to model/s
+getfactormodels -m ff3 -f d -p 2x3 -b mom size
+
+# Accepts an int instead of a sort ('25' for for '5x5', etc.)
+getfactormodels -m ff3 liq -f m -p 25 -b mom,size
+
 ```
 
 **Example**
@@ -117,12 +136,12 @@ date
 
 
 ### Python
-**`getfactormodels.get_factors()`**
+**`getfactormodels.model()`**
 
 ```py
 import getfactormodels as gfm
 
-m = gfm.get_factors(
+m = gfm.model(
     model = 'dhs',
     frequency='m',
     start_date='2000-01-01',
@@ -293,8 +312,7 @@ contains the shortest identifier for each model. These should all work in python
 ##### Todo
 - Documentation
 - Example notebook
-- better error handling
-- this README
-- metadata on model (copyright, construction, factors)
+- Error handling
+- README
+- metadata on models (copyright, construction, factors)
 - Refactor of FF models
-
