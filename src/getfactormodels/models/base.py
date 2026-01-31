@@ -181,10 +181,11 @@ class FactorModel(ABC):
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
     
-    def join(self, portfolio) -> "JoinedModel":
-        from getfactormodels.models.base import JoinedModel
-        # Doesn't call load. Just puts portfolio and returns in one container
-        return JoinedModel(self, portfolio)
+    def join(self, other: "FactorModel") -> "ModelCollection":
+        """Joins this model with another (e.g., a Portfolio)."""
+        from getfactormodels.models.base import ModelCollection
+        # We simply return a collection of both
+        return ModelCollection(instances=[self, other])
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
         """Select specific factors from the model. Str or list[str]."""
@@ -385,21 +386,20 @@ class CompositeModel(FactorModel):
 
 
 class ModelCollection(CompositeModel):
-    """A ModelCollection holds multiple models of the same frequencies."""
-    def __init__(self, model_keys: list[str], **kwargs):
+    """A ModelCollection holds multiple models and/or portfolios of the same frequency."""
+    def __init__(self, model_keys: list[str] | None = None, 
+                 instances: list[FactorModel] | None = None, **kwargs):
         from getfactormodels.main import model
-
-        self.model_keys = model_keys
-        self.instances = [model(m, **kwargs) for m in model_keys]
-
-        regional_inst = [i for i in self.instances if isinstance(i, RegionMixin)]
         
-        if regional_inst and len(regional_inst) < len(self.instances):
-            req_region = kwargs.get('region')
-            if req_region and req_region.lower() not in ['us', 'usa']: #allow USA through, as all models are US models. 
-                raise ValueError("Cannot combine regional models with non-regional models for non-US regions.")
+        if instances:
+            self.instances = instances
+            self.model_keys = [i.__class__.__name__ for i in instances]
+        elif model_keys:
+            self.model_keys = model_keys
+            self.instances = [model(m, **kwargs) for m in model_keys]
+        else:
+            raise ValueError("model_keys or instances required.")
         super().__init__(**kwargs)
-
 
     def __str__(self) -> str:
         if self._data is None:
@@ -435,34 +435,44 @@ class ModelCollection(CompositeModel):
     
 
     def _construct(self, client: _HttpClient) -> pa.Table:
-        tables = []
+        # .load() all instances
         for inst in self.instances:
             inst.load(client=client)
-            table = inst.data
-            table = table.set_column(0, "date", table.column("date").cast(pa.date32()))
-            tables.append(table)
-
-        # start with the first table
-        final_table = tables[0]
         
-        for i, next_table in enumerate(tables[1:], 1):
-            # finding (probable) duplicate columns (not 'date') TODO: rename some factors...
+        # first table is the base. Redundant recast date32 here...
+        base_table = self.instances[0].data
+        if base_table.column("date").type != pa.date32():
+            base_table = base_table.set_column(0, "date", base_table.column("date").cast(pa.date32()))
+        
+        final_table = base_table
+
+        for inst in self.instances[1:]:
+            next_table = inst.data
+            
+            if next_table.column("date").type != pa.date32():
+                next_table = next_table.set_column(0, "date", next_table.column("date").cast(pa.date32()))
+            
+            # overlaps are kept from the first table. TODO: only actual dupe cols, 
+            # every factor needs a unique ID.
             overlaps = set(final_table.column_names) & set(next_table.column_names)
             overlaps.discard('date')
-            
-            keep_cols = [c for c in next_table.column_names 
-                                  if c not in overlaps and c != 'date']
 
-            if keep_cols:
-                cols_to_join = ['date'] + keep_cols
-                table_to_join = next_table.select(cols_to_join)
+            uniq_cols = [c for c in next_table.column_names if c not in overlaps]
+            if "date" not in uniq_cols:
+                uniq_cols.insert(0, "date")
 
-                final_table = final_table.join(
-                    table_to_join, 
-                    keys="date", 
-                    join_type="left outer",
-                )
-            
+            table_to_join = next_table.select(uniq_cols)
+
+            # Portfolio to FactorModel: inner. FactorModel to FactorModel: left outer
+            is_portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
+            join_type = "inner" if is_portfolio_join else "left outer"
+
+            final_table = final_table.join(
+                table_to_join,
+                keys="date",
+                join_type=join_type,
+            )
+
         return final_table.sort_by([("date", "ascending")])
 
 
@@ -559,49 +569,3 @@ class PortfolioBase(FactorModel, ABC):
     @property
     def _precision(self) -> int: return 6
 
-# TODO: possibly refactor, Joined/Composite/ModelCollection.
-# new: don't know about name. keeping it seperate from composite and modelcollection for now.
-class JoinedModel(CompositeModel):
-    """Combines a FactorModel and a Portfolio instance into one table."""
-    def __init__(self, factor_model: FactorModel, portfolio: PortfolioBase, **kwargs):
-        self.factor_model = factor_model
-        self.portfolio = portfolio
-        # Freq needs to be supported by both
-        if factor_model.frequency != portfolio.frequency:
-             raise ValueError(
-                f"Initial frequency mismatch: Model ({factor_model.frequency}) "
-                f", Portfolio ({portfolio.frequency})."
-            )
-
-        # Pass to CompositeModel to maintain the instance list
-        super().__init__(instances=[factor_model, portfolio], 
-                         frequency=factor_model.frequency, 
-                         **kwargs)
-
-    @property
-    def _frequencies(self) -> list[str]:
-        m_freqs = set(self.factor_model._frequencies)
-        p_freqs = set(self.portfolio._frequencies)
-        return list(m_freqs & p_freqs)
-
-    @property
-    def schema(self) -> pa.Schema:
-        fields = {f.name: f.type for f in self.factor_model.schema}
-        
-        for field in self.portfolio.schema:
-            if field.name not in fields:
-                fields[field.name] = field.type
-                
-        return pa.schema([pa.field(name, dtype) for name, dtype in fields.items()])
-
-    def _construct(self, client: _HttpClient) -> pa.Table:
-        self.factor_model.load(client=client)
-        self.portfolio.load(client=client)
-        
-        return self.factor_model.data.join(
-            self.portfolio.data, 
-            keys="date", 
-            join_type="inner"
-        )
-
-#TODO: fix RF col pos.
