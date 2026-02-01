@@ -24,31 +24,83 @@ import warnings
 log = logging.getLogger("getfactormodels")
 
 
-def portfolio(source: str = 'ff', **kwargs):
-    """Factory to retrieve Portfolio Returns.
-    
-    Only Fama French industry portfolios and sorts at the min.
+def portfolio(
+    source: str = 'ff',
+    formed_on: str | list[str] = 'size',
+    sort: str | int | None = None,
+    industry: int | None = None,
+    weights: str = 'vw',
+    frequency: str = 'm',
+    start_date: str | None = None,
+    end_date: str | None = None,
+    **kwargs
+):
+    """Download portfolio return data.
+
+    * Currently supports Fama-French sorts and industry portfolios,
+    US only.
+
+    Args:
+        source: Data source identifier (e.g., 'ff', 'q').
+        formed_on: Factor(s) to sort on (e.g., 'size', 'bm').
+        sort: 'decile', '5x5', also accepts integers (10, 25, etc.)
+        industry: Number of industry portfolios.
+        weights: Weighting scheme ('vw' or 'ew').
+        frequency: Data frequency ('d', 'm', 'y').
+        start_date: Optional start date YYYY-[MM-DD].
+        end_date: Optional end date YYYY[-MM-DD].
     """
     source = source.lower()
-    # FF only
+    
+    params = {
+        "formed_on": formed_on,
+        "sort": sort,
+        "industry": industry,
+        "weights": weights,
+        "frequency": frequency,
+        "start_date": start_date,
+        "end_date": end_date,
+        **kwargs
+    }
+
     if source in ['ff', 'famafrench']:
         from getfactormodels.models.fama_french import _get_ff_portfolios
-        return _get_ff_portfolios(**kwargs)
+        return _get_ff_portfolios(**params)
+
     raise ValueError(f"Portfolio source '{source}' not recognized.")
 
 
-def model(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel: #Self
-    """
+def model(
+    model: str | int | list[str | int] = 3,
+    region: str = 'usa',
+    frequency: str = 'm',
+    start_date: str | None = None,
+    end_date: str | None = None,
+    **kwargs
+) -> FactorModel:   #Self 
+    """Download factor model data.
+    
+    Args:
+        model (str | list[str]): Model identifier.
+        region: Geographical region (e.g., 'usa', 'developed').
+        frequency: Data frequency ('d', 'w', 'm', 'y').
+        start_date: Optional start date (YYYY-MM-DD).
+        end_date: Optional end date (YYYY-MM-DD).
     """
     if isinstance(model, list):
         if len(model) == 1:
-            model = model[0]  # Extract single item from list
+            model = model[0]
         else:
             from getfactormodels.models.base import ModelCollection
-            return ModelCollection(model_keys=model, **kwargs)
+            return ModelCollection(
+                model_keys=model, 
+                region=region, 
+                frequency=frequency, 
+                start_date=start_date, 
+                end_date=end_date, 
+                **kwargs
+            )
 
-    # don't pop, so can check later, or let class handle it.
-    region = kwargs.get('region', 'usa')
     model_key = _get_model_key(model)
 
     model_class_map = {
@@ -64,26 +116,18 @@ def model(model: str | int | list[str | int] = 3, **kwargs) -> FactorModel: #Sel
     class_name = model_class_map.get(model_key, f"{model_key}Factors")
     factor_class = getattr(factor_models, class_name, None)
 
-    if not factor_class:
-        raise ValueError(f"Model '{model}' not recognized.")
-
-    if model_key in ("3", "5", "6"):
-        kwargs["model"] = model_key
-    
-    if model_key == "Qclassic":
-        kwargs["classic"] = True
-
-    
-    if issubclass(factor_class, RegionMixin):
+    is_regional = issubclass(factor_class, RegionMixin)
+    if not is_regional:
+        if 'region' in kwargs or region not in [None, 'usa']: 
+            raise ValueError(f"Model '{class_name}' is does not accept a region argument.")
+    else:
         kwargs['region'] = region
-    elif region:
-        log.warning(f"  '{class_name}' does not support regions. Ignoring: region '{region}'")
-    
-    return factor_class(**kwargs)
+
+    return factor_class(frequency=frequency, **kwargs)
 
 
-def get_factors(*args, **kwargs):
-    """DEPRECATED: Use `model()` instead. 
+def get_factors(*args, **kwargs): #noqa
+    """DEPRECATED: Use `model()` instead.
 
     This function will be removed in a future release.
     """

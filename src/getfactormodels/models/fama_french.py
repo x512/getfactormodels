@@ -486,7 +486,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             if table.num_columns > 16:
                 indices = [0] + list(range(target_slice.start, target_slice.stop))
                 return table.select([i for i in indices if i < table.num_columns])
-            # quick fix: 'ac' and 'beta' univariates don't have tertiles: 
+            # quick fix: 'ac' and 'beta' univariates don't have tertiles... 
             if table.num_columns >= 15:
                 adj_mapping = {
                     5: slice(table.num_columns - 15, table.num_columns - 10),

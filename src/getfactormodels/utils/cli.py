@@ -104,7 +104,6 @@ def parse_args() -> argparse.Namespace:
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
                             dest='formed_on', nargs='+', metavar='FACTOR',
                             help="Factors to sort on (e.g., size, bm, inv) or 'industry'.")
-
     # sort
     port_group.add_argument('-n', '--sort', '--count', dest='sort', metavar='SORT',
                             help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
@@ -143,6 +142,7 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
+
 # From main.py
 def _cli():
     from getfactormodels.main import model, portfolio
@@ -180,7 +180,7 @@ def _cli():
             rhs.load()
             lhs.load()
             # fix: sort after join! (eg, -m misp ff3 -p 2x3 -b size op wasn't returning full table)
-            _table = rhs.data.join(lhs.data, keys="date", join_type="left outer").sort_by("date")
+            _table = rhs.data.join(lhs.data, keys="date", join_type="inner").sort_by("date")
             # A FactorModel object is needed (for to_file/extract/drop etc.),
             # this uses the RHS instance, then updates its _data property.
             model_obj = rhs
@@ -224,4 +224,3 @@ def _cli():
         # uses the model_obj's __str__ (which prints the Table preview)
         if not args.quiet:
             sys.stderr.write(f"{str(model_obj)}\n")
-
