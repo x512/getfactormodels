@@ -479,14 +479,23 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         
         target_slice = mapping.get(self.n_portfolios)
 
-        # Not allowing NxN for univariates, or decile for multivariates etc.
         if target_slice is None:
              raise ValueError(f"Cannot slice univariate table: no mapping for {self.n_portfolios} portfolios.")
 
-        # Only slice if tertile/quintile/decile. (Sorts on prior rets are decile only)
-        if target_slice and table.num_columns > 16:
-            indices = [0] + list(range(target_slice.start, target_slice.stop))
-            return table.select([i for i in indices if i < table.num_columns])
+        if target_slice:
+            if table.num_columns > 16:
+                indices = [0] + list(range(target_slice.start, target_slice.stop))
+                return table.select([i for i in indices if i < table.num_columns])
+            # quick fix: 'ac' and 'beta' univariates don't have tertiles: 
+            if table.num_columns >= 15:
+                adj_mapping = {
+                    5: slice(table.num_columns - 15, table.num_columns - 10),
+                    10: slice(table.num_columns - 10, table.num_columns),
+                }
+                adj_slice = adj_mapping.get(self.n_portfolios)
+                if adj_slice:
+                    indices = [0] + list(range(adj_slice.start, adj_slice.stop))
+                    return table.select([i for i in indices if i < table.num_columns])
 
         return table
 

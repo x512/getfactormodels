@@ -180,12 +180,13 @@ class FactorModel(ABC):
     def shape(self) -> tuple[int, int]:
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
-    
+   
+
     def join(self, other: "FactorModel") -> "ModelCollection":
-        """Joins this model with another (e.g., a Portfolio)."""
+        """Joins this model with another model or portfolio."""
         from getfactormodels.models.base import ModelCollection
-        # We simply return a collection of both
         return ModelCollection(instances=[self, other])
+
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
         """Select specific factors from the model. Str or list[str]."""

@@ -57,8 +57,8 @@ def parse_args() -> argparse.Namespace:
     getfactormodels -m ff6 --drop 'RF'
     getfactormodels -m hml_devil --region jpn
     getfactormodels -p industry 30
-    getfactormodels --model ff3 liq --portfolio 2x3 --on op bm
-    getfactormodels -m ff5 liq -p decile --on beta 
+    getfactormodels --model ff3 liq --portfolio op bm 
+    getfactormodels -m ff5 liq -p beta -n 10 
         ''', 
     )
 
@@ -98,62 +98,50 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--list-regions', action='store_true', 
                         help="show all supported regions and exit")
     
-    # Portfolio
+    # Portfolio Options
     port_group = parser.add_argument_group('Portfolio Options')
-    
-    # note: dest as 'portfolio_input'
-    port_group.add_argument('-p', '--portfolio', dest='portfolio_input', nargs='+', 
-                            metavar=('SORT', 'N'), help="Sort: 10, decile, 2x3, etc., or 'industry N'")   
-    #--industry N = --portfolio industry N
-    port_group.add_argument('-I', '--industry', '--ind', type=int, 
-                            help="Fama-French industry portfolios. 5, 10, 12, 17, 30, 38, 48, 49")
-    port_group.add_argument('-b', '--by', '--sorted-by', '--formed-on', 
-                        nargs="+", metavar='FACTOR',
-                        help="Factors to sort on (e.g., size, bm, inv).")
-    port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw', 
+    #formed on
+    port_group.add_argument('-p', '--portfolio', '--on', '--by', 
+                            dest='formed_on', nargs='+', metavar='FACTOR',
+                            help="Factors to sort on (e.g., size, bm, inv) or 'industry'.")
+
+    # sort
+    port_group.add_argument('-n', '--sort', '--count', dest='sort', metavar='SORT',
+                            help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
+    port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
+                            help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
+    port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
-    port_group.add_argument('-n', '--sort', metavar='SORT',
-                            help="Sort type/grid (10, decile, 25, 5x5, 2x3, etc.)")
-    port_group.add_argument('--src', '--source', default='ff', choices=['ff'],
-                            help="Data source (ff portfolios only for now).")
+    port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
+                            help="Data source: 'ff' (Fama-French) or 'q' (Q-factor/HXZ).")
     
-    # defaults
     parser.set_defaults(industry=None)
+
     args = parser.parse_args()
 
-    if args.by:
-        args.by = [item.strip() for s in args.by for item in s.split(',')]
-    args.portfolio = False
-   
-    if args.industry is not None or args.portfolio_input:
-        args.portfolio = True
+    if args.formed_on:
+        args.formed_on = [item.strip().lower() for s in args.formed_on for item in s.split(',')]
         
-        if args.industry is not None:
-            # Error if industry and sort given to -p
-            if args.portfolio_input and args.portfolio_input[0].lower() not in ['industry', 'ind']:
-                parser.error("Use either --industry or --portfolio, not both.")
-            args.sort = None # industry is the sort
-            
-        # -p flag: "industry" or a sort (2x3, 10, quintile...)
-        elif args.portfolio_input:
-            val = args.portfolio_input[0].lower()
-            if val in ['industry', 'ind']:
-                args.industry = int(args.portfolio_input[1]) if len(args.portfolio_input) > 1 else 30
-                args.sort = None
+        # -p industry n
+        if args.formed_on[0] in ['industry', 'ind']:
+            if len(args.formed_on) > 1:
+                args.ind_count = int(args.formed_on[1])
             else:
-                args.sort = args.portfolio_input[0]
-                args.industry = None
-    else: # no portfolio 
+                args.ind_count = 12 # Default
+            args.formed_on = None # It's an industry sort, not a factor sort
+            args.sort = None
+    
+    #-p, or -I
+    if args.ind_count:
+        args.industry = args.ind_count
         args.sort = None
+        args.formed_on = None
+    else:
         args.industry = None
 
-    if args.verbose:
-        logging.getLogger("getfactormodels").setLevel(logging.DEBUG)
-    else:
-        logging.getLogger("getfactormodels").setLevel(logging.WARNING)
+    args.is_portfolio = bool(args.industry or args.formed_on)
 
     return args
-
 
 # From main.py
 def _cli():
@@ -164,12 +152,9 @@ def _cli():
         _cli_list_regions()
         sys.exit(0)
 
-    if args.portfolio and not (args.by or args.industry):
-        print("Error: Portfolios sorts require --on [factors] (e.g., --on size bm).", file=sys.stderr)
-        sys.exit(1)
-
     try:
         rhs, lhs = None, None
+        
         if args.model:
             rhs = model(
                 model=args.model, 
@@ -179,35 +164,34 @@ def _cli():
                 region=args.region
             )
 
-        if args.sort or args.industry:
+        if args.is_portfolio:
             lhs = portfolio(
                 source=args.src, 
                 industry=args.industry,
-                formed_on=args.by,
-                sort=args.sort,
+                formed_on=args.formed_on,
+                sort=args.sort,  # -n flag
                 weights=args.weights,
                 frequency=args.frequency,
                 start_date=args.start,
                 end_date=args.end
             )
+
         if rhs and lhs:
             rhs.load()
             lhs.load()
-            _table = rhs.data.join(lhs.data, keys="date", join_type="left outer")
-
             # fix: sort after join! (eg, -m misp ff3 -p 2x3 -b size op wasn't returning full table)
-            _table = _table.sort_by("date")
-            
+            _table = rhs.data.join(lhs.data, keys="date", join_type="left outer").sort_by("date")
             # A FactorModel object is needed (for to_file/extract/drop etc.),
             # this uses the RHS instance, then updates its _data property.
             model_obj = rhs
             model_obj._data = _table
         else:
             model_obj = rhs or lhs
-            model_obj.load()
-        if not len(model_obj):
-            log.error("No data returned.")
-            sys.exit(1)
+            if model_obj:
+                model_obj.load()
+            if not len(model_obj):
+                log.error("No data returned.")
+                sys.exit(1)
 
     except (ValueError, RuntimeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
