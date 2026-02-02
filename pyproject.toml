@@ -1,6 +1,6 @@
 [project]
 name = "getfactormodels"
-version = "0.0.21"
+version = "0.0.22"
 description = "Download datasets for various multifactor asset pricing models."
 license = "AGPL-3.0-or-later"
 authors = [
@@ -36,6 +36,7 @@ dependencies = [
     "python-calamine (>=0.6.1,<0.7.0)",
     "platformdirs (>=4.5.1,<5.0.0)",
     "python-dateutil (>=2.9.0.post0,<3.0.0)",
+    "typing-extensions (>=4.15.0,<5.0.0)",
 ]
 packages = [
     { include = "getfactormodels", from = "src" }
