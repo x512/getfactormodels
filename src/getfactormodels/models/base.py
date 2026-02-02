@@ -7,7 +7,7 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
-from typing import Literal, override
+from typing import Literal
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     filter_table_by_date,
