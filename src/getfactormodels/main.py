@@ -123,7 +123,11 @@ def model(
     else:
         kwargs['region'] = region
 
-    return factor_class(frequency=frequency, **kwargs)
+    return factor_class(frequency=frequency,
+                        start_date=start_date, 
+                        end_date=end_date,
+                        **kwargs,
+                        )
 
 
 def get_factors(*args, **kwargs): #noqa
