@@ -17,7 +17,7 @@
 import logging
 from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.utils import _get_model_key, get_model_class
+from getfactormodels.utils.utils import get_model_key, get_model_class
 from getfactormodels.utils.cli import _cli
 import warnings 
 
@@ -101,7 +101,7 @@ def model(
                 **kwargs
             )
 
-    model_key = _get_model_key(model)
+    model_key = get_model_key(model)
     class_name = get_model_class(model_key) #str 
     
     model_class = getattr(factor_models, class_name, None) #obj

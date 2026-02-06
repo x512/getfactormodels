@@ -71,15 +71,15 @@ _LOOKUP: MappingProxyType[str, str] = MappingProxyType({
 })
 
 
-def _get_model_key(user_input: str | int) -> str:
+def get_model_key(user_input: str | int) -> str:
     if not user_input:
         raise ValueError("Model name cannot be empty.")
-        
+
     val = str(user_input).lower().strip().replace("-", "").replace("_", "")
-    
+
     if val in _LOOKUP:
         return _LOOKUP[val]
-            
+
     raise ValueError(f"Unknown model or portfolio: '{user_input}'")
 
 
