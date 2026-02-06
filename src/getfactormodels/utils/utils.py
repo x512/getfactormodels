@@ -12,6 +12,7 @@ from types import MappingProxyType
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
+#from getfactormodels.models.aqr_models import HMLDevilFactors, QMJFactors
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
@@ -19,47 +20,74 @@ log = logging.getLogger(__name__) #TODO: consistent logging.
 
 """Model utils and I/O utils."""
 
-_MODEL_ALIASES = {
+_CLASS_REGISTRY = {
+    "3": "FamaFrenchFactors",
+    "5": "FamaFrenchFactors",
+    "6": "FamaFrenchFactors",
+    "4": "CarhartFactors",
+    "Q": "QFactors", 
+    "Qclassic": "QFactors",
+    "HMLDevil": "HMLDevilFactors",
+    "QMJ": "QMJFactors",
+    "BAB": "BABFactors",
+    "VME": "VMEFactors",
+    "AQR6": "AQRFactors",
+    "Mispricing": "MispricingFactors",
+    "Liquidity": "LiquidityFactors",
+    "ICR": "ICRFactors",
+    "DHS": "DHSFactors",
+    "BarillasShanken": "BarillasShankenFactors",
+    "HighIncomeCCAPM": "HighIncomeCCAPM",
+    "ConditionalCAPM": "ConditionalCAPM",
+}
+
+
+_ALIASES = {
     "3": ["3", "ff3", "famafrench3"],
     "4": ["4", "ff4", "carhart", "car"],
     "5": ["5", "ff5", "famafrench5"],
     "6": ["6", "ff6", "famafrench6"],
     "Q": ["q", "qfactors", "q-factors", "q_factors", "q5", "hmxz"],
-    "Qclassic": ["q4", "qclassic", "q-classic", "q_classic", "classic_q"],
-    "HMLDevil": ["hmld", "hmldevil", "hml_devil", "devil"],
-    "QMJ": ["qmj", "quality", "qualityminusjunk"],
-    "BAB": ["bab", "betting", "bettingainstbeta"],
-    "Mispricing": ["mispricing", "mis", "misp"],
-    "Liquidity": ["liq", "liquidity"],
-    "ICR": ["icr", "intermediary", "hkm"],
-    "DHS": ["dhs", "behavioural", "behaviour"],
-    "BarillasShanken": ["bs", "bs6", "barillasshanken", "barillas-shanken"],
-    "VME": ["vme", "valmom", "valueandmomentumeverywhere"],
-    "AQR6": ["aqr6", "aqr", "aqrfactors"],
-    "HighIncomeCCAPM": ["hccapm", 'hcapm', 'hc-capm'],
+    "Qclassic": ["q4", "classicq"],
+    "HMLDevil": ["hmld", "devil"],
+    "QMJ": ["quality", "qualityminusjunk"],
+    "BAB": ["betting", "bettingainstbeta"],
+    "Mispricing": ["mis", "misp"],
+    "Liquidity": ["liq"],
+    "ICR": ["icr", "intermediary"],
+    "DHS": ["dhs", "behaviour"],
+    "BarillasShanken": ["bs", "bs6"],
+    "VME": ["valmom", "valueandmomentumeverywhere"],
+    "AQR6": ["aqr", "aqrfactors"],
+    "HighIncomeCCAPM": ["hccapm", 'hcapm', 'hc-capm', 'hicapm'],
     "ConditionalCAPM": ["jwcapm", "plcapm", "jwccapm", "plccapm", "ccapm"],
 }
 
-_LOOKUP = MappingProxyType({
+
+_LOOKUP: MappingProxyType[str, str] = MappingProxyType({
     alias: key 
-    for key, aliases in _MODEL_ALIASES.items() 
-    for alias in aliases
+    for key, aliases in _ALIASES.items() 
+    for alias in (aliases + [key.lower()]) # include keys
 })
 
+
 def _get_model_key(user_input: str | int) -> str:
-    """Converts user input (e.g. 'ff3', 'hmld') to the model key.
-    
-    >>> _get_model_key('ff3')
-    '3'
-    >>> _get_model_key('Bab')
-    'BAB'
-    """
     if not user_input:
-        return ""
+        raise ValueError("Model name cannot be empty.")
         
-    val = str(user_input).lower().strip()
+    val = str(user_input).lower().strip().replace("-", "").replace("_", "")
     
-    return _LOOKUP.get(val, val)
+    if val in _LOOKUP:
+        return _LOOKUP[val]
+            
+    raise ValueError(f"Unknown model or portfolio: '{user_input}'")
+
+
+def get_model_class(key: str):
+    """Retrieve the class for a resolved key."""
+    if key not in _CLASS_REGISTRY:
+        raise ValueError(f"Key '{key}' is not registered to a class.")
+    return _CLASS_REGISTRY[key]
 
 
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:

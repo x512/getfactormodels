@@ -17,7 +17,7 @@
 import logging
 from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.utils import _get_model_key
+from getfactormodels.utils.utils import _get_model_key, get_model_class
 from getfactormodels.utils.cli import _cli
 import warnings 
 
@@ -102,32 +102,26 @@ def model(
             )
 
     model_key = _get_model_key(model)
+    class_name = get_model_class(model_key) #str 
+    
+    model_class = getattr(factor_models, class_name, None) #obj
+    if model_class is None:
+        raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
 
-    model_class_map = {
-        "3": "FamaFrenchFactors",
-        "5": "FamaFrenchFactors",
-        "6": "FamaFrenchFactors",
-        "4": "CarhartFactors",
-        "Qclassic": "QFactors",
-        "HighIncomeCCAPM": "HighIncomeCCAPM",
-        "ConditionalCAPM": "ConditionalCAPM",
-    }
-
-    class_name = model_class_map.get(model_key, f"{model_key}Factors")
-    factor_class = getattr(factor_models, class_name, None)
-
-    is_regional = issubclass(factor_class, RegionMixin)
+    is_regional = issubclass(model_class, RegionMixin)
     if not is_regional:
-        if 'region' in kwargs or region not in [None, 'usa']: 
-            raise ValueError(f"Model '{class_name}' is does not accept a region argument.")
+        if region is not None and region.lower() not in ['usa', 'us']:
+             raise ValueError(f"Model '{class_name}' does not support region: {region}")
+        kwargs.pop('region', None)
     else:
         kwargs['region'] = region
-
-    return factor_class(frequency=frequency,
-                        start_date=start_date, 
-                        end_date=end_date,
-                        **kwargs,
-                        )
+    
+    return model_class(
+        frequency=frequency,
+        start_date=start_date, 
+        end_date=end_date,
+        **kwargs
+    )
 
 
 def get_factors(*args, **kwargs): #noqa
