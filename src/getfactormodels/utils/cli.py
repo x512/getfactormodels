@@ -22,7 +22,8 @@ from importlib.metadata import PackageNotFoundError, version
 import pyarrow.csv as pv 
 import os 
 from pathlib import Path
-from getfactormodels.utils.utils import _generate_filename, list_models
+from getfactormodels.utils.utils import _generate_filename 
+from getfactormodels.utils.registry import _cli_list_models
 
 log = logging.getLogger("getfactormodels")
 
@@ -33,7 +34,7 @@ def _get_version():
     try: return version("getfactormodels")
     except PackageNotFoundError: return "unknown"
 
-
+#TODO: Move this to registry, or _cli_list_models here.
 def _cli_list_regions():
     """Helper to display regions and exit."""
     from getfactormodels.models.aqr_models import _AQRModel
@@ -65,12 +66,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--ver', '--version', action='version', version=f'getfactormodels {_get_version()}')
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
     parser.add_argument('-v', '--verbose', action='store_true', help="verbose output (set log to debug)")
-    
+    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
                         help="The model/s to use, e.g., 'liquidity', 'icr', "
                         "'ff3'. Accepts ints for Fama-French models, 3, 4, 5, 6.")
-
-    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
     
     parser.add_argument('-f', '--frequency', type=str, default='m',
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
@@ -152,9 +151,7 @@ def _cli():
     if args.list_regions:
         _cli_list_regions()
     if args.list_models:
-        list_models()
-    if args.list_regions:
-        _cli_list_regions()
+        _cli_list_models()
 
     try:
         rhs, lhs = None, None

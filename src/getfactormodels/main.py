@@ -17,7 +17,7 @@
 import logging
 from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.utils import get_model_key, get_model_class
+from getfactormodels.utils.registry import get_model_key, get_model_class
 from getfactormodels.utils.cli import _cli
 import warnings 
 
