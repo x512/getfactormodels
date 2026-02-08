@@ -15,60 +15,110 @@ import pyarrow.csv as pv
 #from getfactormodels.models.aqr_models import HMLDevilFactors, QMJFactors
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
-
+import sys
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
 """Model utils and I/O utils."""
 
-_CLASS_REGISTRY = {
-    "3": "FamaFrenchFactors",
-    "5": "FamaFrenchFactors",
-    "6": "FamaFrenchFactors",
-    "4": "CarhartFactors",
-    "Q": "QFactors", 
-    "Qclassic": "QFactors",
-    "HMLDevil": "HMLDevilFactors",
-    "QMJ": "QMJFactors",
-    "BAB": "BABFactors",
-    "VME": "VMEFactors",
-    "AQR6": "AQRFactors",
-    "Mispricing": "MispricingFactors",
-    "Liquidity": "LiquidityFactors",
-    "ICR": "ICRFactors",
-    "DHS": "DHSFactors",
-    "BarillasShanken": "BarillasShankenFactors",
-    "HighIncomeCCAPM": "HighIncomeCCAPM",
-    "ConditionalCAPM": "ConditionalCAPM",
+_MODEL_REGISTRY = {
+    "ff3": {
+        "class": "FamaFrenchFactors",
+        "name": "Fama-French 3-Factor Model",
+        "aliases": ["3", "famafrench3"],
+    },
+    "ff4": {
+        "class": "CarhartFactors",
+        "name": "Carhart/Fama-French 4-Factors",
+        "aliases": ["4", "car", "carhart", "famafrench4"],
+    },
+    "ff5": {
+        "class": "FamaFrenchFactors",
+        "name": "Fama-French 5-Factors",
+        "aliases": ["5", "famafrench5"],
+    },
+    "ff6": {
+        "class": "FamaFrenchFactors",
+        "name": "Fama-French 6-Factors",
+        "aliases": ["6", "famafrench6"],
+    },
+    "q": {
+        "class": "QFactors",
+        "name": "Augmented q5 Factors",
+        "aliases": ["q5", "hmxz", "qfactors"],
+    },
+    "qc": {
+        "class": "QFactors",
+        "name": "q-Factors (Classic)",
+        "aliases": ["q4", "classicq", "qclassic"],
+    },
+    "hmld": {
+        "class": "HMLDevilFactors",
+        "name": "AQR: HML Devil",
+        "aliases": ["devil", "hmldevil"],
+    },
+    "qmj": {
+        "class": "QMJFactors",
+        "name": "AQR: Quality Minus Junk",
+        "aliases": ["quality", "quality-minus-junk"],
+    },
+    "bab": {
+        "class": "BABFactors",
+        "name": "AQR: Betting Against Beta",
+        "aliases": ["betting", "betting-against-beta"],
+    },
+    "vme": {
+        "class": "VMEFactors",
+        "name": "AQR: Value & Momentum Everywhere",
+        "aliases": ["valmom", "value-and-momentum-everywhere"],
+    },
+    "aqr6": {
+        "class": "AQR6Factors",
+        "name": "AQR: 6-Factor Model",
+        "aliases": ["aqr", "aqrfactors", "a6"],
+    },
+    "mis": {
+        "class": "MispricingFactors",
+        "name": "Mispricing Factors",
+        "aliases": ["misp", "mispricing"],
+    },
+    "liq": {
+        "class": "LiquidityFactors",
+        "name": "Liquidity Factors",
+        "aliases": ["liquidity"],
+    },
+    "icr": {
+        "class": "ICRFactors",
+        "name": "Intermediary Capital Ratio",
+        "aliases": ["intermediary"],
+    },
+    "dhs": {
+        "class": "DHSFactors",
+        "name": "DHS Behavioral Factors",
+        "aliases": ["behaviour", "behavior", "dhs"],
+    },
+    "bs": {
+        "class": "BarillasShankenFactors",
+        "name": "Barillas-Shanken 6-Factors",
+        "aliases": ["bs6", "barillasshanken"],
+    },
+    "hcapm": {
+        "class": "HighIncomeCCAPM",
+        "name": "CCAPM: High-Income/Affluent Household",
+        "aliases": ["hcapm", "hicapm", "ccapm-hi"],
+    },
+    "pcapm": {
+        "class": "ConditionalCAPM",
+        "name": "CCAPM: Premium-Labour",
+        "aliases": ["jwcapm", "plcapm", "ccapm-pl"],
+    },
 }
 
 
-_ALIASES = {
-    "3": ["3", "ff3", "famafrench3"],
-    "4": ["4", "ff4", "carhart", "car"],
-    "5": ["5", "ff5", "famafrench5"],
-    "6": ["6", "ff6", "famafrench6"],
-    "Q": ["q", "qfactors", "q-factors", "q_factors", "q5", "hmxz"],
-    "Qclassic": ["q4", "classicq"],
-    "HMLDevil": ["hmld", "devil"],
-    "QMJ": ["quality", "qualityminusjunk"],
-    "BAB": ["betting", "bettingainstbeta"],
-    "Mispricing": ["mis", "misp"],
-    "Liquidity": ["liq"],
-    "ICR": ["icr", "intermediary"],
-    "DHS": ["dhs", "behaviour"],
-    "BarillasShanken": ["bs", "bs6"],
-    "VME": ["valmom", "valueandmomentumeverywhere"],
-    "AQR6": ["aqr", "aqrfactors"],
-    "HighIncomeCCAPM": ["hccapm", 'hcapm', 'hc-capm', 'hicapm'],
-    "ConditionalCAPM": ["jwcapm", "plcapm", "jwccapm", "plccapm", "ccapm"],
+_LOOKUP = {
+    alias.lower().replace("-", "").replace("_", ""): key 
+    for key, data in _MODEL_REGISTRY.items() 
+    for alias in data.get("aliases", []) + [key]
 }
-
-
-_LOOKUP: MappingProxyType[str, str] = MappingProxyType({
-    alias: key 
-    for key, aliases in _ALIASES.items() 
-    for alias in (aliases + [key.lower()]) # include keys
-})
 
 
 def get_model_key(user_input: str | int) -> str:
@@ -83,11 +133,26 @@ def get_model_key(user_input: str | int) -> str:
     raise ValueError(f"Unknown model or portfolio: '{user_input}'")
 
 
-def get_model_class(key: str):
-    """Retrieve the class for a resolved key."""
-    if key not in _CLASS_REGISTRY:
-        raise ValueError(f"Key '{key}' is not registered to a class.")
-    return _CLASS_REGISTRY[key]
+def get_model_class(key: str) -> str:
+    if key not in _MODEL_REGISTRY:
+        key = get_model_key(key)
+    return _MODEL_REGISTRY[key]["class"]
+
+
+def list_models():
+    """Lists all model's ID's, name and aliases."""
+    header = f"{'ID':<7} {'MODEL NAME':<35} {'ALIASES'}"
+    sys.stderr.write(f"{header}\n")
+    
+    for key, data in _MODEL_REGISTRY.items():
+        name = (data['name'][:30] + '...') if len(data['name']) > 33 else data['name']
+        aliases = ", ".join(data['aliases'])
+        
+        row = f"{key:<7} {name:<35} {aliases}\n"
+        sys.stderr.write(row)
+        
+    sys.stderr.write("\n")
+    sys.exit(0)
 
 
 def _prepare_filepath(filepath: str | Path | None, filename: str) -> Path:

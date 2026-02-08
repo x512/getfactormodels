@@ -22,7 +22,7 @@ from importlib.metadata import PackageNotFoundError, version
 import pyarrow.csv as pv 
 import os 
 from pathlib import Path
-from getfactormodels.utils.utils import _generate_filename
+from getfactormodels.utils.utils import _generate_filename, list_models
 
 log = logging.getLogger("getfactormodels")
 
@@ -69,7 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
                         help="The model/s to use, e.g., 'liquidity', 'icr', "
                         "'ff3'. Accepts ints for Fama-French models, 3, 4, 5, 6.")
-                        # TODO: 'see all models with --list models'
+
+    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
     
     parser.add_argument('-f', '--frequency', type=str, default='m',
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
@@ -150,7 +151,10 @@ def _cli():
 
     if args.list_regions:
         _cli_list_regions()
-        sys.exit(0)
+    if args.list_models:
+        list_models()
+    if args.list_regions:
+        _cli_list_regions()
 
     try:
         rhs, lhs = None, None
