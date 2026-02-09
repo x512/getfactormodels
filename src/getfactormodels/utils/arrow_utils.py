@@ -135,7 +135,7 @@ def _format_for_preview(val, col_name, precision=6):
 
 
 
-def print_table_preview(table, n_rows=6, n_cols=6) -> str | None:
+def print_table_preview(table, n_rows=6, n_cols=5) -> str | None:
     """Formats a str preview of a PyArrow table like a Pandas DataFrame.
 
     - If rows or columns exceed (n*2 + 2) then table is truncated.
