@@ -4,10 +4,11 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
+from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import FactorModel, PortfolioBase
 from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import (
     offset_period_eom,
@@ -144,3 +145,163 @@ class QFactors(FactorModel):
             msg = f"{self.__class__.__name__}: reading failed: {e}"
             self.log.error(msg)
             raise ValueError(msg) from e
+
+
+class _QPortfolios(PortfolioBase):
+    """Download q-factor portfolio data from global-q.org.
+
+    Work in progress.
+
+    q-global offers two portfolio sorts for each frequency:
+    - 18 portfolios (2x3x3) on size (ME), investment-to-assets (IA) 
+      and return on equity (ROE).
+    - 6 portfolios (2x3) on size and Expected Growth (EG).
+
+    Source: 
+    - https://global-q.org/factors.html
+
+    Notes:
+    - Ranks are in ascending order. For size (ME): "1" is small, "2" big. 
+      For IA, ROE, EG: "1" means low, "2" median, "3" high.
+    """
+    @property
+    def _frequencies(self) -> list[str]: return ["d", "w", "w2w", "m", "y"] #TODO: quarterly
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Schema of q-global portfolios (after processing but before pivoting)."""
+        fields = [("date", pa.date32())] #since it's after offset, 'Year'/'Month', 'DATE' = 'date'.
+
+        if self.frequency in ['d', 'm']:
+            fields.append(("nstocks", pa.int32()))
+
+        fields.append(("rank_ME", pa.int16()))
+
+        if self.sort_type == '2x3x3':
+            fields += [("rank_IA", pa.int16()), ("rank_ROE", pa.int16())]
+        else:  # '2x3'
+            fields += [("rank_EG", pa.int16())]
+
+        fields += [
+            ("ret_vw", pa.float64()), 
+            ("retx_vw", pa.float64())
+        ]
+        return pa.schema(fields)
+
+
+    def __init__(self, 
+                 sort: Literal['2x3', '2x3x3'] = '2x3x3',
+                 weights: Literal['vw'] = 'vw',
+                 *,
+                 dividends: bool = True,  # default, total rets
+                 **kwargs) -> None:
+        # only value avail
+        if weights.lower() != 'vw':
+            raise ValueError(f"{self.__class__.__name__} only supports value-weighted ('vw') portfolios.") 
+        kwargs['weights'] = 'vw'
+        kwargs['dividends'] = dividends
+        self.sort_type = sort # sort to 'sort_type' internally
+        super().__init__(**kwargs)
+
+    def _get_url(self) -> str:
+        freq_map = {'d': 'daily', 'w': 'weekly', 'w2w': 'weekly_w2w', 
+                    'm': 'monthly', 'y': 'annual', 'q': 'quarterly'}
+        f_str = freq_map.get(self.frequency, 'monthly')
+
+        slug = 'me_ia_roe' if self.sort_type == '2x3x3' else 'me_eg'
+        return f'https://global-q.org/uploads/1/2/2/6/122679606/benportf_{slug}_{f_str}_2024.csv'
+
+    def _read(self, data: bytes) -> pa.Table:
+        read_opts = pv.ReadOptions(skip_rows=0)
+        table = pv.read_csv(io.BytesIO(data), read_options=read_opts)
+
+        # works for now.
+        rename_map = {
+            "DATE": "date",
+            "Year": "year",
+            "Month": "month",
+            "Rank ME": "rank_ME",
+            "Rank IA": "rank_IA",
+            "Rank ROE": "rank_ROE",
+            "Rank EG": "rank_EG",
+            "Ret": "ret_vw",
+            "Retx": "retx_vw",
+            "N": "nstocks"
+        }
+        table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
+
+        if "year" in table.column_names:
+            y_str = pc.cast(table['year'], pa.string())
+            if "month" in table.column_names:
+                # 'm' yyyymm
+                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
+                date_val = pc.binary_join_element_wise(y_str, m_str, "")
+            else:
+                # 'y' yyyy-12
+                date_val = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
+            table = table.add_column(0, "date", date_val)
+
+        # d/w/w2w have 'DATE' col, offset returns 'date'.
+        table = offset_period_eom(table, self.frequency)
+
+        # enforcing schema here. entire schema thing needs rework.
+        table = table.select(self.schema.names).cast(self.schema)
+
+        table = scale_to_decimal(table)
+
+        # https://global-q.org/factors.html:
+        #
+        #   "ret_vw denotes value-weighted total (cum-dividend) returns, 
+        #   and retx_vw denotes value-weighted ex-dividend returns (capital 
+        #   gains)" 
+
+        val_col = 'ret_vw' if self.dividends else 'retx_vw' 
+
+        return self._pivot_portfolios(table, val_col)
+
+
+    # this is for both portfolios AND soon anomalies. 
+    # TODO: utils filter by date, quarterly offset and period offset need to be redone.
+    def _pivot_portfolios(self, table: pa.Table, value_col: str) -> pa.Table:
+        rank_cols = [c for c in table.column_names if c.startswith("rank_")]
+        # unique dates for an index
+        dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
+
+        sort_keys = [(col, "ascending") for col in rank_cols]
+        uniq_ports = table.group_by(rank_cols).aggregate([]).sort_by(sort_keys)
+
+        columns = [dates.column("date")]
+        names = ["date"]
+
+        for port in uniq_ports.to_pylist():
+            # builds column name (ME1_IA2)
+            name = "_".join([f"{c.replace('rank_', '')}{port[c]}" for c in rank_cols])
+
+            mask = None
+            for col in rank_cols:
+                m = pc.equal(table[col], port[col])
+                mask = m if mask is None else pc.and_(mask, m)
+
+            # filter and align
+            subset = table.filter(mask).select(["date", value_col])
+            # left outer for dates that exist
+            aligned = dates.join(subset, keys=["date"], join_type="left outer")
+            columns.append(aligned.column(value_col))
+            names.append(name)
+
+        return pa.table(columns, names=names)
+
+
+# Keeping private until ff/q/aqr portfolios have some kind of unified ux
+# and redone params. works.
+def _get_q_portfolios(formed_on=None, sort=None, **kwargs): #q_portfolios when public?
+    # conv input to str (avoids NoneType err)
+    f_str = "".join(formed_on) if formed_on else ""
+    s_str = str(sort).lower() if sort else ""
+    # if 'eg' or '6' is mentioned, it's 2x3. 
+    # else, 2x3x3. (incl. -p q)
+    if "eg" in f_str or "6" in s_str or "2x3" in s_str:
+        final_sort = '2x3'
+    else:
+        final_sort = '2x3x3'
+    return _QPortfolios(sort=final_sort, **kwargs)

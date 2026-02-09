@@ -16,14 +16,14 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import argparse
 import logging
+import os
 import sys
 import textwrap
 from importlib.metadata import PackageNotFoundError, version
-import pyarrow.csv as pv 
-import os 
 from pathlib import Path
-from getfactormodels.utils.utils import _generate_filename 
+import pyarrow.csv as pv
 from getfactormodels.utils.registry import _cli_list_models
+from getfactormodels.utils.utils import _generate_filename
 
 log = logging.getLogger("getfactormodels")
 
@@ -59,7 +59,7 @@ def parse_args() -> argparse.Namespace:
     getfactormodels -m hml_devil --region jpn
     getfactormodels -p industry 30
     getfactormodels --model ff3 liq --portfolio op bm 
-    getfactormodels -m ff5 liq -p beta -n 10 
+    getfactormodels -m liq -f m -p q -n 2x3x3 
         ''', 
     )
 
@@ -100,11 +100,10 @@ def parse_args() -> argparse.Namespace:
     
     # Portfolio Options
     port_group = parser.add_argument_group('Portfolio Options')
-    #formed on
+    #NOTE: dest='formed on'
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
                             dest='formed_on', nargs='+', metavar='FACTOR',
                             help="Factors to sort on (e.g., size, bm, inv) or 'industry'.")
-    # sort
     port_group.add_argument('-n', '--sort', '--count', dest='sort', metavar='SORT',
                             help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
@@ -115,30 +114,36 @@ def parse_args() -> argparse.Namespace:
                             help="Data source: 'ff' (Fama-French) or 'q' (Q-factor/HXZ).")
     
     parser.set_defaults(industry=None)
-
     args = parser.parse_args()
+
+    # fix: check for portfolio here 
+    args.is_portfolio = bool(args.ind_count or args.formed_on)
 
     if args.formed_on:
         args.formed_on = [item.strip().lower() for s in args.formed_on for item in s.split(',')]
         
-        # -p industry n
+        # "industry" as sort 
         if args.formed_on[0] in ['industry', 'ind']:
-            if len(args.formed_on) > 1:
-                args.ind_count = int(args.formed_on[1])
-            else:
-                args.ind_count = 12 # Default
-            args.formed_on = None # It's an industry sort, not a factor sort
+            args.ind_count = int(args.formed_on[1]) if len(args.formed_on) > 1 else 12
+            args.formed_on = None
             args.sort = None
-    
-    #-p, or -I
+        
+            # "q" as sort - only 2 types of portfolios: checks for 
+            # ia roe eg or q. Needs refinement.
+        else:
+            q_sorts = {'ia', 'roe', 'eg', 'q'}
+            if any(k in args.formed_on for k in q_sorts):
+                args.src = 'q'
+                # "--portfolio q" - clear formed on so factory uses defaults
+                if len(args.formed_on) == 1 and args.formed_on[0] == 'q':
+                    args.formed_on = None 
+
     if args.ind_count:
         args.industry = args.ind_count
         args.sort = None
         args.formed_on = None
     else:
         args.industry = None
-
-    args.is_portfolio = bool(args.industry or args.formed_on)
 
     return args
 
@@ -188,11 +193,12 @@ def _cli():
             model_obj._data = _table
         else:
             model_obj = rhs or lhs
-            if model_obj:
-                model_obj.load()
-            if not len(model_obj):
+         
+            if model_obj is None:
                 log.error("No data returned.")
                 sys.exit(1)
+
+            model_obj.load()
 
     except (ValueError, RuntimeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)

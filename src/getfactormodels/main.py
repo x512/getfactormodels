@@ -15,17 +15,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
+import warnings
 from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.registry import get_model_key, get_model_class
 from getfactormodels.utils.cli import _cli
-import warnings 
+from getfactormodels.utils.registry import get_model_class, get_model_key
 
 log = logging.getLogger("getfactormodels")
 
 
 def portfolio(
-    source: str = 'ff',
+    source: str = 'ff', #ff, q
     formed_on: str | list[str] = 'size',
     sort: str | int | None = None,
     industry: int | None = None,
@@ -62,7 +62,11 @@ def portfolio(
         "end_date": end_date,
         **kwargs
     }
-
+    source = source.lower()
+    if source == 'q':
+        from getfactormodels.models.q_factors import _get_q_portfolios
+        return _get_q_portfolios(**params)
+        
     if source in ['ff', 'famafrench']:
         from getfactormodels.models.fama_french import _get_ff_portfolios
         return _get_ff_portfolios(**params)
