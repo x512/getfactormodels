@@ -109,7 +109,7 @@ def parse_args() -> argparse.Namespace:
                             help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
-    port_group.add_argument('-w', '--weight', '--weights', choices=['vw', 'ew'], default='vw',
+    port_group.add_argument('-W', '-w', '--weights', '--weight', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Data source: 'ff' (Fama-French) or 'q' (Q-factor/HXZ).")
