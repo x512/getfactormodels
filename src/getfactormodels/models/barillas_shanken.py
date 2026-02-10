@@ -29,7 +29,7 @@ class BarillasShankenFactors(CompositeModel):
         aqr = HMLDevilFactors(frequency=self.frequency).load(client=client)
 
         mkt_smb = select_table_columns(ff.data, ['Mkt-RF', 'SMB']) # might switch to using aqr's data (SMB = SMB FF)
-        ia_roe = select_table_columns(q.data, ['R_IA', 'R_ROE'])
+        ia_roe = select_table_columns(q.data, ['IA', 'ROE'])
         umd_hml = select_table_columns(aqr.data, ['UMD', 'HML_Devil', 'RF_AQR'])
 
         table = (
@@ -52,8 +52,8 @@ class BarillasShankenFactors(CompositeModel):
             ('Mkt-RF', pa.float64()),
             ('SMB', pa.float64()),
             ('HML_Devil', pa.float64()),
-            ('R_IA', pa.float64()),
-            ('R_ROE', pa.float64()),
+            ('IA', pa.float64()),
+            ('ROE', pa.float64()),
             ('UMD', pa.float64()),
             ('RF_AQR', pa.float64()),
         ])
