@@ -75,6 +75,27 @@ def filter_table_by_date(table: pa.Table,
     return table.filter(mask)
 
 
+def _merge_schemas(schemas: list[pa.Schema]) -> pa.Schema:
+    """Internal: merge PyArrow schemas.
+
+    Keeps order 'date', cols[1], deduped cols[2...].
+    """
+    fields = [pa.field('date', pa.date32())]
+    seen = {'date'}
+    
+    for schema in schemas:
+        for field in schema:
+            name = field.name
+            if name not in seen:
+                fields.append(field)
+                seen.add(name)
+            else:
+                if name != 'date': #skip date. Always there.
+                    log.debug("Merge schemas, deduplicated: '%s'", name)
+                
+    return pa.Schema.from_fields(fields)
+
+
 def _validate_columns(table: pa.Table, names: str | list[str] | None) -> list[str]:
     """Private helper: Checks if columns exist in a pyarrow Table by name.
 

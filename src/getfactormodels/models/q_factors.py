@@ -167,6 +167,20 @@ class _QPortfolios(PortfolioBase):
     @property
     def _frequencies(self) -> list[str]: return ["d", "w", "w2w", "m", "y"] #TODO: quarterly
 
+    def __init__(self, 
+                 sort: Literal['2x3', '2x3x3'] = '2x3x3',
+                 weights: Literal['vw'] = 'vw',
+                 *,
+                 dividends: bool = True,  # default, total rets
+                 **kwargs) -> None:
+        # only value avail
+        if weights.lower() != 'vw':
+            raise ValueError(f"{self.__class__.__name__} only supports value-weighted ('vw') portfolios.") 
+        kwargs['weights'] = 'vw'
+        kwargs['dividends'] = dividends
+        self.sort_type = sort # sort to 'sort_type' internally
+        super().__init__(**kwargs)
+    
     @property
     def schema(self) -> pa.Schema:
         """Schema of q-global portfolios (after processing but before pivoting)."""
@@ -187,22 +201,6 @@ class _QPortfolios(PortfolioBase):
             ("retx_vw", pa.float64())
         ]
         return pa.schema(fields)
-
-
-    def __init__(self, 
-                 sort: Literal['2x3', '2x3x3'] = '2x3x3',
-                 weights: Literal['vw'] = 'vw',
-                 *,
-                 dividends: bool = True,  # default, total rets
-                 **kwargs) -> None:
-        # only value avail
-        if weights.lower() != 'vw':
-            raise ValueError(f"{self.__class__.__name__} only supports value-weighted ('vw') portfolios.") 
-        kwargs['weights'] = 'vw'
-        kwargs['dividends'] = dividends
-        self.sort_type = sort # sort to 'sort_type' internally
-        super().__init__(**kwargs)
-
     def _get_url(self) -> str:
         freq_map = {'d': 'daily', 'w': 'weekly', 'w2w': 'weekly_w2w', 
                     'm': 'monthly', 'y': 'annual', 'q': 'quarterly'}
@@ -296,12 +294,11 @@ class _QPortfolios(PortfolioBase):
 # and redone params. works.
 def _get_q_portfolios(formed_on=None, sort=None, **kwargs): #q_portfolios when public?
     # conv input to str (avoids NoneType err)
-    f_str = "".join(formed_on) if formed_on else ""
-    s_str = str(sort).lower() if sort else ""
-    # if 'eg' or '6' is mentioned, it's 2x3. 
-    # else, 2x3x3. (incl. -p q)
-    if "eg" in f_str or "6" in s_str or "2x3" in s_str:
-        final_sort = '2x3'
-    else:
+    s_str = str(sort).lower().strip() if sort else ""
+    
+    if any(x in s_str for x in ["18", "2x3x3"]): #noqa
         final_sort = '2x3x3'
-    return _QPortfolios(sort=final_sort, **kwargs)
+    else:
+        final_sort = '2x3'
+        
+    return _QPortfolios(sort=final_sort, formed_on=formed_on, **kwargs)

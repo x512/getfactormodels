@@ -6,7 +6,6 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
 from typing import Literal
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
@@ -15,6 +14,7 @@ from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
     round_to_precision,
     select_table_columns,
+    _merge_schemas,
 )
 from getfactormodels.utils.date_utils import (
     _validate_input_date,
@@ -41,7 +41,7 @@ class FactorModel(ABC):
                  end_date: str | None = None,
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
-                 **kwargs: Any):
+                 **kwargs):
         """Initialize the factor model instance.
 
         Args:
@@ -77,8 +77,6 @@ class FactorModel(ABC):
         if self.data is None:
             return self.__repr__()
         
-       # table = self.data
-
         if isinstance(self, RegionMixin):
             region_label = f" ({self.region})"
         else:
@@ -112,8 +110,8 @@ class FactorModel(ABC):
         """HTML repr for nice IPython/Jupyter outputs."""
         style = (
             "font-family: monospace; "
-                "font-size: 0.9em; "
-                "line-height: 1.4; "
+                "font-size: 0.88em; "
+                "line-height: 1.2; "
                 "background-color: transparent; "
                 "white-space: pre; "
                 "overflow-x: auto; "
@@ -127,7 +125,7 @@ class FactorModel(ABC):
     def start_date(self) -> str | None:
         return self._start_date
     @start_date.setter
-    def start_date(self, value: Any):
+    def start_date(self, value):
         valid = _validate_input_date(value, is_end=False)
         self._start_date, self._end_date = validate_date_range(valid, self._end_date)
 
@@ -135,7 +133,7 @@ class FactorModel(ABC):
     def end_date(self) -> str | None:
         return self._end_date
     @end_date.setter
-    def end_date(self, value: Any):
+    def end_date(self, value):
         valid = _validate_input_date(value, is_end=True)
         self._start_date, self._end_date = validate_date_range(self._start_date, valid)
 
@@ -424,15 +422,8 @@ class ModelCollection(CompositeModel):
         return list(freqs)
 
     @property
-    def schema(self) -> pa.Schema:
-        seen = {'date'}
-        fields = [pa.field('date', pa.date32())]
-        for inst in self.instances:
-            for field in inst.schema:
-                if field.name not in seen:
-                    fields.append(field)
-                    seen.add(field.name)
-        return pa.schema(fields)
+    def schema(self) -> pa.Schema:   #TODO: FIXME: all schemas match source. Apply new schema from cols or just rework the entire schema thing...?
+        return _merge_schemas([inst.schema for inst in self.instances])
     
 
     def _construct(self, client: _HttpClient) -> pa.Table:
@@ -556,9 +547,13 @@ class PortfolioBase(FactorModel, ABC):
     def __init__(self, frequency: str = 'm',
                  weights: Literal['vw', 'ew'] = 'vw',
                  *,
-                 dividends: bool = True,
+                 dividends: bool = True, #tot ret by default
                  **kwargs):
         super().__init__(frequency=frequency, **kwargs)
+
+        #_aliases = {'size': 'me',}
+        #_portfolio_sort_map = {'2x3': 6,
+        #                       '2x3x3': 18,}
 
         self.dividends = dividends
         self.weights = weights.lower()
