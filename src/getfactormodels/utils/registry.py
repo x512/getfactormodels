@@ -4,9 +4,9 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
+import sys
 from types import MappingProxyType
 from typing import Final
-import sys
 
 """
 Model registry.
@@ -140,17 +140,23 @@ def list_models() -> dict:
 
 
 def _cli_list_models():
-    """Lists all model ID's, names and aliases to stderr and exits."""
-    header = f"{'ID':<7} {'MODEL NAME':<35} {'ALIASES'}"
+    """Lists all model ID's, names, frequencies and aliases to stderr."""
+    from getfactormodels.main import model as model_factory
+    header = f"{'ID':<7} {'MODEL NAME':<32} {'FREQ':<15} {'ALIASES'}"
     sys.stderr.write(f"{header}\n")
-    
-    for key, data in _MODEL_REGISTRY.items():
-        name = (data['name'][:30] + '...') if len(data['name']) > 33 else data['name']
+
+    for key in _MODEL_REGISTRY:
+        data = _MODEL_REGISTRY[key]
+
+        inst = model_factory(key)
+        #clean "d,m,y" string
+        freqs = ",".join(inst._frequencies)
+
+        name = (data['name'][:28] + '...') if len(data['name']) > 31 else data['name']
         aliases = ", ".join(data['aliases'])
-        
-        row = f"{key:<7} {name:<35} {aliases}\n"
+
+        row = f"{key:<7} {name:<32} {freqs:<15} {aliases}\n"
         sys.stderr.write(row)
-        
+
     sys.stderr.write("\n")
     sys.exit(0)
-

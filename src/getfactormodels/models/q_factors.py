@@ -285,7 +285,7 @@ class _QPortfolios(PortfolioBase):
         names = ["date"]
 
         for port in uniq_ports.to_pylist():
-            # builds column name (ME1_IA2)
+            # builds column name (me1_eg2)
             name = "_".join([f"{c.replace('rank_', '')}{port[c]}" for c in rank_cols]).lower()
 
             mask = None

@@ -64,6 +64,7 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument('--ver', '--version', action='version', version=f'getfactormodels {_get_version()}')
+    # TODO AGPL Warranty flag
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
     parser.add_argument('-v', '--verbose', action='store_true', help="verbose output (set log to debug)")
     parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
@@ -76,10 +77,10 @@ def parse_args() -> argparse.Namespace:
                         help="Data frequency (default: 'm'). Note: 'w2w' (Wed-to-Wed) is "
                         "only available for q-factors.")
     
-    parser.add_argument('-s', '--start', required=False, metavar="YYYY-MM-DD", 
+    parser.add_argument('-s', '--start', required=False, metavar="YYYY[-MM-DD]", 
                         help='the start date.')
     
-    parser.add_argument('-e', '--end', required=False, metavar="YYYY-MM-DD", 
+    parser.add_argument('-e', '--end', required=False, metavar="YYYY[-MM-DD]", 
                         help='the end date.')
 
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
@@ -108,10 +109,11 @@ def parse_args() -> argparse.Namespace:
                             help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
-    port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw',
+    port_group.add_argument('-w', '--weight', '--weights', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Data source: 'ff' (Fama-French) or 'q' (Q-factor/HXZ).")
+    #port_group.add_argument('--ex-div', '--exdiv' 
     
     parser.set_defaults(industry=None)
     args = parser.parse_args()
@@ -131,12 +133,11 @@ def parse_args() -> argparse.Namespace:
             # "q" as sort - only 2 types of portfolios: checks for 
             # ia roe eg or q. Needs refinement.
         else:
-            q_sorts = {'ia', 'roe', 'eg', 'q'}
-            if any(k in args.formed_on for k in q_sorts):
+            q_cols = {'ia', 'roe', 'eg', 'q'}
+            if any(k in args.formed_on for k in q_cols):
                 args.src = 'q'
-                # "--portfolio q" - clear formed on so factory uses defaults
-                if len(args.formed_on) == 1 and args.formed_on[0] == 'q':
-                    args.formed_on = None 
+                if args.formed_on == ['q']:
+                    args.formed_on = None # use defaults
 
     if args.ind_count:
         args.industry = args.ind_count
@@ -196,8 +197,8 @@ def _cli():
          
             if model_obj is None:
                 log.error("No data returned.")
+                print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
                 sys.exit(1)
-
             model_obj.load()
 
     except (ValueError, RuntimeError) as e:
