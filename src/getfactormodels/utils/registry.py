@@ -148,10 +148,14 @@ def _cli_list_models():
     for key in _MODEL_REGISTRY:
         data = _MODEL_REGISTRY[key]
 
-        inst = model_factory(key)
-        #clean "d,m,y" string
-        freqs = ",".join(inst._frequencies)
-
+        try:
+            # try default (usually 'm' in the factory)
+            inst = model_factory(key)
+            freqs = ",".join(inst._frequencies)
+        except ValueError:
+                # try with 'y'
+                inst = model_factory(key, frequency='y')
+                freqs = ",".join(inst._frequencies)
         name = (data['name'][:28] + '...') if len(data['name']) > 31 else data['name']
         aliases = ", ".join(data['aliases'])
 
