@@ -165,7 +165,8 @@ class _QPortfolios(PortfolioBase):
       For IA, ROE, EG: "1" means low, "2" median, "3" high.
     """
     @property
-    def _frequencies(self) -> list[str]: return ["d", "w", "w2w", "m", "y"] #TODO: quarterly
+    def _frequencies(self) -> list[str]: 
+        return ["d", "w", "w2w", "m", "q", "y"]
 
     def __init__(self, 
                  sort: Literal['2x3', '2x3x3'] = '2x3x3',
@@ -201,13 +202,19 @@ class _QPortfolios(PortfolioBase):
             ("retx_vw", pa.float64())
         ]
         return pa.schema(fields)
+
+
     def _get_url(self) -> str:
-        freq_map = {'d': 'daily', 'w': 'weekly', 'w2w': 'weekly_w2w', 
-                    'm': 'monthly', 'y': 'annual', 'q': 'quarterly'}
+        base_url = 'https://global-q.org/uploads/1/2/2/6/122679606'
+        freq_map = {
+            'd': 'daily', 'w': 'weekly', 'w2w': 'weekly_w2w', 
+            'm': 'monthly', 'y': 'annual', 'q': 'quarterly',
+        }
         f_str = freq_map.get(self.frequency, 'monthly')
 
         slug = 'me_ia_roe' if self.sort_type == '2x3x3' else 'me_eg'
-        return f'https://global-q.org/uploads/1/2/2/6/122679606/benportf_{slug}_{f_str}_2024.csv'
+        return f'{base_url}/benportf_{slug}_{f_str}_2024.csv'
+    
 
     def _read(self, data: bytes) -> pa.Table:
         read_opts = pv.ReadOptions(skip_rows=0)
@@ -228,20 +235,26 @@ class _QPortfolios(PortfolioBase):
         }
         table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
 
-        if "year" in table.column_names:
+        if self.frequency == 'q':  # TODO: parse quarterly dates should handle and combination of yyyy/year and period/month/quarter for freq = q.
+            table = table.rename_columns([
+                'period' if c == 'quarter' else c 
+                for c in table.column_names
+            ])
+            
+            table = parse_quarterly_dates(table)
+    
+        elif "year" in table.column_names:
             y_str = pc.cast(table['year'], pa.string())
             if "month" in table.column_names:
-                # 'm' yyyymm
                 m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
                 date_val = pc.binary_join_element_wise(y_str, m_str, "")
             else:
-                # 'y' yyyy-12
                 date_val = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
+            
             table = table.add_column(0, "date", date_val)
+            table = table.drop(["year", "month"] if "month" in table.column_names else ["year"])
 
-        # d/w/w2w have 'DATE' col, offset returns 'date'.
         table = offset_period_eom(table, self.frequency)
-
         # enforcing schema here. entire schema thing needs rework.
         table = table.select(self.schema.names).cast(self.schema)
 
@@ -273,7 +286,7 @@ class _QPortfolios(PortfolioBase):
 
         for port in uniq_ports.to_pylist():
             # builds column name (ME1_IA2)
-            name = "_".join([f"{c.replace('rank_', '')}{port[c]}" for c in rank_cols])
+            name = "_".join([f"{c.replace('rank_', '')}{port[c]}" for c in rank_cols]).lower()
 
             mask = None
             for col in rank_cols:
