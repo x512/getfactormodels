@@ -13,6 +13,7 @@ import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
+
 log = logging.getLogger(__name__) #TODO: consistent logging.
 
 """I/O utils."""

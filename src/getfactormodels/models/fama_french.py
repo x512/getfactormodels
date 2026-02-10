@@ -5,17 +5,18 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import zipfile
-from typing_extensions import override
+from abc import ABC, abstractmethod
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-from getfactormodels.models.base import FactorModel, RegionMixin, PortfolioBase
+from typing_extensions import override
+from getfactormodels.models.base import FactorModel, PortfolioBase, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_decimal,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
-from abc import ABC, abstractmethod
+
 
 #TODO: break up _read_zip
 class FamaFrenchFactors(FactorModel, RegionMixin):
@@ -68,13 +69,12 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  region: str | None = 'us', 
                  **kwargs) -> None:
         """Initialize a Fama-French factor model."""
-        self.model = str(model)
+        # model keys (ff3) to int
+        self.model = model.replace('ff', '') if model.startswith('ff') else str(model)
         super().__init__(frequency=frequency, model=model, **kwargs)
         
         self.region = region
-
         self._validate_ff_input()
-    
 
     @property
     def schema(self) -> pa.Schema:
@@ -622,7 +622,7 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
 def _get_ff_portfolios(
     formed_on: str | list[str] = 'size', #on=, sorted_on=, might rename
     sort: str | int | None = None, #2x3, decile, 25
-    industry: int | None = None, #industries= ? allow str through, "12" 
+    industry: int | None = None, 
     weights: str = 'vw',
     frequency: str = 'm',
     **kwargs) -> pa.Table:

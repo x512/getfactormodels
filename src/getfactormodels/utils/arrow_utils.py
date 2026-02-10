@@ -76,7 +76,7 @@ def filter_table_by_date(table: pa.Table,
 
 
 def _merge_schemas(schemas: list[pa.Schema]) -> pa.Schema:
-    """Internal: merge PyArrow schemas.
+    """Internal: merges PyArrow schemas.
 
     Keeps order 'date', cols[1], deduped cols[2...].
     """

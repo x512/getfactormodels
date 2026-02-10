@@ -14,9 +14,9 @@ Models: HMLDevilFactors, QMJFactors, BABFactors, VMEFactors, AQR6Factors.
 """
 import io
 from abc import ABC, abstractmethod
-from typing_extensions import override
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
+from typing_extensions import override
 from getfactormodels.models.base import (
     CompositeModel,
     FactorModel,
