@@ -25,7 +25,6 @@ log = logging.getLogger("getfactormodels")
 
 
 def portfolio(
-    source: str = 'ff', #ff, q
     formed_on: str | list[str] = 'size',
     sort: str | int | None = None,
     industry: int | None = None,
@@ -33,8 +32,9 @@ def portfolio(
     frequency: str = 'm',
     start_date: str | None = None,
     end_date: str | None = None,
-    **kwargs
-):
+    *, 
+    source: str = 'ff', #Literal ff, aqr, q  user might not need this? unless rely on defaults.
+    **kwargs):
     """Download portfolio return data.
 
     * Currently supports Fama-French sorts and industry portfolios,
@@ -51,6 +51,8 @@ def portfolio(
         end_date: Optional end date YYYY[-MM-DD].
     """
     source = source.lower()
+
+    # TODO: source=None, figure it out here, not in cli 
     
     params = {
         "formed_on": formed_on,
@@ -121,6 +123,7 @@ def model(
         kwargs['region'] = region
     
     return model_class(
+        model=model_key,  # AHHH. Fixes the 5/6 
         frequency=frequency,
         start_date=start_date, 
         end_date=end_date,
