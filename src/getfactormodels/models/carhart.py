@@ -25,6 +25,6 @@ class CarhartFactors(FamaFrenchFactors):
         """Initialize the Carhart 4-Factor model."""
         kwargs.pop('model', None)
         super().__init__(frequency=frequency,
-                         model=4,   # enforce model for FF 
+                         model='ff4', 
                          region=region,
                          **kwargs)
