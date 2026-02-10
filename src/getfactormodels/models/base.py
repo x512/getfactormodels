@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import Literal
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
+    _merge_schemas,
     filter_table_by_date,
     print_table_preview,
     rearrange_columns,
     round_to_precision,
     select_table_columns,
-    _merge_schemas,
 )
 from getfactormodels.utils.date_utils import (
     _validate_input_date,

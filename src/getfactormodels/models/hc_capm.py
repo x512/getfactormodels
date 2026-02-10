@@ -34,7 +34,12 @@ class HighIncomeCCAPM(FactorModel):
     @property
     def _frequencies(self) -> list[str]:
         return ['y'] 
-
+    
+    def __init__(self, frequency='y', **kwargs):
+        if frequency != 'y':
+            raise ValueError("Affluent Household/High Income CCAPM only supports annual data ('y').")
+        super().__init__(frequency='y', **kwargs)
+    
     @property
     def schema(self) -> pa.Schema:
         return pa.schema([
