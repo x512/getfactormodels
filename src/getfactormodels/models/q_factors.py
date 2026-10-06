@@ -79,7 +79,8 @@ class QFactors(FactorModel):
                 }.get(self.frequency)
 
         url = 'https://global-q.org/uploads/1/2/2/6/122679606'
-        url += f'/q5_factors_{file}_2024.csv'
+        #url += f'/q5_factors_{file}_2024.csv'
+        url += f'/q5_factors_{file}_2025.csv' # find year 
         return url
 
 
@@ -199,7 +200,7 @@ class _QPortfolios(PortfolioBase):
 
         fields += [
             ("ret_vw", pa.float64()), 
-            ("retx_vw", pa.float64())
+            ("retx_vw", pa.float64()),
         ]
         return pa.schema(fields)
 
@@ -213,7 +214,8 @@ class _QPortfolios(PortfolioBase):
         f_str = freq_map.get(self.frequency, 'monthly')
 
         slug = 'me_ia_roe' if self.sort_type == '2x3x3' else 'me_eg'
-        return f'{base_url}/benportf_{slug}_{f_str}_2024.csv'
+        #return f'{base_url}/benportf_{slug}_{f_str}_2024.csv'
+        return f'{base_url}/benportf_{slug}_{f_str}_2025.csv'
     
 
     def _read(self, data: bytes) -> pa.Table:
@@ -231,7 +233,7 @@ class _QPortfolios(PortfolioBase):
             "Rank EG": "rank_EG",
             "Ret": "ret_vw",
             "Retx": "retx_vw",
-            "N": "nstocks"
+            "N": "nstocks",
         }
         table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
 
@@ -315,3 +317,51 @@ def _get_q_portfolios(formed_on=None, sort=None, **kwargs): #q_portfolios when p
         final_sort = '2x3'
         
     return _QPortfolios(sort=final_sort, formed_on=formed_on, **kwargs)
+
+
+
+
+###
+
+
+## Q ANOMALIES ... notes
+# 1-way: https://global-q.org/uploads/1/2/2/6/122679606/mom_monthly_2024.zip
+# mostly deciles, some quintiles
+# 2-way: https://global-q.org/uploads/1/2/2/6/122679606/me_mom_monthly_2024.zip
+# 3x5, me,anomaly
+
+
+# Extension of q portfolios, or add anomalies? e.g., 
+# 1. Abr1 ("abr_1"), cumulative abnormal returns around earnings announcement dates, 1-month holding period; 
+# 
+
+# getfactormodels -p me,abr1 -n 3x5
+# getfactormodels -p abr1 -n 3x5 (= me,abr1) 
+#getfactormodels -p abr1 -n 10 #,decile,quinitile,5
+#getfactormodels -p q -n 18 -a abr1 (add an anomaly to 18 q portfolios? returns the decile or quintile)
+# getfactormodels -p q -n 2x3 -a abr1,me (add 2-way sort to 6 q portfolios) 
+
+# from getfactormodels import portfolio 
+#p = portfolio(source='q', sort='2x3', frequency='m', anomaly='abr1').load()
+# p2 = portfolio(source='ff', sort='quintile', on='me,bm', anomaly=['abr1', 'nsi])
+#  p3 = portfolio(source='aqr', on='bab', frequency='m').load()
+#or just 
+#  p3 = portfolio('bab', frequency='m') 
+#  #add anomalies 
+#  p3.anomaly=['atoq6', '2ig', 'r11_6', 'r6_6', 'abr1', 'sue1']).load()
+
+# to add Abr1 2 way sort, is a "portfolio" like in Fama-French size,beta size,ac, size,nsi etc." 
+#
+#
+class _QAnomalies(PortfolioBase):
+    
+    def _download_anom_folder(self):
+        """Downloads the correct folder of anomalies for the frequency.
+
+        Example: abr_1, weekly downloads the 42 momentum anomalies .zip for weekly. 
+
+        """
+        ...
+
+        #Download the folder, then check that the anomaly str + frequency is a file, 
+        # or, map everything to its folder. Not very pythonic...
