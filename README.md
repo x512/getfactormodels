@@ -81,12 +81,12 @@ getfactormodels -m ff3 liq -f m -p mom size -n 5x5
 
 ```
 
-**Example**
+**Example:**
 
     getfactormodels -m qmj -f d --output qmj.ipc
 
 <details>
-<summary>View output</summary>
+<summary>**View output**</summary>
 
 ```plaintext
 Data saved to: qmj.ipc
@@ -104,14 +104,13 @@ date            Mkt-RF           QMJ           SMB           HML           UMD  
 
 [17574 rows x 7 columns, 905.3 kb]
 ```
-</details>
 
 Another:
 
-``getfactormodels -m q -f q -o qfactors_qtrly.md``
+    getfactormodels -m q -f q -o qfactors_qtrly.md
 
 <details>
-<summary>View output</summary>
+<summary>**View output**</summary>
 
 ```plaintext
 Data saved to: qfactors_qtrly.md
@@ -130,6 +129,8 @@ date
 
 [232 rows x 7 columns, 12.0 kb]
 ```
+</details>
+
 
 ### Python
 **`getfactormodels.model()`**
