@@ -53,7 +53,7 @@ class MispricingFactors(FactorModel):
 
     def _get_url(self) -> str:
         #base_url = "https://finance.wharton.upenn.edu/~stambaug"
-        base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/M4.csv"
+        base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11"
         file_name = "M4d" if self.frequency == "d" else "M4"
         return f"{base_url}/{file_name}.csv"
 
