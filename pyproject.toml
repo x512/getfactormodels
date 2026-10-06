@@ -8,8 +8,7 @@ authors = [
 ]
 exclude = ["**/*.ipynb"]
 readme = "README.md"
-keywords = ['finance', 'asset pricing', 'multifactor models', 'finance',
-    'price models', 'financial analysis']
+keywords = ['finance', 'asset pricing', 'multi-factor', 'price models', 'financial analysis']
 classifiers = [
     "Topic :: Office/Business :: Financial",
     "Topic :: Office/Business :: Financial :: Investment",
@@ -29,26 +28,26 @@ classifiers = [
 requires-python = ">=3.10"
 
 dependencies = [
-    "pyarrow>=23.0.0",
+    "pyarrow>=23.0.0,<=25.0.1",             # 23 and 25.0.1 verified
     "diskcache>=5.6.3",
-    "httpx (>=0.28.1,<0.29.0)",
-    "certifi (>=2025.11.12,<2027.0.0)",
-    "python-calamine (>=0.6.1,<0.7.0)",
-    "platformdirs (>=4.5.1,<5.0.0)",
-    "python-dateutil (>=2.9.0.post0,<3.0.0)",
-    "typing-extensions (>=4.15.0,<5.0.0)",
+    "httpx>=0.28.1,<0.29.0",
+    "certifi>=2025.11.12,<2027.0.0",
+    "python-calamine>=0.6.1,<=0.8.2",       # 0.6.1, 0.8.2 verified
+    "platformdirs>=4.0.0,<5.0.0",           # 4.12 verified
+    "python-dateutil>=2.9.0.post0,<3.0.0",
+    "typing-extensions>=4.15.0,<5.0.0",
 ]
 packages = [
     { include = "getfactormodels", from = "src" }
 ]
 
 [tool.poetry.group.dev.dependencies]
-ruff = "0.14.8"
+ruff = ">=0.14.8,<=0.16.10"      # 0.14.8 verified
 pytest-cov = ">=7.0.0"
-pytest = "^9.0"
+pytest = "^9.0"                  # 9.1.1 verified
 isort = "^7.0"
 pytest-randomly = ">=4.0.1"
-tox = "4.32.0"
+tox = ">=4.32.0,<=4.64.9"
 
 [project.urls]
 Homepage = "https://github.com/x512/getfactormodels"
@@ -70,7 +69,7 @@ force_grid_wrap = 0
 
 [tool.ruff]
 line-length = 79
-target-version = "py312"
+target-version = "py312"  #TODO: 3.11
 indent-width = 4
 respect-gitignore = true
 exclude = ["*.ipynb", ".git", ".git-rewrite", "build", "dist"]
