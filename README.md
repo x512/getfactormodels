@@ -7,8 +7,7 @@
 ![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square&labelColor=%23313131)
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
-A command-line tool to retrieve data for multi-factor asset pricing models.
-
+A CLI and Python library to download multi-factor asset pricing models. 
 
 ## Models
 
@@ -29,7 +28,7 @@ A command-line tool to retrieve data for multi-factor asset pricing models.
 _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they provide._
 
 
-## Installation
+## Install
 
 >[!IMPORTANT]
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
@@ -38,12 +37,6 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 >
 >*But a huge thanks to anyone who has tried it!*
 
-**Requires:**
-
-- Python >=3.10
-
-
-The easiest way to install `getfactormodels` is with pip:
 
 ```bash
 pip install getfactormodels
@@ -66,7 +59,7 @@ getfactormodels -m qmj -f d --region aus --output aus_bab.ipc
 # Get multiple models in one table, e.g., ff3 + liquidity factors:
 getfactormodel -m ff3 liq
 
-# Attach a Fama-French portfolio
+# Attach a Fama-French industry portfolio
 getfactormodels -m ff6 -f m --industry 5 
 getfactormodels -m ff6 -f m -I 12
 
@@ -111,10 +104,14 @@ date            Mkt-RF           QMJ           SMB           HML           UMD  
 
 [17574 rows x 7 columns, 905.3 kb]
 ```
+</details>
 
 Another:
 
 ``getfactormodels -m q -f q -o qfactors_qtrly.md``
+
+<details>
+<summary>View output</summary>
 
 ```plaintext
 Data saved to: qfactors_qtrly.md
@@ -133,9 +130,6 @@ date
 
 [232 rows x 7 columns, 12.0 kb]
 ```
-
-</details>
-
 
 ### Python
 **`getfactormodels.model()`**
@@ -174,7 +168,8 @@ df = m.to_polars() # Helper method, see also `.to_pandas()`
 
 ```
 
-- Some other examples:
+**Some other examples:**
+
 ```py
 from getfactormodels import Qfactors, BABFactors, QMJFactors
 
@@ -191,23 +186,9 @@ bab_jpn_df = BABFactors(frequency='d', region='JPN',
 
 ```
 
-*A list of model classes available:*
- - `FamaFrenchFactors`
- - `CarhartFactors`
- - `QFactors`
- - `ICRFactors`
- - `DHSFactors`
- - `LiquidityFactors`
- - `MispricingFactors`
- - `HMLDevilFactors`
- - `BarillasShankenFactors`
- - `BABFactors`
- - `QMJFactors`
+**Interoperability**
 
-
-**Data Interoperability**
-
-`getfactormodels` uses PyArrow internally and supports the Dataframe Interchange Protocol. This allows for zero-copy data sharing with most modern Python data tools.
+`getfactormodels` uses PyArrow internally and supports the Dataframe Interchange Protocol, allowing for zero-copy data sharing with most modern Python data tools.
 
 Create a model instance:
 ```py
@@ -236,9 +217,7 @@ df = m.to_pandas()
 array = m.to_pandas().to_numpy()
 ```
 
-**The Interchange Protocol**
-
-- If you use libraries like Ibis, Modin, or Vaex, you can use the interchange protocol directly:
+- Libraries like Ibis, Modin or Vaex can use the dataframe interchange protocol directly:
 
 ```py
 df = vaex.from_arrow_table(m.data)
@@ -246,7 +225,8 @@ print(df.mean(vdf.ROE))
 ```
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-## Data Availability
+
+## Availability
 
 _This table shows each model's start date, available frequencies, and the latest datapoint if not current. The ``id`` column 
 contains the shortest identifier for each model. These should all work in python and the CLI._
@@ -271,7 +251,7 @@ contains the shortest identifier for each model. These should all work in python
 * Fama-French: data up until until end of prior month.
 * Fama-French: most international/emerging factors (accessed with the region param) begin between 1985-1990.
 * AQR models: non-US data begins around 1990 (accessed with the country param).
-* getfactormodels offers two CCAPMs: a High-Income/Affluent CCAPM (annual, 1927-2022) and the Premium-Labor CCAPM, (m, q, y; data from 1959-04-30)
+* ``getfactormodels`` has two conditional CAPM (CCAPM) models: a High-Income/Affluent CCAPM (annual, 1927-2022) from Campbell & Korniotis (2013)<sup>[[15]](#15)</sup>, and an implementation of the Premium-Labor CCAPM (m, q, y; data from 1959-04-30) from Jagganathan & Wang (1996)<sup>[[16]](#16)</sup>
 
 
 ## References
@@ -292,6 +272,7 @@ contains the shortest identifier for each model. These should all work in python
 12. <a id="12"></a>A. Frazzini and L. H. Pedersen, “Betting Against Beta,” Journal of Financial Economics, vol. 111, no. 1, pp. 1–25, Jan. 2014. [EconPapers](https://econpapers.repec.org/paper/nbrnberwo/16601.htm)[PDF (working paper)](https://www.nber.org/system/files/working_papers/w16601/w16601.pdf) 
 13. <a id="13"></a>C. S. Asness, A. Frazzini, and L. H. Pedersen, “Quality Minus Junk,” Review of Accounting Studies, vol. 24, no. 1, pp. 34–112, Nov. 2019. [EconPapers](https://econpapers.repec.org/article/sprreaccs/v_3a24_3ay_3a2019_3ai_3a1_3ad_3a10.1007_5fs11142-018-9470-2.htm) [PDF](https://link.springer.com/content/pdf/10.1007/s11142-018-9470-2.pdf)
 14. <a id="14"></a>F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, *Journal of Finance*, vol. 73, no. 2, pp. 715–754, 2018. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2700000)
+15. <a id="15"></a>S. D. Campbell and G. M. Korniotis, Finance and Economics Discussion Series, "The Human Capital That Matters: Expected Returns and the Income of Affluent Households," BiblioGov, 2013. [Web](https://www.federalreserve.gov/pubs/feds/2008/200809/index.html)
 
 **Data sources:**
 
@@ -318,5 +299,5 @@ contains the shortest identifier for each model. These should all work in python
 - Example notebook
 - Error handling
 - README
-- metadata on models (copyright, construction, factors)
 - Refactor of FF models
+- metadata - copyright, license, bibtex/citations
