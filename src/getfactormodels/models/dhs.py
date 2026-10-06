@@ -50,10 +50,10 @@ class DHSFactors(FactorModel):
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
-            sheet_id = '1lWaNCuHeOE-nYlB7GA1Z2-QQa3Gt8UJC'
+            sheet_id = '15wTRI_vf7pXSyEW1VeYkNIGWxRyUtBLf'
             #info_id =
         else:
-            sheet_id = '1VwQcowFb5c0x3-0sQVf1RfIcUpetHK46'
+            sheet_id = '1K78rVuWEW6doD7ZdMVQCRJ4z0azM50vP'
             #info_sheet_id = '#gid=96292754'  # Construction, Universe, Period, More Details
 
         return  f'{base_url}{sheet_id}/export?format=xlsx'
