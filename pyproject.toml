@@ -2,10 +2,13 @@
 name = "getfactormodels"
 version = "0.0.27"
 description = "Download datasets for various multifactor asset pricing models."
+
 license = "AGPL-3.0-or-later"
+
 authors = [
     { name = "S. Martin", email = "x512@pm.me" }
 ]
+
 exclude = ["**/*.ipynb"]
 readme = "README.md"
 keywords = ['finance', 'asset pricing', 'multi-factor', 'price models', 'financial analysis']
@@ -28,8 +31,8 @@ classifiers = [
 requires-python = ">=3.10"
 
 dependencies = [
-    "pyarrow>=23.0.0,<=25.0.1",             # 23 and 25.0.1 verified
-    "diskcache>=5.6.3",
+    "pyarrow>=23.0.1,<=25.0.1",
+    "diskcache>=5.6.3",                     # see: dependabot/4, https://github.com/EthanKim88/ethan-cve-disclosures/blob/main/CVE-2025-69872-DiskCache-Pickle-Deserialization.md
     "httpx>=0.28.1,<0.29.0",
     "certifi>=2025.11.12,<2027.0.0",
     "python-calamine>=0.6.1,<=0.8.2",       # 0.6.1, 0.8.2 verified
@@ -37,6 +40,7 @@ dependencies = [
     "python-dateutil>=2.9.0.post0,<3.0.0",
     "typing-extensions>=4.15.0,<5.0.0",
 ]
+
 packages = [
     { include = "getfactormodels", from = "src" }
 ]
@@ -44,14 +48,15 @@ packages = [
 [tool.poetry.group.dev.dependencies]
 ruff = ">=0.14.8,<=0.16.10"      # 0.14.8 verified
 pytest-cov = ">=7.0.0"
-pytest = "^9.0"                  # 9.1.1 verified
-isort = "^7.0"
+pytest = ">=9.0.3"               # 9.0.3 fixes vulnerable tmpdir handling in <9.0.2
 pytest-randomly = ">=4.0.1"
 tox = ">=4.32.0,<=4.64.9"
+isort = "^7.0"
 
 [project.urls]
 Homepage = "https://github.com/x512/getfactormodels"
 Download = "https://pypi.org/project/getfactormodels/"
+
 [project.scripts]
 getfactormodels = "getfactormodels.main:main"
 
@@ -69,19 +74,19 @@ force_grid_wrap = 0
 
 [tool.ruff]
 line-length = 79
-target-version = "py312"  #TODO: 3.11
+target-version = "py312"
 indent-width = 4
 respect-gitignore = true
 exclude = ["*.ipynb", ".git", ".git-rewrite", "build", "dist"]
 
 [tool.ruff.lint]
-select = [ "ANN201", "D",  # docs
+ignore = ["I", "E501", "ANN", "F401", "W293"]
+unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
+select = [ "ANN201", "D",
     "E", "F", "B", "G", "N", "A", "S", "SIM", "C901", "COM", 
     "UP", "C4", "PT", "LOG", "DTZ", "RET", "ICN", "TID", 
     "FBT", "BLE", "ISC"
 ]
-ignore = ["I", "E501", "ANN", "F401", "W293"]
-unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
@@ -89,7 +94,7 @@ unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
 "tests/**/*.py" = ["F401", "S101"]
 
 [tool.ruff.lint.pydocstyle]
-convention = "google"  #docs
+convention = "google"
 
 [tool.ruff.format]
 quote-style = "double"
@@ -108,3 +113,4 @@ omit = [
     "*/__pycache__/*",
     "setup.py",
 ]
+
