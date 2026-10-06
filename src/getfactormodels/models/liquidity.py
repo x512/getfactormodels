@@ -52,7 +52,9 @@ class LiquidityFactors(FactorModel):
         ])
 
     def _get_url(self) -> str:
-        return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
+        #return 'https://finance.wharton.upenn.edu/~stambaug/liq_data_1962_2024.txt'
+        return 'https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/liq_data_1962_2025.txt'
+        # TODO: try 2026-30 if 404.
 
     def _read(self, data: bytes) -> pa.Table:
         try:
