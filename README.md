@@ -258,18 +258,20 @@ contains the shortest identifier for each model. These should all work in python
 |`5`| Fama-French 5  | 1963-07-01 | ✓ |              | ✓ |    | ✓ |     -     |
 |`6`| Fama-French 6 | 1963-07-01 | ✓ |              | ✓ |       | ✓ |      -  |
 |`icr`| ICR           | 1970-01-31<br><sub>*Daily: 1999-05-03</sub>* | ✓ ||✓| ✓ |    | 2025-06-27 |
-|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |     |                       | 2023-12-29 |
+|`dhs`| DHS          | 1972-07-03 | ✓ |            | ✓ |     |                       | 2024-12-31 |
 |`mis`| Mispricing    | 1963-01-02 | ✓ |            | ✓ |              |             | 2016-12-30 |
-|`liq`| Liquidity     | 1962-08-31 |   |      | ✓ |      |                           | 2024-12-31 |
+|`liq`| Liquidity     | 1962-08-31 |   |      | ✓ |      |                           | 2025-12-31 |
 |`q`<br>`q4`| $q^5$-factors<br>$q$-factors | 1967-01-03 | ✓ | ✓ |✓ | $\checkmark$ | ✓| 2024-12-31 |
-|`bs`| Barillas-Shanken 6 | 1967-01-03       | ✓ |           |✓ |      |             | 2024-12-31 |
 |`hmld`| HML $^{DEVIL}$ | 1926-07-01       | ✓ |         | ✓ |       |               | 2025-10-31 |
 |`qmj`| Quality Minus Junk | 1957-07-01    | ✓ |         | ✓ |       |               | 2025-10-31 |
 |`bab`| Betting Against beta | 1930-12-01  | ✓ |         | ✓ |       |               | 2025-10-31 |
+|`bs`| Barillas-Shanken 6 | 1967-01-03       | ✓ |           |✓ |      |             | 2024-12-31 |
+
 
 * Fama-French: data up until until end of prior month.
 * Fama-French: most international/emerging factors (accessed with the region param) begin between 1985-1990.
 * AQR models: non-US data begins around 1990 (accessed with the country param).
+* getfactormodels offers two CCAPMs: a High-Income/Affluent CCAPM (annual, 1927-2022) and the Premium-Labor CCAPM, (m, q, y; data from 1959-04-30)
 
 
 ## References
