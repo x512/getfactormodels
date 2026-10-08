@@ -15,6 +15,8 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
+
+from ._metadata import __author__, __copyright__, __license_text__, __version__
 from .main import model, portfolio
 from .models import (
     AQR6Factors,
@@ -34,15 +36,18 @@ from .models import (
     VMEFactors,
 )
 
-logger = logging.getLogger('getfactormodels')
+logger = logging.getLogger("getfactormodels")
 logger.addHandler(logging.NullHandler())
 
 # TODO: setup logging 
 # see: https://docs.python.org/3/howto/logging-cookbook.html#logging-to-multiple-destinations
 # or use warnings??
 
-__version__ = "0.0.27"
-__all__ = [ 
+__all__ = [
+    "__version__",
+    "__author__",
+    "__copyright__",
+    "__license_text__",
     "BABFactors",
     "BarillasShankenFactors",
     "CarhartFactors",
@@ -60,7 +65,5 @@ __all__ = [
     "HighIncomeCCAPM",
     "model",
     "portfolio",
-    
 ]
-
 

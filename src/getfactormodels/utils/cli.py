@@ -19,43 +19,45 @@ import logging
 import os
 import sys
 import textwrap
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+
 import pyarrow.csv as pv
+
+from getfactormodels._metadata import (
+    __copyright__,
+    __description__,
+    __license__,
+    __license_text__,
+    __title__,
+    __version__,
+)
 from getfactormodels.utils.registry import _cli_list_models, _cli_list_regions
 from getfactormodels.utils.utils import _generate_filename
 
 log = logging.getLogger("getfactormodels")
 
-# TODO: clean up cli. Especially help. Add list models.
-
-def _get_version():
-    # Avoids importing __init__ for the ver.
-    try: return version("getfactormodels")
-    except PackageNotFoundError: return "unknown"
 
 def parse_args() -> argparse.Namespace:
-    """CLI arg parser for getfactormodels."""
+    """CLI argument parser for getfactormodels."""
     parser = argparse.ArgumentParser(
-        prog='getfactormodels',
-        description='Download datasets for various factor models.',
+        prog=__title__,
+        description=__description__,
+        #usage="%(prog)s [-m MODEL ...] [-p PORTFOLIO ...] [options]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='''Example usage:
-    getfactormodels --model ff3 --frequency m --start 2000-01-01 --end 2010
-    getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'
-    getfactormodels -m ff6 --drop 'RF'
-    getfactormodels -m hml_devil --region jpn
-    getfactormodels -p industry 30
-    getfactormodels --model ff3 liq --portfolio op bm 
-    getfactormodels -m liq -f m -p q -n 2x3x3 
-        ''', 
+        epilog=textwrap.dedent(f"""\
+        Examples:
+          getfactormodels --model ff3 --frequency m --start 2000-01-01 --end 2010
+          getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'
+          getfactormodels -m ff6 --drop 'RF'              
+          getfactormodels -p industry 30 -o ~/ind30.csv
+          getfactormodels -m ff5 -p 2x3 -x SMB HML -o ~/data.csv
+
+        {__copyright__}.
+        Distributed under {__license__}. See '--license' for details.
+        """),
     )
 
-    parser.add_argument('--ver', '--version', action='version', version=f'getfactormodels {_get_version()}')
-    # TODO AGPL Warranty flag
-    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
-    parser.add_argument('-v', '--verbose', action='store_true', help="verbose output (set log to debug)")
-    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
+    # MODEL OPTIONS
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
                         help="The model/s to use, e.g., 'liquidity', 'icr', "
                         "'ff3'. Accepts ints for Fama-French models, 3, 4, 5, 6.")
@@ -64,7 +66,11 @@ def parse_args() -> argparse.Namespace:
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
                         help="Data frequency (default: 'm'). Note: 'w2w' (Wed-to-Wed) is "
                         "only available for q-factors.")
-    
+
+    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
+                        help="Region or country code for AQR/FF models. "
+                        "Use `--list-regions` to see all valid regions.")
+
     parser.add_argument('-s', '--start', required=False, metavar="YYYY[-MM-DD]", 
                         help='the start date.')
     
@@ -80,18 +86,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
                         help='extract specific factor(s) from a model.')
 
-    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
-                        help="Region or country code for AQR/FF models. "
-                        "Use `--list-regions` to see all valid regions.")
-    
+    # Cache Management
+    #parser.add_argument("-F", "--force", action="store_true", help="Bypass local cache and force download.")
+    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
+    #parser.add_argument("--delete-global-cache", action="store_true", help="Wipe all cached entries and exit.")
+
+    # METADATA/CLI CONTROLS
+    parser.add_argument("-V", "--version", 
+                        action="version", version=f"%(prog)s v{__version__} — {__copyright__}",
+                        )
+    parser.add_argument("--license",
+                        action="version", version=__license_text__, help="Print software license notice and exit.",
+                        )
+    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
+    parser.add_argument('-v', '--verbose', action='store_true', help="verbose output (set log to debug)")
+    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
     parser.add_argument('--list-regions', action='store_true', 
                         help="show all supported regions and exit")
-
-    parser.add_argument('-F', '--force', action='store_true', help="Force redownload, ignoring cache.")
     
-    # Portfolio Options
+    # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
-    #NOTE: dest='formed on'
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
                             dest='formed_on', nargs='+', metavar='FACTOR',
                             help="Factors to sort on (e.g., size, bm, inv) or 'industry'.")
