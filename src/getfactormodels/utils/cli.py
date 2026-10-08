@@ -87,9 +87,11 @@ def parse_args() -> argparse.Namespace:
                         help='extract specific factor(s) from a model.')
 
     # Cache Management
+    #
     #parser.add_argument("-F", "--force", action="store_true", help="Bypass local cache and force download.")
     #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
-    #parser.add_argument("--delete-global-cache", action="store_true", help="Wipe all cached entries and exit.")
+    #
+    parser.add_argument("--delete-global-cache", action="store_true", help="Wipe all cached entries and exit.")
 
     # METADATA/CLI CONTROLS
     parser.add_argument("-V", "--version", 
@@ -155,7 +157,7 @@ def parse_args() -> argparse.Namespace:
 
 # From main.py
 def _cli():
-    from getfactormodels.main import model, portfolio
+    from getfactormodels.main import model, portfolio, clear_global_cache
     args = parse_args()
 
     if args.list_regions:
@@ -164,6 +166,12 @@ def _cli():
 
     if args.list_models:
         _cli_list_models()
+        sys.exit(0)
+
+    if args.delete_global_cache:
+        clear_global_cache()
+        if not args.quiet:
+            print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
 
     try:

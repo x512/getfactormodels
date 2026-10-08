@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # getfactormodels: A Python package to retrieve financial factor model data.
-# Copyright (C) 2025 S. Martin <x512@pm.me>
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as published
@@ -9,11 +9,11 @@
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU Affero General Public License for more details.
 #
 # You should have received a copy of the GNU Affero General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
 from getfactormodels import models as factor_models
@@ -22,6 +22,20 @@ from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
 
 log = logging.getLogger("getfactormodels")
+
+
+def clear_global_cache() -> int:
+    """Clear all cached data files across all models globally.
+
+    Returns:
+        int: Total number of cache entries removed.
+    """
+    from platformdirs import user_cache_path
+    from getfactormodels.utils.cache import _Cache
+
+    cache_dir = user_cache_path(appname="getfactormodels", appauthor="x512", ensure_exists=True)
+    with _Cache(cache_dir) as cache:
+        return cache.clear_all()
 
 
 def portfolio(
@@ -33,12 +47,12 @@ def portfolio(
     start_date: str | None = None,
     end_date: str | None = None,
     *, 
-    source: str = 'ff', #Literal ff, aqr, q  user might not need this? unless rely on defaults.
-    **kwargs):
+    source: str = 'ff',
+    **kwargs,
+):
     """Download portfolio return data.
 
-    * Currently supports Fama-French sorts and industry portfolios,
-    US only.
+    * Currently supports Fama-French sorts and industry portfolios, US only.
 
     Args:
         source: Data source identifier (e.g., 'ff', 'q').
@@ -52,8 +66,6 @@ def portfolio(
     """
     source = source.lower()
 
-    # TODO: source=None, figure it out here, not in cli 
-    
     params = {
         "formed_on": formed_on,
         "sort": sort,
@@ -64,7 +76,6 @@ def portfolio(
         "end_date": end_date,
         **kwargs,
     }
-    source = source.lower()
     if source == 'q':
         from getfactormodels.models.q_factors import _get_q_portfolios
         return _get_q_portfolios(**params)
@@ -82,8 +93,10 @@ def model(
     frequency: str = 'm',
     start_date: str | None = None,
     end_date: str | None = None,
+    force: bool = False,
+    clear_cache: bool = False,
     **kwargs,
-) -> FactorModel:   #Self 
+) -> FactorModel:
     """Download factor model data.
     
     Args:
@@ -92,25 +105,35 @@ def model(
         frequency: Data frequency ('d', 'w', 'm', 'y').
         start_date: Optional start date (YYYY-MM-DD).
         end_date: Optional end date (YYYY-MM-DD).
+        force: Bypass local cache and force fresh redownload.
+        clear_cache: Clear local cache entries for this model before returning.
     """
     if isinstance(model, list):
-        if len(model) == 1:
-            model = model[0]
-        else:
-            from getfactormodels.models.base import ModelCollection
-            return ModelCollection(
-                model_keys=model, 
-                region=region, 
-                frequency=frequency, 
-                start_date=start_date, 
-                end_date=end_date, 
-                **kwargs,
-            )
+        model_input = model[0] if len(model) == 1 else model
+    else:
+        model_input = model
 
-    model_key = get_model_key(model)
-    class_name = get_model_class(model_key) #str 
+    if isinstance(model_input, list):
+        # Multi-model collection
+        from getfactormodels.models.base import ModelCollection
+        model_keys = [get_model_key(m) for m in model_input]
+        collection = ModelCollection(
+            model_keys=model_keys,
+            region=region,
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
+            force=force,
+            **kwargs,
+        )
+        if clear_cache:
+            collection.clear_cache()
+        return collection
+
+    model_key = get_model_key(model_input)
+    class_name = get_model_class(model_key)
     
-    model_class = getattr(factor_models, class_name, None) #obj
+    model_class = getattr(factor_models, class_name, None)
     if model_class is None:
         raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
 
@@ -122,23 +145,28 @@ def model(
     else:
         kwargs['region'] = region
     
-    return model_class(
-        model=model_key,  # AHHH. Fixes the 5/6 
+    kwargs.pop('model', None)
+
+    instance = model_class(
+        model=model_key,
         frequency=frequency,
-        start_date=start_date, 
+        start_date=start_date,
         end_date=end_date,
+        force=force,
         **kwargs,
     )
 
+    if clear_cache:
+        instance.clear_cache()
 
-def get_factors(*args, **kwargs): #noqa
-    """DEPRECATED: Use `model()` instead.
+    return instance
 
-    This function will be removed in a future release.
-    """
+
+def get_factors(*args, **kwargs):  # noqa
+    """DEPRECATED: Use `model()` instead."""
     warnings.warn(
         "get_factors() is deprecated and will be removed in a future version. "
-            "Please use model() for factor data or portfolio() for return data.",
+        "Please use model() for factor data or portfolio() for return data.",
         FutureWarning,
         stacklevel=2,
     )
@@ -147,6 +175,7 @@ def get_factors(*args, **kwargs): #noqa
 
 def main():
     _cli()
+
 
 if __name__ == "__main__":
     main()

@@ -41,6 +41,7 @@ class FactorModel(ABC):
                  end_date: str | None = None,
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
+                 force: bool = False,  # NEW force redownload
                  **kwargs):
         """Initialize the factor model instance.
 
@@ -65,9 +66,28 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
 
+        self.force = force
+        self.model = str(kwargs.get("model", self.__class__.__name__))
+
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
         self._selected_factors: list[str] | None = None  # for eg drop/extract  # changing
         super().__init__()
+
+    def clear_cache(self) -> int:
+        """Clears local cache entries matching this instance's resolved model key(s)."""
+        from platformdirs import user_cache_path
+        from getfactormodels.utils.cache import _Cache
+
+        cache_dir = user_cache_path(appname="getfactormodels", appauthor="x512", ensure_exists=True)
+        
+        # Handle ModelCollection/CompositeModel vs standard FactorModel
+        keys_to_evict = getattr(self, "model_keys", self.model)
+
+        with _Cache(cache_dir) as cache:
+            count = cache.evict_model(keys_to_evict)
+            
+        self._data = None
+        return count
 
     def __len__(self) -> int:
         """Length of the pa.Table after filtering."""
@@ -264,8 +284,7 @@ class FactorModel(ABC):
 
     # RENAME: load, was _get_table
     def load(self, client: _HttpClient | None = None) -> pa.Table:
-        """Trigger download or construction."""
-        if self._data is not None:
+        if self._data is not None and not self.force:
             return self._data
 
         if hasattr(self, '_construct'):
@@ -278,30 +297,42 @@ class FactorModel(ABC):
             raw_bytes = self._download(client=client)
             table = self._read(raw_bytes)
 
-        # move this out probably ---------------------
         if "date" in table.column_names:
             table = table.sort_by([("date", "ascending")])
 
         table = round_to_precision(table, self._precision)
 
-        # CompositeModel: if drop_null=True, drop
         if getattr(self, 'drop_null', False):
             table = table.drop_null()
 
         table.validate(full=True)
         self._data = rearrange_columns(table=table).combine_chunks()
-        # -------------------------------------------
         return self
-
 
     def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
         urls = self._get_url()
         self.log.info(f"Downloading from: {urls}")
-        def _download_method(client: _HttpClient, urls: str | dict):
-            if isinstance(urls, str):
-                # A client was given. Using it.
-                return client.download(urls, self.cache_ttl)
-            return {k: client.download(v, self.cache_ttl) for k, v in urls.items()}
+
+        def _download_method(http_client: _HttpClient, target_urls: str | dict):
+            if isinstance(target_urls, str):
+                return http_client.download(
+                    target_urls,
+                    tag=self.model,
+                    model_name=self.__class__.__name__,
+                    cache_ttl=self.cache_ttl,
+                    force=self.force,
+                )
+            return {
+                k: http_client.download(
+                    v,
+                    tag=self.model,
+                    model_name=self.__class__.__name__,
+                    cache_ttl=self.cache_ttl,
+                    force=self.force,
+                )
+                for k, v in target_urls.items()
+            }
+
         try:
             if client:
                 return _download_method(client, urls)
@@ -310,7 +341,6 @@ class FactorModel(ABC):
         except Exception as e:
             self.log.error(f"Download failed: {e}")
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
-
 
     # might move to utils
     def __dataframe__(self, *, nan_as_null: bool = False):
