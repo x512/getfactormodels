@@ -86,7 +86,7 @@ getfactormodels -m ff3 liq -f m -p mom size -n 5x5
     getfactormodels -m qmj -f d --output qmj.ipc
 
 <details>
-<summary>**View output**</summary>
+<summary>View output</summary>
 
 ```plaintext
 Data saved to: qmj.ipc
@@ -104,13 +104,13 @@ date            Mkt-RF           QMJ           SMB           HML           UMD  
 
 [17574 rows x 7 columns, 905.3 kb]
 ```
-
+</details>
 Another:
 
     getfactormodels -m q -f q -o qfactors_qtrly.md
 
 <details>
-<summary>**View output**</summary>
+<summary>View output</summary>
 
 ```plaintext
 Data saved to: qfactors_qtrly.md
@@ -273,7 +273,8 @@ contains the shortest identifier for each model. These should all work in python
 12. <a id="12"></a>A. Frazzini and L. H. Pedersen, “Betting Against Beta,” Journal of Financial Economics, vol. 111, no. 1, pp. 1–25, Jan. 2014. [EconPapers](https://econpapers.repec.org/paper/nbrnberwo/16601.htm)[PDF (working paper)](https://www.nber.org/system/files/working_papers/w16601/w16601.pdf) 
 13. <a id="13"></a>C. S. Asness, A. Frazzini, and L. H. Pedersen, “Quality Minus Junk,” Review of Accounting Studies, vol. 24, no. 1, pp. 34–112, Nov. 2019. [EconPapers](https://econpapers.repec.org/article/sprreaccs/v_3a24_3ay_3a2019_3ai_3a1_3ad_3a10.1007_5fs11142-018-9470-2.htm) [PDF](https://link.springer.com/content/pdf/10.1007/s11142-018-9470-2.pdf)
 14. <a id="14"></a>F. Barillas and J. Shanken, ‘Comparing Asset Pricing Models’, *Journal of Finance*, vol. 73, no. 2, pp. 715–754, 2018. [PDF](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2700000)
-15. <a id="15"></a>S. D. Campbell and G. M. Korniotis, Finance and Economics Discussion Series, "The Human Capital That Matters: Expected Returns and the Income of Affluent Households," BiblioGov, 2013. [Web](https://www.federalreserve.gov/pubs/feds/2008/200809/index.html)
+15. <a id="15"></a>S. D. Campbell and G. M. Korniotis, "The Human Capital That Matters: Expected Returns and the Income of Affluent Households," Finance and Economics Discussion Series, BiblioGov, 2013. [Web](https://www.federalreserve.gov/pubs/feds/2008/200809/index.html)
+16. <a id="16"></a>R. Jagannathan and Z. Wang, ‘The Conditional CAPM and the Cross-Section of Expected Returns’, The Journal of Finance, vol. 51, no. 1, pp. 3–53, Mar. 1996.
 
 **Data sources:**
 
