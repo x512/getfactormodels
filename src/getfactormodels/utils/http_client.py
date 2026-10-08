@@ -187,9 +187,8 @@ class _HttpClient:
                 "etag": resp.headers.get("ETag"),
                 "last_modified": resp.headers.get("Last-Modified"),
             }
-        except Exception as e:
-            # If fail (405/404, timeout), return empty, so can just do a normal download 
-            log.debug(f"Err?: Unable to get metadata from {url}: {e}")
+        except httpx.HTTPError as e:
+            log.debug(f"Unable to get metadata from {url}: {e}")
             return {}
 
     # New
@@ -229,12 +228,16 @@ class _HttpClient:
 
 
     def check_connection(self, url: str) -> bool:
-        if self._client is None: 
+        """Returns True if the URL exists and returns a 2xx status code."""
+        if self._client is None:
             return False
         try:
-            return self._client.head(url, timeout=5.0).is_success
-        except:
+            resp = self._client.head(url, timeout=5.0)
+            return resp.is_success
+        except httpx.HTTPError as e:
+            log.debug(f"Connection check failed for {url}: {e}")
             return False
+
 
     # TODO: user needs to acces this. force, or clear cache?
     def _clear_cache(self) -> None:
