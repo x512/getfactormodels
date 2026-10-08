@@ -62,7 +62,7 @@ def portfolio(
         "frequency": frequency,
         "start_date": start_date,
         "end_date": end_date,
-        **kwargs
+        **kwargs,
     }
     source = source.lower()
     if source == 'q':
@@ -82,7 +82,7 @@ def model(
     frequency: str = 'm',
     start_date: str | None = None,
     end_date: str | None = None,
-    **kwargs
+    **kwargs,
 ) -> FactorModel:   #Self 
     """Download factor model data.
     
@@ -104,7 +104,7 @@ def model(
                 frequency=frequency, 
                 start_date=start_date, 
                 end_date=end_date, 
-                **kwargs
+                **kwargs,
             )
 
     model_key = get_model_key(model)
@@ -127,7 +127,7 @@ def model(
         frequency=frequency,
         start_date=start_date, 
         end_date=end_date,
-        **kwargs
+        **kwargs,
     )
 
 
@@ -140,7 +140,7 @@ def get_factors(*args, **kwargs): #noqa
         "get_factors() is deprecated and will be removed in a future version. "
             "Please use model() for factor data or portfolio() for return data.",
         FutureWarning,
-        stacklevel=2
+        stacklevel=2,
     )
     return model(*args, **kwargs)
 

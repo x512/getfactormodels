@@ -22,7 +22,7 @@ import textwrap
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 import pyarrow.csv as pv
-from getfactormodels.utils.registry import _cli_list_models
+from getfactormodels.utils.registry import _cli_list_models, _cli_list_regions
 from getfactormodels.utils.utils import _generate_filename
 
 log = logging.getLogger("getfactormodels")
@@ -33,18 +33,6 @@ def _get_version():
     # Avoids importing __init__ for the ver.
     try: return version("getfactormodels")
     except PackageNotFoundError: return "unknown"
-
-#TODO: Move this to registry, or _cli_list_models here.
-def _cli_list_regions():
-    """Helper to display regions and exit."""
-    from getfactormodels.models.aqr_models import _AQRModel
-    from getfactormodels.models.fama_french import FamaFrenchFactors
-    
-    print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
-    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(_AQRModel.list_regions()), width=70)}")
-    print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
-    sys.exit(0)
-
 
 def parse_args() -> argparse.Namespace:
     """CLI arg parser for getfactormodels."""
@@ -98,6 +86,8 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument('--list-regions', action='store_true', 
                         help="show all supported regions and exit")
+
+    parser.add_argument('-F', '--force', action='store_true', help="Force redownload, ignoring cache.")
     
     # Portfolio Options
     port_group = parser.add_argument_group('Portfolio Options')
@@ -156,8 +146,11 @@ def _cli():
 
     if args.list_regions:
         _cli_list_regions()
+        sys.exit(0) #explicitly exit after info flags
+
     if args.list_models:
         _cli_list_models()
+        sys.exit(0)
 
     try:
         rhs, lhs = None, None
@@ -168,7 +161,7 @@ def _cli():
                 frequency=args.frequency, 
                 start_date=args.start, 
                 end_date=args.end, 
-                region=args.region
+                region=args.region,
             )
 
         if args.is_portfolio:
@@ -180,7 +173,7 @@ def _cli():
                 weights=args.weights,
                 frequency=args.frequency,
                 start_date=args.start,
-                end_date=args.end
+                end_date=args.end,
             )
 
         if rhs and lhs:
