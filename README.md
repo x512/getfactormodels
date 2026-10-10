@@ -247,11 +247,13 @@ contains the shortest identifier for each model. These should all work in python
 |`qmj`| Quality Minus Junk | 1957-07-01    | ✓ |         | ✓ |       |               | 2025-10-31 |
 |`bab`| Betting Against beta | 1930-12-01  | ✓ |         | ✓ |       |               | 2025-10-31 |
 |`bs`| Barillas-Shanken 6 | 1967-01-03       | ✓ |           |✓ |      |             | 2024-12-31 |
-
+|`ch3`| Size and Value in China (CH-3) | 2000-01-04       | ✓ |           |✓ |      |             | 2026-08-31 |
+|`ch4`| Size and Value in China (CH-4) | 2000-01-04       | ✓ |           |✓ |      |             | 2026-08-31 |
 
 * Fama-French: data up until until end of prior month.
 * Fama-French: most international/emerging factors (accessed with the region param) begin between 1985-1990.
 * AQR models: non-US data begins around 1990 (accessed with the country param).
+* Size and Value in China models are *only* available for China. `region=` must be `ch`, `china` or `None` (`--region ch`)
 * ``getfactormodels`` has two conditional CAPM (CCAPM) models: a High-Income/Affluent CCAPM (annual, 1927-2022) from Campbell & Korniotis (2013)<sup>[[15]](#15)</sup>, and an implementation of the Premium-Labor CCAPM (m, q, y; data from 1959-04-30) from Jagganathan & Wang (1996)<sup>[[16]](#16)</sup>
 
 
