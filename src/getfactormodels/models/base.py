@@ -198,6 +198,18 @@ class FactorModel(ABC):
     def shape(self) -> tuple[int, int]:
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
+
+    # NEW - test 
+    @property
+    def url(self) -> str | dict[str, str | dict[str, str]]:
+        """Returns the endpoint URL for the model data."""
+        if hasattr(self, 'instances'):
+            # ModelCollection
+            return {
+                getattr(inst, 'model', inst.__class__.__name__): inst.url
+                for inst in self.instances
+            }
+        return self._get_url()
    
 
     def join(self, other: "FactorModel") -> "ModelCollection":

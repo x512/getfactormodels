@@ -34,6 +34,7 @@ from .models import (
     QFactors,
     QMJFactors,
     VMEFactors,
+    CHFactors,
 )
 
 logger = logging.getLogger("getfactormodels")
@@ -65,5 +66,6 @@ __all__ = [
     "HighIncomeCCAPM",
     "model",
     "portfolio",
+    "CHFactors",
 ]
 

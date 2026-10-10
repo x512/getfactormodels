@@ -69,8 +69,8 @@ def parse_args() -> argparse.Namespace:
     # Need: list portfolios, and shorthand model -ls showing id/name/freq only?
     # MODEL OPTIONS
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
-                        help="Model(s) requested ('icr', 'ff3') " 
-                        "Accepts 3 4 5 6 for Fama-French models.")
+                        help="Model(s) requested ('icr', 'ff3'). Also " 
+                        "accepts 3 4 5 6 for Fama-French models.")
     
     parser.add_argument('-f', '--frequency', type=str, default='m',
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
@@ -121,9 +121,17 @@ def parse_args() -> argparse.Namespace:
                             help="Portfolio datasource, accepts 'q' or 'ff'.")
     #port_group.add_argument('--ex-div', '--exdiv'
 
-    #--as-percent (bool) 
-    #--decimals COUNT 
+    #parser.add_argument('--as-percent', action='store_true',
+    #help="Scale factor values to percentages.")
     
+    #--decimals COUNT
+
+    #data source citation
+
+    # new, uses the url @property 
+    parser.add_argument('--url', action='store_true', help="List target URLs for the specified models and exit.")
+   
+
     parser.set_defaults(industry=None)
     args = parser.parse_args()
 
@@ -176,6 +184,25 @@ def _cli():
         if not args.quiet:
             print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
+
+    # ------------------------------------------------------
+    # NEW -- testing 
+    if args.url:
+        from getfactormodels.main import model
+        from pprint import pprint
+        
+        m = model(
+            model=args.model,
+            frequency=args.frequency,
+            start_date=args.start,
+            end_date=args.end,
+            region=args.region,
+        )
+        
+        pprint(m.url)
+        sys.exit(0)
+    # ------------------------------------
+
 
     try:
         rhs, lhs = None, None

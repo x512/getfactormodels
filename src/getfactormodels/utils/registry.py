@@ -107,6 +107,17 @@ _MODEL_REGISTRY: Final = MappingProxyType({
         "name": "CCAPM: Premium-Labour",
         "aliases": ["jwcapm", "plcapm", "ccapm-pl"],
     },
+    "ch3": {
+        "model_class": "CHFactors",
+        "name": "Size and Value in China (CH-3)",
+        "aliases": ["ch3", "ch-3"],
+    },
+    "ch4": {
+        "model_class": "CHFactors",
+        "name": "Size and Value in China (CH-4)",
+        "aliases": ["ch4", "ch-4"],
+    },
+
 })
 
 
@@ -159,14 +170,19 @@ def _cli_list_models():
     for key in _MODEL_REGISTRY:
         data = _MODEL_REGISTRY[key]
 
+        freqs = "d,m"  # Safe default fallback
         try:
-            # try default (usually 'm' in the factory)
+            # Try default first
             inst = model_factory(key)
             freqs = ",".join(inst._frequencies)
-        except ValueError:
-                # try with 'y'
-                inst = model_factory(key, frequency='y')
+        except (ValueError, NotImplementedError):
+            try:
+                # Try fallback frequency 'm' or 'd' for regional models
+                inst = model_factory(key, frequency='m', region='ch')
                 freqs = ",".join(inst._frequencies)
+            except (ValueError, NotImplementedError):
+                pass
+
         name = (data['name'][:28] + '...') if len(data['name']) > 31 else data['name']
         aliases = ", ".join(data['aliases'])
 
