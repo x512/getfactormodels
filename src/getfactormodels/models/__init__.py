@@ -31,3 +31,4 @@ from .jw_ccapm import ConditionalCAPM
 from .liquidity import LiquidityFactors
 from .mispricing import MispricingFactors
 from .q_factors import QFactors
+from .ch import CHFactors
