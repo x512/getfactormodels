@@ -85,14 +85,16 @@ class _HttpClient:
         tag: str = "Data",
         model_name: str = "Data",
         cache_ttl: int | None = None,
+        force: bool = False,
     ) -> bytes:
         """Downloads content, automatically choosing between standard GET and streaming with progress."""
         cache_key = self._generate_cache_key(url)
 
         # Check cache hit unless force=True
-        _, data, expired = self._check_for_update(url, tag=tag)
-        if not expired and data is not None:
-            return data
+        if not force:
+            _, data, expired = self._check_for_update(url, tag=tag)
+            if not expired and data is not None:
+                return data
 
         if self._client is None:
             raise ClientNotOpenError("HttpClient is not open. Use within a 'with' block.")
@@ -129,13 +131,15 @@ class _HttpClient:
         cache_ttl: int,
         tag: str = "Model",
         model_name: str = "Model",
+        force: bool = False,
     ) -> bytes:
         """Wrapper around Httpx's stream."""
         cache_key = self._generate_cache_key(url)
 
-        _, data, expired = self._check_for_update(url, tag=tag)
-        if not expired and data is not None:
-            return data
+        if not force:
+            _, data, expired = self._check_for_update(url, tag=tag)
+            if not expired and data is not None:
+                return data
 
         if self._client is None:
             raise ClientNotOpenError("HttpClient is not open. Use within a 'with' block.")
