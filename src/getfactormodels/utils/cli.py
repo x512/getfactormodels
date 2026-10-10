@@ -42,84 +42,87 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog=__title__,
         description=__description__,
-        #usage="%(prog)s [-m MODEL ...] [-p PORTFOLIO ...] [options]",
+        usage="%(prog)s [-m MODEL ...] [-p PORTFOLIO ...] [options]",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent(f"""\
         Examples:
           getfactormodels --model ff3 --frequency m --start 2000-01-01 --end 2010
-          getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'
-          getfactormodels -m ff6 --drop 'RF'              
+          getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'         
           getfactormodels -p industry 30 -o ~/ind30.csv
           getfactormodels -m ff5 -p 2x3 -x SMB HML -o ~/data.csv
 
         {__copyright__}.
-        Distributed under {__license__}. See '--license' for details.
+        Distributed under {__license__}. See '--license'.
         """),
     )
-
-    # MODEL OPTIONS
-    parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
-                        help="The model/s to use, e.g., 'liquidity', 'icr', "
-                        "'ff3'. Accepts ints for Fama-French models, 3, 4, 5, 6.")
-    
-    parser.add_argument('-f', '--frequency', type=str, default='m',
-                        choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
-                        help="Data frequency (default: 'm'). Note: 'w2w' (Wed-to-Wed) is "
-                        "only available for q-factors.")
-
-    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
-                        help="Region or country code for AQR/FF models. "
-                        "Use `--list-regions` to see all valid regions.")
-
-    parser.add_argument('-s', '--start', required=False, metavar="YYYY[-MM-DD]", 
-                        help='the start date.')
-    
-    parser.add_argument('-e', '--end', required=False, metavar="YYYY[-MM-DD]", 
-                        help='the end date.')
-
-    parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
-                        help='filename/filepath to save the data to.')
-
-    parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR', 
-                        help="drop specific factor(s) from a model.")
-
-    parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
-                        help='extract specific factor(s) from a model.')
-
-    # Cache Management
-    #
-    #parser.add_argument("-F", "--force", action="store_true", help="Bypass local cache and force download.")
-    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
-    #
-    parser.add_argument("--delete-global-cache", action="store_true", help="Wipe all cached entries and exit.")
-
-    # METADATA/CLI CONTROLS
     parser.add_argument("-V", "--version", 
-                        action="version", version=f"%(prog)s v{__version__} — {__copyright__}",
+                        action="version", version=f"%(prog)s (v{__version__}) {__copyright__}",
                         )
     parser.add_argument("--license",
                         action="version", version=__license_text__, help="Print software license notice and exit.",
                         )
     parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
-    parser.add_argument('-v', '--verbose', action='store_true', help="verbose output (set log to debug)")
+    parser.add_argument('-v', '--verbose', action='store_true', help="Verbose output, enable debug logging.")
     parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
     parser.add_argument('--list-regions', action='store_true', 
-                        help="show all supported regions and exit")
+                        help="Show all supported geographic regions and exit")
+    # Need: list portfolios, and shorthand model -ls showing id/name/freq only?
+    # MODEL OPTIONS
+    parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
+                        help="Model(s) requested ('icr', 'ff3') " 
+                        "Accepts 3 4 5 6 for Fama-French models.")
+    
+    parser.add_argument('-f', '--frequency', type=str, default='m',
+                        choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
+                        help="Data frequency (default: 'm'). d w m q y w2w.")
+
+    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
+                        help="Region/country code for models that support it.")
+
+    parser.add_argument('-s', '--start', required=False, metavar="DATE", 
+                        help='the start date.')
+    
+    parser.add_argument('-e', '--end', required=False, metavar="DATE", 
+                        help='the end date.')
+
+    parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
+                        help='A filename or path to save the data to.')
+    #TODO: output dir, outfile file, format.
+
+    parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR', 
+                        help="Remove specific factors from a model.")
+
+    parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
+                        help='Keep only these specific factors from a model.')
+
+    # Cache Management
+    #
+    #parser.add_argument("-F", "--force", "--no-cache" action="store_true", help="Bypass local cache and force download.")
+    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
+    #
+    parser.add_argument("--delete-global-cache", action="store_true", 
+                        help="Delete all cached dataset files from disk and exit.")
+
+    # METADATA/CLI CONTROLS
+    
     
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
                             dest='formed_on', nargs='+', metavar='FACTOR',
-                            help="Factors to sort on (e.g., size, bm, inv) or 'industry'.")
+                            help="Factors to sort on (e.g., size, bm, inv), also accepts 'industry'.")
     port_group.add_argument('-n', '--sort', '--count', dest='sort', metavar='SORT',
-                            help="Number of portfolios or grid (e.g., 10, 5x5, 2x3).")
+                            help="Number of portfolios. Portfolio count ('25') or grid ('5x5').")
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
     port_group.add_argument('-W', '-w', '--weights', '--weight', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
-                            help="Data source: 'ff' (Fama-French) or 'q' (Q-factor/HXZ).")
-    #port_group.add_argument('--ex-div', '--exdiv' 
+                            help="Portfolio datasource, accepts 'q' or 'ff'.")
+    #port_group.add_argument('--ex-div', '--exdiv'
+
+    #--as-percent (bool) 
+    #--decimals COUNT 
     
     parser.set_defaults(industry=None)
     args = parser.parse_args()
