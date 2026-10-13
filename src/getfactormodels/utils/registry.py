@@ -99,22 +99,22 @@ _MODEL_REGISTRY: Final = MappingProxyType({
     },
     "hcapm": {
         "model_class": "HighIncomeCCAPM",
-        "name": "CCAPM: High-Income/Affluent Household",
+        "name": "High Income (Affluent Household) Conditional CAPM",
         "aliases": ["hcapm", "hicapm", "ccapm-hi"],
     },
     "pcapm": {
         "model_class": "ConditionalCAPM",
-        "name": "CCAPM: Premium-Labour",
+        "name": "Premium-Labour Conditional CAPM",
         "aliases": ["jwcapm", "plcapm", "ccapm-pl"],
     },
     "ch3": {
         "model_class": "CHFactors",
-        "name": "Size and Value in China (CH-3)",
+        "name": "CH-3: Size and Value in China",
         "aliases": ["ch3", "ch-3"],
     },
     "ch4": {
         "model_class": "CHFactors",
-        "name": "Size and Value in China (CH-4)",
+        "name": "CH-4: Size and Value in China",
         "aliases": ["ch4", "ch-4"],
     },
 
@@ -150,43 +150,3 @@ def list_models() -> dict:
     """Return a copy of the model registry."""
     return dict(_MODEL_REGISTRY)
 
-# From cli.py 
-def _cli_list_regions():
-    """Helper to display regions and exit."""
-    from getfactormodels.models.aqr_models import _AQRModel
-    from getfactormodels.models.fama_french import FamaFrenchFactors
-    
-    print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
-    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(_AQRModel.list_regions()), width=70)}")
-    print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
-
-
-def _cli_list_models():
-    """Lists all model ID's, names, frequencies and aliases to stderr."""
-    from getfactormodels.main import model as model_factory
-    header = f"{'ID':<7} {'MODEL NAME':<32} {'FREQ':<15} {'ALIASES'}"
-    sys.stderr.write(f"{header}\n")
-
-    for key in _MODEL_REGISTRY:
-        data = _MODEL_REGISTRY[key]
-
-        freqs = "d,m"  # Safe default fallback
-        try:
-            # Try default first
-            inst = model_factory(key)
-            freqs = ",".join(inst._frequencies)
-        except (ValueError, NotImplementedError):
-            try:
-                # Try fallback frequency 'm' or 'd' for regional models
-                inst = model_factory(key, frequency='m', region='ch')
-                freqs = ",".join(inst._frequencies)
-            except (ValueError, NotImplementedError):
-                pass
-
-        name = (data['name'][:28] + '...') if len(data['name']) > 31 else data['name']
-        aliases = ", ".join(data['aliases'])
-
-        row = f"{key:<7} {name:<32} {freqs:<15} {aliases}\n"
-        sys.stderr.write(row)
-
-    sys.stderr.write("\n")

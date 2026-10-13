@@ -31,8 +31,8 @@ from getfactormodels._metadata import (
     __title__,
     __version__,
 )
-from getfactormodels.utils.registry import _cli_list_models, _cli_list_regions
 from getfactormodels.utils.utils import _generate_filename
+from getfactormodels.utils.registry import _MODEL_REGISTRY
 
 log = logging.getLogger("getfactormodels")
 
@@ -277,3 +277,45 @@ def _cli():
         # uses the model_obj's __str__ (which prints the Table preview)
         if not args.quiet:
             sys.stderr.write(f"{str(model_obj)}\n")
+
+
+
+def _cli_list_regions():
+    """Helper to display regions and exit."""
+    from getfactormodels.models.aqr_models import _AQRModel
+    from getfactormodels.models.fama_french import FamaFrenchFactors
+    
+    print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
+    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(_AQRModel.list_regions()), width=70)}")
+    print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
+
+
+def _cli_list_models():
+    """Lists all model ID's, names, frequencies and aliases to stderr."""
+    from getfactormodels.main import model as model_factory
+    header = f"{'ID':<7} {'MODEL NAME':<32} {'FREQ':<15} {'ALIASES'}"
+    sys.stderr.write(f"{header}\n")
+
+    for key in _MODEL_REGISTRY:
+        data = _MODEL_REGISTRY[key]
+
+        freqs = "d,m"  # Safe default fallback
+        try:
+            # Try default first
+            inst = model_factory(key)
+            freqs = ",".join(inst._frequencies)
+        except (ValueError, NotImplementedError):
+            try:
+                # Try fallback frequency 'm' or 'd' for regional models
+                inst = model_factory(key, frequency='m', region='ch')
+                freqs = ",".join(inst._frequencies)
+            except (ValueError, NotImplementedError):
+                pass
+
+        name = (data['name'][:28] + '...') if len(data['name']) > 31 else data['name']
+        aliases = ", ".join(data['aliases'])
+
+        row = f"{key:<7} {name:<32} {freqs:<15} {aliases}\n"
+        sys.stderr.write(row)
+
+    sys.stderr.write("\n")
