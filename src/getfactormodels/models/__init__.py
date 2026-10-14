@@ -30,5 +30,5 @@ from .icr import ICRFactors
 from .jw_ccapm import ConditionalCAPM
 from .liquidity import LiquidityFactors
 from .mispricing import MispricingFactors
-from .q_factors import QFactors
+from .q_factors import QFactors, _QAnomalies, _get_q_anomalies
 from .ch import CHFactors

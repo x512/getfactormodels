@@ -17,7 +17,7 @@
 import logging
 
 from ._metadata import __author__, __copyright__, __license_text__, __version__
-from .main import model, portfolio
+from .main import model, portfolio, anomaly
 from .models import (
     AQR6Factors,
     BABFactors,
@@ -35,6 +35,7 @@ from .models import (
     QMJFactors,
     VMEFactors,
     CHFactors,
+    _QAnomalies,
 )
 
 logger = logging.getLogger("getfactormodels")
@@ -59,6 +60,7 @@ __all__ = [
     "LiquidityFactors",
     "MispricingFactors",
     "QFactors",
+    "_QAnomalies",
     "QMJFactors",
     "VMEFactors",
     "AQR6Factors",
@@ -66,6 +68,7 @@ __all__ = [
     "HighIncomeCCAPM",
     "model",
     "portfolio",
+    "anomaly",
     "CHFactors",
 ]
 

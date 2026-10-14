@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "getfactormodels: A CLI and Python library to download multi-factor asset pricing models."
+authors:
+  - family-names: Martin
+    given-names: S. M.
+repository-code: "https://github.com/x512/getfactormodels"
+url: "https://pypi.org/project/getfactormodels/"
+license: "AGPL-3.0-or-later"
+version: "0.0.29"
+date-released: "2026-10-09"
+keywords:
+  - market-data
+  - financial-data
+  - pricing-models
+  - factor-models

@@ -20,6 +20,8 @@ from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
+from pathlib import Path
+from typing import Literal
 
 log = logging.getLogger("getfactormodels")
 
@@ -87,14 +89,63 @@ def portfolio(
     raise ValueError(f"Portfolio source '{source}' not recognized.")
 
 
+def anomaly(
+    name: str | list[str] = 'abr_1',
+    frequency: str = 'm',
+    sort: str | int = 'decile',
+    start_date: str | None = None,
+    end_date: str | None = None,
+    #output_dir: str | Path | None = None,
+    #filename: str | None = None,
+    #file_format: Literal['feather', 'parquet', 'csv'] = 'feather',
+    *,
+    provider: str = 'q',
+    cache_ttl: int | None = None,
+    **kwargs,
+):
+    """Download anomaly datasets.
+
+    Args:
+        name: Anomaly factor name(s) or category (e.g., 'abr_1', 'momentum', ['abr_1', 'sue_1']).
+        frequency: Data frequency. Currently supports monthly ('m') and annual ('y').
+        sort: Portfolio sort type ('decile', '2x3', or '3x5').
+        start_date: Optional start date (YYYY-[MM-DD]).
+        end_date: Optional end date (YYYY-[MM-DD]).
+        provider: Data provider identifier, only 'q' available.
+        cache_ttl: Optional cache Time-To-Live in seconds.
+    """
+    src = provider.lower().strip()
+    #TODO:
+    #output to...
+    #output_opts = {"output_dir": output_dir, "filename": filename, "file_format": file_format}
+
+    params = {
+        "name": name,
+        "frequency": frequency,
+        "sort": sort,
+        "start_date": start_date,
+        "end_date": end_date,
+        "cache_ttl": cache_ttl,
+     #   **output_opts,
+        **kwargs,
+    }
+
+    if src in ["q", "global-q"]:
+        from getfactormodels.models.q_factors import _get_q_anomalies
+        return _get_q_anomalies(**params)
+    else:
+        raise NotImplementedError(f"Anomalies not supported for source: '{source}'")
+
+
 def model(
     model: str | int | list[str | int] = 3,
     region: str = 'usa',
     frequency: str = 'm',
     start_date: str | None = None,
     end_date: str | None = None,
-    force: bool = False,
-    clear_cache: bool = False,
+    *,
+    force: bool = False,  #not implemented properly yet
+    clear_cache: bool = False, # ye
     **kwargs,
 ) -> FactorModel:
     """Download factor model data.

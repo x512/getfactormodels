@@ -120,6 +120,14 @@ def parse_args() -> argparse.Namespace:
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Portfolio datasource, accepts 'q' or 'ff'.")
     #port_group.add_argument('--ex-div', '--exdiv'
+    
+    # ANOMALY OPTIONS
+    anom_group = parser.add_argument_group('Anomaly Options')
+    anom_group.add_argument('-a', '--anomaly', '--anom',
+                        dest='anomaly_names', nargs='+', metavar='ANOM',
+                        help="Anomaly or categories to retrieve (e.g., abr_1, momentum, rer).")
+    parser.add_argument('--list-anomalies', action='store_true',
+                        help="Show all available q-factor anomalies and categories and exit.")
 
     #parser.add_argument('--as-percent', action='store_true',
     #help="Scale factor values to percentages.")
@@ -136,7 +144,18 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
 
     # fix: check for portfolio here 
+    args.is_anomaly = bool(args.anomaly_names)
     args.is_portfolio = bool(args.ind_count or args.formed_on)
+
+    if args.anomaly_names:
+        args.anomaly_names = [item.strip().lower() for s in args.anomaly_names for item in s.split(',')]
+
+    # Smart default sorting depending on what was requested
+    if args.sort is None:
+        if args.is_anomaly and not args.is_portfolio:
+            args.sort = 'decile'
+        elif args.is_portfolio and not args.is_anomaly:
+            args.sort = '2x3x3'
 
     if args.formed_on:
         args.formed_on = [item.strip().lower() for s in args.formed_on for item in s.split(',')]
@@ -173,10 +192,14 @@ def _cli():
 
     if args.list_regions:
         _cli_list_regions()
-        sys.exit(0) #explicitly exit after info flags
+        sys.exit(0)
 
     if args.list_models:
         _cli_list_models()
+        sys.exit(0)
+
+    if args.list_anomalies:
+        _cli_list_anomalies()
         sys.exit(0)
 
     if args.delete_global_cache:
@@ -205,7 +228,7 @@ def _cli():
 
 
     try:
-        rhs, lhs = None, None
+        rhs, lhs, anom_obj = None, None, None
         
         if args.model:
             rhs = model(
@@ -221,24 +244,40 @@ def _cli():
                 source=args.src, 
                 industry=args.industry,
                 formed_on=args.formed_on,
-                sort=args.sort,  # -n flag
+                sort=args.sort, 
                 weights=args.weights,
                 frequency=args.frequency,
                 start_date=args.start,
                 end_date=args.end,
             )
 
-        if rhs and lhs:
-            rhs.load()
-            lhs.load()
-            # fix: sort after join! (eg, -m misp ff3 -p 2x3 -b size op wasn't returning full table)
-            _table = rhs.data.join(lhs.data, keys="date", join_type="inner").sort_by("date")
-            # A FactorModel object is needed (for to_file/extract/drop etc.),
-            # this uses the RHS instance, then updates its _data property.
-            model_obj = rhs
-            model_obj._data = _table
+        if args.is_anomaly:
+            from getfactormodels.main import anomaly
+            anom_obj = anomaly(
+                source='q',
+                name=args.anomaly_names,
+                frequency=args.frequency,
+                sort=args.sort,
+                start_date=args.start,
+                end_date=args.end,
+            )
+
+        # Handle joining or single dataset selection
+        active_components = [c for c in [rhs, lhs, anom_obj] if c is not None]
+
+        if len(active_components) > 1:
+            # Load and side-by-side join multiple components on 'date'
+            for comp in active_components:
+                comp.load()
+            
+            _table = active_components[0].data
+            for comp in active_components[1:]:
+                _table = _table.join(comp.data, keys="date", join_type="inner")
+            
+            model_obj = active_components[0]
+            model_obj._data = _table.sort_by("date")
         else:
-            model_obj = rhs or lhs
+            model_obj = active_components[0] if active_components else None
          
             if model_obj is None:
                 log.error("No data returned.")
@@ -278,6 +317,16 @@ def _cli():
         if not args.quiet:
             sys.stderr.write(f"{str(model_obj)}\n")
 
+
+def _cli_list_anomalies():
+    """Lists all available q-factor anomalies categorized by group."""
+    from getfactormodels.models.q_factors import _QAnomalies
+    
+    sys.stderr.write("ANOMALIES: all available anomalies from global-q.\n")
+    for category, factors in sorted(_QAnomalies.Q_REGISTRY.items()):
+        factor_list = ", ".join(sorted(factors))
+        sys.stderr.write(f"\n{category.upper()}:\n    {textwrap.fill(factor_list, width=70, subsequent_indent='    ')}\n")
+    sys.stderr.write("\n  Note: You can pass individual anomaly tickers (-a abr_1) or categories (-a momentum).\n\n")
 
 
 def _cli_list_regions():
