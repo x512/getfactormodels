@@ -28,7 +28,9 @@ A CLI and Python library to download multi-factor asset pricing models.
 _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Management (AQR.com) and Hou, Xue and Zhang (global-q.org), for their research and for the datasets they provide._
 
 
-## Install
+
+## Quick start
+### Install
 
 >[!IMPORTANT]
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
@@ -41,45 +43,169 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 ```bash
 pip install getfactormodels
 ```
+---
+### CLI Examples
 
-## Quick start
+#### Factor Models
 
-### CLI
-
+* Download Fama-French 3-factor monthly data:
 ```bash
-# Fama-French 5-Factor model, monthly
-getfactormodels --model ff5 --frequency m
+$ getfactormodels --model ff3 --freq m --start 2010 --end 2019-12-31	
+```
 
-# q-factor model’s weekly ‘IA’ since start (using -x/--extract)
-getfactormodels -m q -f w --start 2000 -x “ia”
+> Use `--list-models` to view all available models, IDs, and supported frequencies.
 
-# Australia, Quality Minus Junk (daily) saved to file:
-getfactormodels -m qmj -f d --region aus --output aus_bab.ipc
 
-# Get multiple models in one table, e.g., ff3 + liquidity factors:
-getfactormodel -m ff3 liq
-
-# Attach a Fama-French industry portfolio
-getfactormodels -m ff6 -f m --industry 5 
-getfactormodels -m ff6 -f m -I 12
-
-# Alternately, --portfolio/-p accepts industry as the sort:
-getfactormodels -m ff5 -f m --portfolio industry 12
-
-# 10 portfolios formed on Momentum
-getfactormodels -m ff6 -f m --portfolio mom -n 10 
-
-# univariate sorts support 'decile, 'quintile', 'tertile' or 10 5 3
-getfactormodels -m ff3 -f m -p size -n 5 
-getfactormodels -m ff3 -f m -p op -n quintile
-
-# Add a FF bivariate sort to model/s
-getfactormodels -m ff3 -f d -p mom size -n 6
-
-# -n accepts a sort (2x3 etc)
-getfactormodels -m ff3 liq -f m -p mom size -n 5x5
+* Combine multiple models of the same frequency:
+```bash
+getfactormodels -m liq misp -f m -o liq_misp.csv
 
 ```
+
+
+> `-o` / `--output` automatically detects format from extensions (`.csv`, `.parquet`, `.feather`).
+
+
+* Query regional models (e.g., Betting Against Beta in Australia):
+```bash
+getfactormodels -m bab -f m -s 2000-01 --region aus
+
+```
+
+
+> Use `--list-regions` to see all available geographic regions and aliases (`us`, `jpn`, `uk`, `ger`, etc.).
+
+
+* Drop or extract specific factors:
+```bash
+getfactormodels -m ff4 -x mom,rf
+getfactormodels -m ff3 -d SMB
+
+```
+
+
+
+---
+
+### Portfolios & Industry Sorts
+
+```bash
+getfactormodels --portfolio op,bm -n 6 --src ff
+
+```
+
+  > Since portfolio factors available at global-q.com are different to the factors in the Fama/French portfolio, source usually isn't 
+  > needed.
+
+
+
+```bash
+getfactormodels -p inv,size -n 2x3 -s 1990-01-01
+
+```
+
+> `-n` accepts a grid (`2x3`, `5x5`, `10x10`, `2x4x4`) or portfolio counts (`6`, `10`, `25`, `100`).
+
+
+```bash
+getfactormodels -p industry 5
+
+```
+
+> Supported industry sizes: `5`, `10`, `12`, `17`, `30`, `38`, `48`, `49`.
+
+
+* Global-Q portfolio sorts:
+```bash
+getfactormodels -p me,eg -n 2x3
+getfactormodels -p me,ia,roe
+
+```
+
+> `--portfolio q` can be used as a shorthand for q-factor portfolios.
+
+
+
+---
+
+### Anomalies
+
+* A single anomaly with default decile sorting:
+```bash
+getfactormodels --anomaly sue_6 --end 2020-01-01
+
+```
+
+> Use `--list-anomalies` to see the full categorized list of available anomaly tickers.
+
+
+* Bivariate (2-way, 3x5) anomaly sorts:
+```bash
+getfactormodels -a beta_1 --bivariate
+
+```
+
+> By default, `-a` returns 1-way decile sorts. Pass `-b` / `--bivariate` to switch to 3x5 sorts.
+
+
+* Attach anomalies to a factor model:
+```bash
+getfactormodels -a abr_1,ta -m ff3 -s 2000 -o file.csv
+
+```
+
+* Combine models, industry portfolios, and bivariate anomalies:
+```bash
+getfactormodels -m ff3 -p industry 5 -a ol,rev_1 -b
+
+```
+
+### Python Examples
+```python
+from getfactormodels import model, portfolio, anomaly
+
+# Load Fama-French 3-factor monthly model
+ff3 = model("ff3", frequency="m", start_date="2010-01-01")
+ff3.load()
+
+# Load global-q anomaly data with 3x5 bivariate sort
+a = anomaly(name="abr_1", frequency="m", sort="3x5").load()
+
+# Export to CSV
+a.to_file("abr_1_data.parquet")
+
+```
+
+#### Model classes
+```py
+from getfactormodels import FamaFrenchFactors
+
+# Initialize model instance
+m = FamaFrenchFactors(model='3', frequency='m', 
+			region='developed', start_date='2020-01-01')
+m.end_date = '2020'
+
+# Download the data 
+m = m.load()
+
+# Access/download the Arrow Table:
+table = m.data
+
+# As a dataframe:
+df = m.to_polars() # Helper method, see also `.to_pandas()`
+```
+
+```python
+from getfactormodels import Qfactors, BABFactors
+
+# Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
+q = QFactors(classic=True, frequency='w').load()
+
+# Extract the Japan Betting Against Beta daily 'BAB' factor:
+bab_jpn_df = BABFactors(frequency='d', region='JPN', 
+                        start='2000-02-20', end '2010').load().extract("BAB").to_polars()
+```
+---
 
 **Example:**
 
@@ -130,62 +256,6 @@ date
 [232 rows x 7 columns, 12.0 kb]
 ```
 </details>
-
-
-### Python
-**`getfactormodels.model()`**
-
-```py
-import getfactormodels as gfm
-
-m = gfm.model(
-    model = 'dhs',
-    frequency='m',
-    start_date='2000-01-01',
-    end_date='2024-12-31',
-    output_file='data.csv',
-    cache_ttl=86400,
-)
-```
-
-#### Model classes
-```py
-from getfactormodels import FamaFrenchFactors
-
-# Initialize model instance
-m = FamaFrenchFactors(model='3', frequency='m', 
-			region='developed', start_date='2020-01-01')
-m.end_date = '2020'
-
-# Download the data 
-m = m.load()
-
-# Access/download the Arrow Table:
-table = m.data
-
-# As a dataframe:
-df = m.to_polars() # Helper method, see also `.to_pandas()`
-
-
-```
-
-**Some other examples:**
-
-```py
-from getfactormodels import Qfactors, BABFactors, QMJFactors
-
-# Q Factors have a "classic" boolean, when true, returns the classic 4 factor model.
-q = QFactors(classic=True, frequency='w').load()
-
-# AQR Models for different countries:
-nor_qmj_table = QMJFactors(frequency='m', region='nor').load()
-
-# Extract the Japan Betting Against Beta daily 'BAB' factor:
-bab_jpn_df = BABFactors(frequency='d', region='JPN', 
-                        start='2000-02-20', end '2010').load().extract("BAB").to_polars()
-
-
-```
 
 **Interoperability**
 
