@@ -427,10 +427,21 @@ class _QAnomalies(PortfolioBase):
                 raise ValueError(f"Unknown anomaly or category: '{item}'")
         return list(dict.fromkeys(resolved))
 
-    def __init__(self, anomaly: str | list[str], sort: str | int = 'decile', **kwargs):
+    def __init__(self, 
+                 anomaly: str | list[str], 
+                 sort: str | int = 'decile', 
+                 **kwargs):
+        
+        # only value-weighted ('vw') returns if weights was given
+        weights = kwargs.pop('weights', 'vw')
+        if weights and weights.lower() != 'vw':
+            raise ValueError(
+                f"{self.__class__.__name__} only supports value-weighted ('vw') returns. "
+            )
+
         freq = kwargs.get('frequency', 'm').lower().strip()
         if freq not in ['m', 'y', 'w']:
-            raise ValueError(f"Frequency '{freq}' is not supported for anomalies. Use 'm' or 'y'.")
+            raise ValueError(f"Frequency '{freq}' is not supported for anomalies. Use 'm', 'y', or 'w'.")
 
         raw_inputs = [anomaly] if isinstance(anomaly, str) else anomaly
         self.anomalies = self._resolve_anomalies(raw_inputs)

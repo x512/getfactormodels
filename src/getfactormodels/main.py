@@ -73,6 +73,12 @@ def portfolio(
     """
     source = source.lower()
 
+    if kwargs.get('region') is not None:
+        raise NotImplementedError(
+            "Regional data is not yet supported for portfolios (US only). "
+            "Please omit the region parameter."
+        )
+
     if 'formed_on' in kwargs:
         warnings.warn(
             "The 'formed_on' parameter is deprecated and will be removed in a future release. "
@@ -103,15 +109,15 @@ def portfolio(
         # Quick check
         if frequency == 'w':
             is_weekly = (
-            isinstance(sort, (list, tuple)) and 
-            frozenset(str(x).lower() for x in sort) == frozenset(['size', 'bm']) and
-            (grid in (None, '2x3', '6'))
-        )
+                isinstance(sort, (list, tuple)) and 
+                frozenset(str(x).lower() for x in sort) == frozenset(['size', 'bm']) and
+                (grid in (None, '2x3', '6'))
+            )
             if not is_weekly:
                 raise ValueError(
                     "Fama-French weekly portfolio data is only available for the size "
                         "and book-to-market (2x3) portfolio. "
-                    "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
+                        "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
                 )
         from getfactormodels.models.fama_french import _get_ff_portfolios
         return _get_ff_portfolios(**params)

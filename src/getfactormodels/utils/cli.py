@@ -244,6 +244,11 @@ def _cli():
 
     try:
         rhs, lhs, anom_obj = None, None, None
+
+        if args.is_portfolio and args.region:
+            raise NotImplementedError(
+                "Regional portfolio data not yet supported. Please omit the -r / --region flag."
+            )
         
         if args.model:
             rhs = model(
@@ -274,7 +279,7 @@ def _cli():
                 source='q',
                 name=args.anomaly_names,
                 frequency=args.frequency,
-                sort=args.sort,
+                #sort=args.sort,
                 start_date=args.start,
                 end_date=args.end,
             )
