@@ -3,14 +3,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Daniel, Hirshleifer and Sun (2020) Behavioural Factors."""
+
 import io
-from typing import Any
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.arrow_utils import (
-    round_to_precision,
     scale_to_decimal,
     select_table_columns,
 )
@@ -20,14 +20,14 @@ from getfactormodels.utils.date_utils import offset_period_eom
 class DHSFactors(FactorModel):
     """The Behavioural Factors of Daniel, Hirshleifer and Sun (2020).
     
-    FIN and PEAD factors. Data from July 1972 - December, 2023.
+    FIN and PEAD factors. Data from July 1972 - December, 2023. Adds 
+    market excess and risk-free rate from Fama/French.
 
     References:
         K. Daniel, D. Hirshleifer and L. Sun, 2020. Short and Long Horizon
         Behavioral Factors. Review of Financial Studies, 33 (4): 1673-1736.
 
     """
-    # copyright/attribution info! TODO
     @property
     def _frequencies(self) -> list[str]: return ['d', 'm']
     
@@ -36,6 +36,7 @@ class DHSFactors(FactorModel):
 
     @property  
     def schema(self) -> pa.Schema:
+        """DHS factor model schema."""
         date = [('Date', pa.string())]   # 197202
         fin = [('FIN', pa.float64())]
         pead = [('PEAD', pa.float64())]

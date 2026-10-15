@@ -103,7 +103,7 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
         # Re-insert as the first column
         return table.add_column(0, "date", date_col).combine_chunks()
     except pa.ArrowInvalid as e:
-        raise ValueError(f"Failed to parse quarterly dates: {e}")
+        raise ValueError(f"Failed to parse quarterly dates: {e}") from e
 
 
 def validate_date_range(start: str | None, end: str | None) -> tuple[str | None, str | None]:

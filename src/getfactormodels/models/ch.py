@@ -3,23 +3,34 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Liu, Stambaugh & Yuan (2019) Size and Value factor models for China.
+
+Provides monthly and daily data for the CH-3 (SMB, VMG) and CH-4 
+(SMB, VMG, PMO) models, along with market excess returns and risk-free rates.
+"""
+
 import io
 import httpx
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.date_utils import offset_period_eom 
+from getfactormodels.utils.date_utils import offset_period_eom
 
 
 class CHFactors(FactorModel, RegionMixin):
     """Size and Value in China of Liu, Stambaugh & Yuan (2019).
 
-    The CH-3 (SMB, VMG) and CH-4 (SMB, VMG, PMO) models. China data only. 
+    Monthly and daily data for the CH-3 (SMB, VMG) and CH-4 
+    (SMB, VMG, PMO) models, with market excess returns and risk-free rate
+    for China.
 
-    Note: This model returns the Mkt-RF and RF for China.
-    
-    - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in 
-      China. Journal of Financial Economics, 134(1), 48–69.
+    Attributes:
+        model (str): Active model version ("3" or "4").
+        region (str): Region code (defaults to "ch").
+
+    References:
+        - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in 
+          China. Journal of Financial Economics, 134(1), 48–69.
     """
     @property
     def _frequencies(self) -> list[str]: return ['d', 'm']
@@ -28,15 +39,25 @@ class CHFactors(FactorModel, RegionMixin):
     def _precision(self) -> int: return 4
 
     @property 
-    def _regions(self) -> list[str]:
-        return ["china", "ch"]
+    def _regions(self) -> list[str]: return ["china", "ch"]
 
     def __init__(self, 
                  frequency: str = 'm', 
                  model: int | str = '3',
+                 *,
                  region: str | None = None, # China only 
                  **kwargs) -> None:
+        """Initialize a Size and Value in China model.
 
+        Args:
+            frequency (str): Data frequency, 'm' (monthly) or 'd' (daily).
+            model (int): Model variant, either '3' or '4'.
+            region: region, restricted to China (cn, china).
+            **kwargs: Additional keyword arguments passed to the base model.
+
+        Raises:
+            ValueError: If an invalid frequency, model, or region is provided.
+        """
         # Validations
         freq = str(frequency).lower().strip()
         if freq not in self._frequencies:
@@ -60,8 +81,10 @@ class CHFactors(FactorModel, RegionMixin):
         self.model = model_str
         self.region = _region
 
+
     @property
     def schema(self) -> pa.Schema:
+        """Schema for Size and Value in China model."""
         if self.frequency == "d":
             date_col = [('date', pa.string())] 
             rf_col = [('rf_dly', pa.float64())]
@@ -102,7 +125,7 @@ class CHFactors(FactorModel, RegionMixin):
         base_url = 'https://en.mingshiim.com/static/'
         _freq = 'monthly' if self.frequency == 'm' else 'daily'
         return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx" # URLs gonna change, FIXME TODO
-
+        # TODO: look for new URL
 
     # TEMP FIX: FIXME: TODO: bypass SSL with verify=False works, verify=ssl_context wasn't.
     def _download(self, client=None) -> bytes:
@@ -111,7 +134,7 @@ class CHFactors(FactorModel, RegionMixin):
         self.log.info(f"Downloading CHFactors from {url}")
         
         with httpx.Client(verify=False, follow_redirects=True) as http_client:
-            resp = http_client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            resp = http_client.get(url, headers={"User-Agent": "Mozilla/5.0"}) #TEMPTEMPTEMP
             resp.raise_for_status()
             return resp.content
 

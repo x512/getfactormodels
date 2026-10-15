@@ -41,7 +41,7 @@ class FactorModel(ABC):
                  end_date: str | None = None,
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
-                 force: bool = False,  # NEW force redownload
+                 #force: bool = False,  # NEW force redownload
                  **kwargs):
         """Initialize the factor model instance.
 
@@ -66,7 +66,7 @@ class FactorModel(ABC):
         self.output_file = output_file
         self.cache_ttl = cache_ttl
 
-        self.force = force
+       # self.force = force # not impl
         self.model = str(kwargs.get("model", self.__class__.__name__))
 
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
@@ -199,17 +199,6 @@ class FactorModel(ABC):
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
 
-    # NEW - test 
-    @property
-    def url(self) -> str | dict[str, str | dict[str, str]]:
-        """Returns the endpoint URL for the model data."""
-        if hasattr(self, 'instances'):
-            # ModelCollection
-            return {
-                getattr(inst, 'model', inst.__class__.__name__): inst.url
-                for inst in self.instances
-            }
-        return self._get_url()
    
 
     def join(self, other: "FactorModel") -> "ModelCollection":
@@ -266,10 +255,17 @@ class FactorModel(ABC):
     def to_pandas(self) -> "pd.DataFrame":
         """Convert model to a pandas DataFrame.
 
-        - Triggers the download if not loaded.
+        Triggers a data download if the model has not yet been loaded. 
+        Sets the 'date' column as the index.
+
+        Returns:
+            pandas.DataFrame: indexed by date.
+
+        Raises:
+            ImportError: If the `pandas` package is not installed.
         """
         try:
-            import pandas as pd  # check for if user has pd?
+            import pandas as pd
             df = self.data.to_pandas()
             if "date" in df.columns:
                 df = df.set_index("date")
@@ -281,8 +277,14 @@ class FactorModel(ABC):
     def to_polars(self) -> "pl.DataFrame":
         """Convert model to a polars DataFrame.
 
-        - Wrapper around Polars' `from_arrow()`. 
-        - Triggers the download if not loaded.
+        A wrapper around Polars `from_arrow()`. Triggers 
+        download if not already loaded.
+        
+        Returns:
+            polars.DataFrame
+
+        Raises:
+            ImportError: If the `polars` package is not installed.
         """
         try:
             import polars as pl
@@ -294,7 +296,6 @@ class FactorModel(ABC):
     #    """Prints the formatted table preview."""
     #    print(print_table_preview(self.data, n_rows=n))
 
-    # RENAME: load, was _get_table
     def load(self, client: _HttpClient | None = None) -> pa.Table:
         if self._data is not None and not self.force:
             return self._data
@@ -332,7 +333,7 @@ class FactorModel(ABC):
                     tag=self.model,
                     model_name=self.__class__.__name__,
                     cache_ttl=self.cache_ttl,
-                    force=self.force,
+                    #force=self.force,
                 )
             return {
                 k: http_client.download(
@@ -340,7 +341,7 @@ class FactorModel(ABC):
                     tag=self.model,
                     model_name=self.__class__.__name__,
                     cache_ttl=self.cache_ttl,
-                    force=self.force,
+                    #force=self.force,
                 )
                 for k, v in target_urls.items()
             }
@@ -391,6 +392,7 @@ class FactorModel(ABC):
     @property
     @abstractmethod
     def schema(self) -> pa.Schema:
+        """The model's schema."""
         pass
 
     @property
@@ -407,6 +409,17 @@ class FactorModel(ABC):
     def _read(self, data: bytes) -> pa.Table:
         """Read bytes into a pa.Table."""
         pass
+
+    @property
+    def url(self) -> str | dict[str, str | dict[str, str]]:
+        """Returns the endpoint URL(s) for the model data."""
+        if hasattr(self, 'instances'):
+            # ModelCollection
+            return {
+                getattr(inst, 'model', inst.__class__.__name__): inst.url
+                for inst in self.instances
+            }
+        return self._get_url()
 
 
 class CompositeModel(FactorModel):
@@ -606,4 +619,13 @@ class PortfolioBase(FactorModel, ABC):
 
     @property
     def _precision(self) -> int: return 6
+
+
+#class AnomalyBase(PortfolioBase):
+#    """Base class for anomaly datasets."""
+#    
+#    def __init__(self, anomaly: str | list[str], **kwargs):
+#        self.anomaly = [anomaly] if isinstance(anomaly, str) else anomaly
+#        super().__init__(**kwargs)
+#
 

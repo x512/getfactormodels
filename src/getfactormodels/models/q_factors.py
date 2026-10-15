@@ -4,8 +4,9 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
-from typing import Literal
+import zipfile
 from datetime import datetime
+from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
@@ -15,8 +16,6 @@ from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
 )
-import zipfile
-
 
 
 class QFactors(FactorModel): 
@@ -387,7 +386,7 @@ class _QAnomalies(PortfolioBase):
         "frictions": {
             "beta_1", "dtv_12", "isff_1", "isq_1", "ivff_1", "ivq_1",
             "me", "srev", "sv_1", "tv_1", "tail_12",
-        }
+        },
     }
 
     _CATEGORY_SLUG = {
@@ -468,7 +467,7 @@ class _QAnomalies(PortfolioBase):
 
     @property
     def schema(self) -> pa.Schema:
-        """Schema for Q Anomalies"""
+        """Schema for global-q anomalies."""
         fields = [("date", pa.date32())]
         if self.frequency == 'm':
             fields.append(("nstocks", pa.int32()))
@@ -563,7 +562,7 @@ class _QAnomalies(PortfolioBase):
                                 raise ValueError(f"Could not find file for: '{a}'.")
 
                             pivoted = self._process_anomaly_file(
-                                z, target_file, a, freq_str, val_col
+                                z, target_file, a, freq_str, val_col,
                             )
                             pivoted_tables.append(pivoted)
 
