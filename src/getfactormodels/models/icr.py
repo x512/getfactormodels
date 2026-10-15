@@ -42,10 +42,11 @@ class ICRFactors(FactorModel):
     def _frequencies(self) -> list[str]: return ["d", "m", "q"]
 
     @property
-    def _precision(self) -> int: return 8 if self.frequency == 'd' else 4  # TODO: check 
+    def _precision(self) -> int: return 8 if self.frequency == 'd' else 4 
 
     @property
     def schema(self) -> pa.Schema:
+        """ICR factor model schema."""
         date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(self.frequency, 'yyyyq')
 
         return pa.schema([

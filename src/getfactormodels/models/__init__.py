@@ -23,6 +23,7 @@ from .aqr_models import (
 )
 from .barillas_shanken import BarillasShankenFactors
 from .carhart import CarhartFactors
+from .ch import CHFactors
 from .dhs import DHSFactors
 from .fama_french import FamaFrenchFactors
 from .hc_capm import HighIncomeCCAPM
@@ -30,5 +31,4 @@ from .icr import ICRFactors
 from .jw_ccapm import ConditionalCAPM
 from .liquidity import LiquidityFactors
 from .mispricing import MispricingFactors
-from .q_factors import QFactors, _QAnomalies, _get_q_anomalies
-from .ch import CHFactors
+from .q_factors import QFactors, _get_q_anomalies, _QAnomalies

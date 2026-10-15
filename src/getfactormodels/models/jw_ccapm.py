@@ -12,7 +12,7 @@ from getfactormodels.utils.utils import read_from_fred
 class ConditionalCAPM(CompositeModel, RegionMixin):
     """Conditional CAPM (CCAPM) of Jaganathan & Wang (1996).
 
-    An implementations of the 'Premium-Labour', or 'Human Capital'
+    An implementation of the 'Premium-Labour', or 'Human Capital'
     CCAPM of Jaganathan and Wang (1996).
 
     - LBR: Smooth growth in per-capita labor income.
@@ -119,12 +119,9 @@ class ConditionalCAPM(CompositeModel, RegionMixin):
             names=["date", "LBR", "PREM"],
         )
 
-
-
 ### TESTS:
 # The calc. Assert to known answer(s) 
 # JW freqs: m, q, y last m q4 == 12 == q4 value == yearly value 
 # Test not enough data, error  (not enough data returned and range too small, same err) 
 # Err: FRED 429 
 # docstr test the actual calc 
-# 
