@@ -15,7 +15,15 @@ import pyarrow.compute as pc
 log = logging.getLogger(__name__)
 
 def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
-    """Utility to offset a pa.Table's date column to the last day of its period."""
+    """Offset a table's date column to the last day of its period.
+
+    Args:
+        table: a PyArrow table with dates in the first column.
+        frequency: Period frequency string ('d', 'm', 'q', or 'y').
+
+    Returns:
+        PyArrow table with adjusted end-of-period date values.
+    """
     if table.num_columns == 0:
         return table
         
@@ -60,6 +68,15 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     Converts 1 column, "yyyyq", or two columns, "year" and "period" to a single 
     'date' column, of iso datestr yyyy-mm-dd, set to the end of the period.
 
+    Args:
+        table: Input PyArrow table containing quarterly raw date fields.
+
+    Returns:
+        PyArrow table with a standardized ``date`` column prepended.
+
+    Raises:
+        ValueError: If date values cannot be correctly parsed into valid dates.
+
     - Used by ICRFactors() and QFactors().
     """
     if table.num_rows == 0:
@@ -91,8 +108,16 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
 
 def validate_date_range(start: str | None, end: str | None) -> tuple[str | None, str | None]:
     """Validates start and end date range. Sets end to today if in the future.
-    
-    If start is in the future, err.
+
+    Args:
+        start: Start date string (YYYY-MM-DD).
+        end: End date string (YYYY-MM-DD).
+
+    Returns:
+        Validated tuple of ``(start, end)`` date strings.
+
+    Raises:
+        ValueError: If start date is after end date or set in the future.
     """
     today = date.today().isoformat()
 
@@ -110,15 +135,37 @@ def validate_date_range(start: str | None, end: str | None) -> tuple[str | None,
 
 
 def _roll_to_eom(dt: datetime) -> str:
-    """Roll a datetime to the last day of its month.
-    
-    Used for user input only.
+    """Roll a datetime forward to the last day of its month.
+
+    NOTE: Used for user input only.
+
+    Args:
+        dt: Input datetime instance.
+
+    Returns:
+        ISO-formatted date string representing the end of the month.
     """
     last_day = calendar.monthrange(dt.year, dt.month)[1]
     return dt.replace(day=last_day).strftime("%Y-%m-%d")
 
 
 def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None:
+    """Validate and normalize user date inputs.
+
+    Handles partial formats (like YYYY, YYYY-MM, YYYYMM), or full YYYY-MM-DD strings.
+
+    IMPORTANT: this is ONLY used for user input.
+
+    Args:
+        date_input: Raw user date input of various string or numeric formats.
+        is_end: If True, resolves partial inputs (like years or months) to period ends.
+
+    Returns:
+        Normalized ISO date string (YYYY-MM-DD), or None if input is None.
+
+    Raises:
+        ValueError: If the input cannot be parsed.
+    """
     if date_input is None:
         return None
 
@@ -163,5 +210,4 @@ def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None
 # That they return as intended, and yyyy-mm isn't filling in today's day.
 # isn't reading YYYYMM as YYMMDD (201204 becoming 2020-12-04)
 # isn't filling in today's month or current year.
-# IS TESTED WITH ALL RETURNED VALUES IN SOURCE DATA.
-#TODO: style warnings! Consistent logging!
+# test with q portfolio data (e.g., 2026-15-01)

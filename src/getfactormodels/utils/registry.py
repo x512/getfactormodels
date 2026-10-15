@@ -3,18 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
-import logging
-import sys
 from types import MappingProxyType
 from typing import Final
-import textwrap
-
-"""
-Model registry.
-
-This module manages mapping between user-friendly identifiers (aliases), 
-model keys, and their classes. Model names are also assigned here.
-"""
 
 _MODEL_REGISTRY: Final = MappingProxyType({
     "ff3": {

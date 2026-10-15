@@ -69,10 +69,14 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  region: str | None = 'us', 
                  **kwargs) -> None:
         """Initialize a Fama-French factor model."""
-        # model keys (ff3) to int
-        self.model = model.replace('ff', '') if model.startswith('ff') else str(model)
-        super().__init__(frequency=frequency, model=model, **kwargs)
+        # Clean model string upfront ('ff3' -> '3')
+        model_str = str(model).lower().replace('ff', '').strip()
         
+        # Pop 'model' out of kwargs so it's not passed twice
+        kwargs.pop('model', None)
+        super().__init__(frequency=frequency, model=model_str, **kwargs)
+        
+        self.model = model_str
         self.region = region
         self._validate_ff_input()
 
@@ -106,17 +110,19 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
     @property
     def model(self) -> str:
         return self._model
+
     @model.setter
     def model(self, value: int | str):
-        val = str(value)
+        # Strip 'ff' prefix if present ('ff3' -> '3')
+        val = str(value).lower().replace('ff', '').strip()
         if val not in ["3", "4", "5", "6"]:
-            raise ValueError(f"Invalid model '{val}'. Options: 3, 4, 5, 6")
+            raise ValueError(f"Invalid Fama-French model '{value}'. Options: 3, 4, 5, 6 (or 'ff3', 'ff4', 'ff5', 'ff6')")
         
         if hasattr(self, '_model') and val != self._model:
             self.log.info(f"Model changed from {self._model} to {val}")
             self._data = None
             self._view = None
-        self._model = val 
+        self._model = val
 
     @property
     def _ff_region_map(self) -> dict[str, str]:
@@ -289,7 +295,7 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
         if table_start is None:
             raise ValueError(
-                f"Could not find table header: `{weight_ln}`"
+                f"Could not find table header: `{weight_ln}`",
             )
 
         # Skip title line, find first non empty line
@@ -445,7 +451,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             if self.n_portfolios not in {3, 5, 10}:
                  raise ValueError(
                      f"Sort '{self.sort}' ({self.n_portfolios}) is not a valid univariate sort. "
-                     f"Use 'tertile', 'quintile', 'decile' (or 3, 5 or 10)."
+                     f"Use 'tertile', 'quintile', 'decile' (or 3, 5 or 10).",
                  )
 
             if self.formed_on[0] in prior_rets: #noqa
@@ -634,12 +640,12 @@ def _get_ff_portfolios(
     # we industry?
     if industry is not None:
         return _FamaFrenchIndustryPortfolios(
-            frequency=frequency, weights=weights, n_portfolios=industry, **kwargs
+            frequency=frequency, weights=weights, n_portfolios=industry, **kwargs,
         )
 
     # keep formed_on None, let class handle it.
     return _FamaFrenchSorts(
-        frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs
+        frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs,
     )
 
 # TODO: setters/getters, regions, tests, aggregates for q? prob not. 

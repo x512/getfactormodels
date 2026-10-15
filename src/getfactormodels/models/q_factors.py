@@ -326,54 +326,30 @@ def _get_q_portfolios(formed_on=None, sort=None, **kwargs): #q_portfolios when p
 
 ### ----------------------------------------- WIP - ANOMALIES ------------
 
-
-## Q ANOMALIES ... notes
-# 1-way: https://global-q.org/uploads/1/2/2/6/122679606/mom_monthly_2024.zip
-# mostly deciles, some quintiles
-# 2-way: https://global-q.org/uploads/1/2/2/6/122679606/me_mom_monthly_2024.zip
-# 3x5, me,anomaly
-
-
-# Extension of q portfolios, or add anomalies? e.g., 
-# 1. Abr1 ("abr_1"), cumulative abnormal returns around earnings announcement dates, 1-month holding period; 
-# 
-
-# getfactormodels -p me,abr1 -n 3x5
-# getfactormodels -p abr1 -n 3x5 (= me,abr1) 
-#getfactormodels -p abr1 -n 10 #,decile,quinitile,5
-#getfactormodels -p q -n 18 -a abr1 (add an anomaly to 18 q portfolios? returns the decile or quintile)
-# getfactormodels -p q -n 2x3 -a abr1,me (add 2-way sort to 6 q portfolios) 
-
-# from getfactormodels import portfolio 
-#p = portfolio(source='q', sort='2x3', frequency='m', anomaly='abr1').load()
-# p2 = portfolio(source='ff', sort='quintile', on='me,bm', anomaly=['abr1', 'nsi])
-#  p3 = portfolio(source='aqr', on='bab', frequency='m').load()
-#or just 
-#  p3 = portfolio('bab', frequency='m') 
-#  #add anomalies 
-#  p3.anomaly=['atoq6', '2ig', 'r11_6', 'r6_6', 'abr1', 'sue1']).load()
-
-# to add Abr1 2 way sort, is a "portfolio" like in Fama-French size,beta size,ac, size,nsi etc." 
-#
-#
-#class _QAnomalies(PortfolioBase):
-#    
-#    def _download_anom_folder(self):
-#        """Downloads the correct folder of anomalies for the frequency.#
-#
-#        Example: abr_1, weekly downloads the 42 momentum anomalies .zip for weekly. #
-#
- #       """
-  #      ...
-
-        #Download the folder, then check that the anomaly str + frequency is a file, 
-        # or, map everything to its folder. Not very pythonic...
-
-
-
 class _QAnomalies(PortfolioBase):
-    """Download q-factor anomaly data from global-q.org."""
+    """Download q-factor anomaly portfolio return data from global-q.org.
 
+    References:
+        - Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies, 
+          Review of Financial Studies 33 (5), 2019-2133.
+
+    Args:
+        anomaly: Anomaly identifier(s) or category name(s) (e.g., 'abr_1', 
+            'momentum', ['bm', 'roe_1']).
+        sort: Portfolio sort grid layout ('decile', '2x3', or '3x5').
+        frequency: Data frequency ('m' for monthly, 'y' for annual, 'w' for weekly).
+        dividends: True for total returns (cum-div, ret_vw), False for capital gains (ex-div, retx_vw).
+        **kwargs: Additional parameters passed to `PortfolioBase`.
+
+    Notes:
+        - Ranks are in ascending order (e.g., decile '1' represents the lowest 
+          anomaly score, '10' the highest).
+        - Multiple anomalies requested simultaneously are automatically joined 
+          side-by-side by date.
+
+    - Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies, 
+      Review of Financial Studies 33 (5), 2019-2133. 
+    """
     Q_REGISTRY = {
         "momentum": {
             "abr_1", "abr_6", "abr_12", "cim_1", "cim_6", "cim_12", "cm_1", "cm_6", "cm_12",
@@ -420,12 +396,12 @@ class _QAnomalies(PortfolioBase):
     }
 
     _FREQ_STR = {
-        'm': 'monthly', 'y': 'annual'
+        'm': 'monthly', 'y': 'annual', 'w': 'weekly',
     }
 
     @property
     def _frequencies(self) -> list[str]:
-        return ["m", "y"]
+        return ["m", "y", "w"]
 
     @classmethod
     def _resolve_anomalies(cls, raw_inputs: list[str]) -> list[str]:
@@ -447,7 +423,7 @@ class _QAnomalies(PortfolioBase):
 
     def __init__(self, anomaly: str | list[str], sort: str | int = 'decile', **kwargs):
         freq = kwargs.get('frequency', 'm').lower().strip()
-        if freq not in ['m', 'y']:
+        if freq not in ['m', 'y', 'w']:
             raise ValueError(f"Frequency '{freq}' is not supported for anomalies. Use 'm' or 'y'.")
 
         raw_inputs = [anomaly] if isinstance(anomaly, str) else anomaly
@@ -645,30 +621,6 @@ class _QAnomalies(PortfolioBase):
     @property
     def _precision(self) -> int: 
         return 5
-#def anomaly(
-#    name: str | list[str] = 'abr_1',
-#    frequency: str = 'm',
-#    sort: str | int = 'decile',
-#    output_dir: str | None = None,
-#    filename: str | None = None,
-#    file_format: str = 'feather',
-#    *,
-#    source: str = 'q',
-#    **kwargs,
-#):
-#    """Unified entry point for downloading anomaly datasets."""
-#    src = source.lower().strip()
-#    if src in ["q", "global-q"]:
-#        return _QAnomalies(
-#            name=name,
-#            frequency=frequency,
-#            sort=sort,
-#            output_dir=output_dir,
-#            filename=filename,
-#            file_format=file_format,
-#            **kwargs,
-#        )
-#    raise NotImplementedError(f"Anomalies not yet supported for source: {source}")
 
 def _get_q_anomalies(name: str | list[str], **kwargs):
     return _QAnomalies(anomaly=name, **kwargs) 

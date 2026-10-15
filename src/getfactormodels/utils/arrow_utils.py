@@ -21,6 +21,20 @@ def scale_to_decimal(table: pa.Table) -> pa.Table:
     return table
 
 
+#TODO: add to cli
+def scale_to_percent(table: pa.Table) -> pa.Table:
+    """Standardize float cols to percentage (0.052 -> 5.2).
+    
+    Used ONLY at the very end of the data transformation stage, and 
+    when explicitly requested by the user.
+    """
+    for i, field in enumerate(table.schema):
+        if pa.types.is_floating(field.type):
+            scaled_col = pc.multiply(table.column(i), 100.0)
+            table = table.set_column(i, field.name, scaled_col)
+    return table
+
+
 def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
     """Rounds all float cols in a pa.Table to precision, and RF to 4.
 
@@ -43,7 +57,7 @@ def round_to_precision(table: pa.Table, precision: int) -> pa.Table:
 
 
 def rearrange_columns(table: pa.Table) -> pa.Table:
-    """Standardize column orders: 'date', [FACTORS], 'RF'"""
+    """Standardize column orders: 'date', [FACTORS], 'RF'."""
     cols = table.column_names
     front = [c for c in ['date', 'Mkt-RF'] if c in cols]
     back = [c for c in ['RF_AQR', 'RF_Q', 'RF'] if c in cols]
@@ -212,7 +226,7 @@ def print_table_preview(table, n_rows=6, n_cols=5) -> str | None:
             header_len = len(col)
             max_val_len = max(
                 (len(_format_for_preview(r[col], col, precision)) for r in head + tail), 
-                default=0
+                default=0,
             )
             col_widths[col] = max(header_len, max_val_len) + 2
 
