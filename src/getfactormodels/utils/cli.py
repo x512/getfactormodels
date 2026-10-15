@@ -50,6 +50,7 @@ def parse_args() -> argparse.Namespace:
           getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'         
           getfactormodels -p industry 30 -o ~/ind30.csv
           getfactormodels -m ff5 -p 2x3 -x SMB HML -o ~/data.csv
+          getfactormodels -a abr_1 rer -s 2010-06 -f w
 
         {__copyright__}.
         Distributed under {__license__}. See '--license'.
@@ -279,7 +280,7 @@ def _cli():
                 source='q',
                 name=args.anomaly_names,
                 frequency=args.frequency,
-                #sort=args.sort,
+                sort=args.sort_spec or 'decile',
                 start_date=args.start,
                 end_date=args.end,
             )

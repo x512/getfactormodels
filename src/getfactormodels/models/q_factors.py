@@ -446,14 +446,17 @@ class _QAnomalies(PortfolioBase):
         raw_inputs = [anomaly] if isinstance(anomaly, str) else anomaly
         self.anomalies = self._resolve_anomalies(raw_inputs)
 
-        if sort in (10, '10', 'decile'):
+        sort_clean = str(sort).lower().strip()
+        
+        if sort_clean in (10, '10', 'decile', '1way', '1'):
             self.sort_type = 'decile'
-        elif sort in ('2x3', '2x3x3'):
-            self.sort_type = '2x3'
-        elif sort in ('3x5',):
+        elif sort_clean in ('3x5', '2way', 'bivariate', '5x3'):
             self.sort_type = '3x5'
         else:
-            raise ValueError(f"sort must be 'decile', '2x3', or '3x5'; got {sort}")
+            raise ValueError(
+                f"Invalid sort:'{sort}'. "
+                "Global-q anomalies support 'decile' (1-way) or '3x5' (bivariate)."
+            )
 
         kwargs['weights'] = 'vw'
         kwargs['dividends'] = True
@@ -472,7 +475,7 @@ class _QAnomalies(PortfolioBase):
         base = 'https://global-q.org/uploads/1/2/2/6/122679606'
         freq = self._FREQ_STR[self.frequency]
         cat_slug = self._CATEGORY_SLUG[category]
-        prefix = "me_" if self.sort_type in ('2x3', '3x5') else ""
+        prefix = "me_" if self.sort_type == '3x5' else ""
         last_year = datetime.now().year - 1
         return f"{base}/{prefix}{cat_slug}_{freq}_{last_year}.zip"
 
@@ -545,7 +548,7 @@ class _QAnomalies(PortfolioBase):
                 cat_to_anoms.setdefault(cat, []).append(a)
 
             freq_str = self._FREQ_STR[self.frequency]
-            prefix_str = "me_" if self.sort_type in ('2x3', '3x5') else ""
+            prefix_str = "me_" if self.sort_type == '3x5' else ""
             val_col = 'ret_vw' if self.dividends else 'retx_vw'
 
             pivoted_tables = []
