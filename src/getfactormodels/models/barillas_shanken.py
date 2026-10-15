@@ -47,6 +47,7 @@ class BarillasShankenFactors(CompositeModel):
     
     @property
     def schema(self) -> pa.Schema:
+        """Barillas-Shanken schema."""
         return pa.schema([
             ('date', pa.string()),
             ('Mkt-RF', pa.float64()),

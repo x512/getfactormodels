@@ -105,18 +105,24 @@ class _AQRModel(FactorModel, RegionMixin):
         raise ValueError(f"Could not find a header row containing 'DATE' in {self.__class__.__name__}")
 
 
-    def _process_sheet(self, sheet_name: str, rows: list[list], header_row: int) -> pa.Table:
+    def _process_sheet(self, 
+                       sheet_name: str, 
+                       rows: list[list], 
+                       header_row: int) -> pa.Table:
         """Extracts date and factor values from a single sheet."""
         headers = [str(h).strip().upper() for h in rows[header_row]]
         
-        if sheet_name == 'RF':
+        if sheet_name == "RF":
             col_idx = 1
         else:
-            try: # map region to its col in the sheet
+            try:  # map region to its col in the sheet
                 col_idx = headers.index(self.region.upper())
-            except ValueError:
-                msg = f"Region '{self.region}' not found in sheet '{sheet_name}'. Available: {headers}"
-                raise ValueError(msg)
+            except ValueError as e:
+                msg = (
+                    f"Region '{self.region}' not found in "
+                    f"sheet '{sheet_name}'. Available: {headers}"
+                )
+                raise ValueError(msg) from e
 
         dates, values = [], []
         for r in rows[header_row + 1:]:
@@ -371,3 +377,46 @@ class VMEFactors(_AQRModel):
     def _get_url(self) -> str:
         f = 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
+
+
+"""
+class _AQRPortfolios(_AQRModel):
+    @property
+    @override
+    def _frequencies(self) -> list[str]: return ["m"]
+
+    @property
+    @override
+    def _regions(self) -> list[str]: return [ "us", "global"]
+
+    def __init__(self, 
+                 frequency: str = 'm', 
+                 region: str = 'usa', 
+                 sort: str | None = None #None, quality, size,quality, 3x5 
+                 **kwargs):
+            if sort == None:
+                self.sort = 10
+        if self.sort in ['3x5', '6']: #or contains 'size or me, and quality'
+                self.sort = 6
+        # if self.sort != 6 or 10, we have a problem...
+        super().__init__(frequency=frequency, region=region, weights='vw', **kwargs)
+
+
+"""
+
+"""
+## TEST 
+class _QMJPortfolios(_AQRPortfolios):
+
+    @property
+    def _sheet_map(self):
+    if self.sort == 10:
+        return {'10 Portfolios Formed on Quality': 'QMJ_Portfolios'}
+    return {'Size x Quality (2 x3)': 'QMJ_Portfolios'} 
+
+    def _get_url(self):
+        if self.sort == 6:
+            https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Quality-Minus-Junk-Six-Portfolios-Formed-on-Size-and-Quality-Monthly.xlsx
+        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Quality-Minus-Junk-10-QualitySorted-Portfolios-Monthly.xlsx'
+
+"""

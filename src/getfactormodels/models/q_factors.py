@@ -52,6 +52,7 @@ class QFactors(FactorModel):
 
     @property
     def schema(self) -> pa.Schema:
+        """Schema for q-factor models."""
         factors = [
             ("R_F", pa.float64()),
             ("R_MKT", pa.float64()),
@@ -356,18 +357,18 @@ class _QAnomalies(PortfolioBase):
             "def_1", "def_6", "def_12", "ile_1", "ilr_1", "ilr_6", "ilr_12", "im_1", "im_6",
             "im_12", "nei_1", "p52w_6", "p52w_12", "r6_1", "r6_6", "r6_12", "r11_1", "r11_6",
             "r11_12", "re_1", "re_6", "resid6_6", "resid6_12", "resid11_1", "resid11_6",
-            "resid11_12", "rs_1", "sim_1", "sim_12", "sm_1", "sm_12", "sue_1", "sue_6", "tes_1"
+            "resid11_12", "rs_1", "sim_1", "sim_12", "sm_1", "sm_12", "sue_1", "sue_6", "tes_1",
         },
         "value-versus-growth": {
             "bm", "bmj", "bmq_12", "cp", "cpq_1", "cpq_6", "cpq_12", "dp", "dur", "ebp",
             "em", "emq_1", "emq_6", "emq_12", "ep", "epq_1", "epq_6", "epq_12", "ir", "nop",
             "ocp", "ocpq_1", "op", "rev_1", "rev_6", "rev_12", "sp", "spq_1", "spq_6",
-            "spq_12", "vfp", "vhp"
+            "spq_12", "vfp", "vhp",
         },
         "investment": {
             "aci", "cei", "dac", "dbe", "dcoa", "dfin", "dfnl", "dii", "dlno", "dlti",
             "dnca", "dnco", "dnoa", "dpia", "dwc", "ia", "iaq_1", "iaq_6", "iaq_12", "ig",
-            "ig2", "ivc", "ivg", "ndf", "nxf", "noa", "nsi", "oa", "pda", "poa", "pta", "ta"
+            "ig2", "ivc", "ivg", "ndf", "nxf", "noa", "nsi", "oa", "pda", "poa", "pta", "ta",
         },
         "profitability": {
             "ato", "atoq_1", "atoq_6", "atoq_12", "cla", "claq_1", "claq_6", "claq_12",
@@ -375,24 +376,24 @@ class _QAnomalies(PortfolioBase):
             "droe_6", "droe_12", "eg_1", "eg_6", "eg_12", "fp_6", "fq_1", "fq_6", "fq_12",
             "gla", "glaq_1", "glaq_6", "glaq_12", "gpa", "olaq_1", "olaq_6", "olaq_12",
             "oleq_1", "oleq_6", "oleq_12", "opa", "ope", "oq_1", "pmq_1", "rnaq_1",
-            "rnaq_6", "rnaq_12", "roa_1", "roa_6", "roe_1", "roe_6", "sgq_1", "tbiq_6", "tbiq_12"
+            "rnaq_6", "rnaq_12", "roa_1", "roa_6", "roe_1", "roe_6", "sgq_1", "tbiq_6", "tbiq_12",
         },
         "intangibles": {
             "adm", "alaq_1", "almq_1", "almq_6", "almq_12", "dls_1", "eprd", "etl", "etr",
             "hs", "ioca", "oca", "ol", "olq_1", "olq_6", "olq_12", "r1a", "r1n", "r5a",
             "r5n", "r10a", "r10n", "r15a", "r20a", "rca", "rdm", "rdmq_1", "rdmq_6",
-            "rdmq_12", "rdsq_6", "rdsq_12", "rer", "vcf_1"
+            "rdmq_12", "rdsq_6", "rdsq_12", "rer", "vcf_1",
         },
         "frictions": {
             "beta_1", "dtv_12", "isff_1", "isq_1", "ivff_1", "ivq_1",
-            "me", "srev", "sv_1", "tv_1", "tail_12"
+            "me", "srev", "sv_1", "tv_1", "tail_12",
         }
     }
 
     _CATEGORY_SLUG = {
         "momentum": "mom", "value-versus-growth": "vvg",
         "investment": "inv", "profitability": "prof",
-        "intangibles": "intan", "frictions": "fric"
+        "intangibles": "intan", "frictions": "fric",
     }
 
     _FREQ_STR = {
@@ -467,6 +468,7 @@ class _QAnomalies(PortfolioBase):
 
     @property
     def schema(self) -> pa.Schema:
+        """Schema for Q Anomalies"""
         fields = [("date", pa.date32())]
         if self.frequency == 'm':
             fields.append(("nstocks", pa.int32()))
@@ -520,7 +522,7 @@ class _QAnomalies(PortfolioBase):
     def _read(self, data: bytes) -> pa.Table:
         from getfactormodels.utils.http_client import _HttpClient
 
-        try: #group anoms by cat
+        try:
             cat_to_anoms = {}
             for a in self.anomalies:
                 cat = self._get_category(a)
@@ -532,8 +534,6 @@ class _QAnomalies(PortfolioBase):
 
             pivoted_tables = []
             first_cat = self._get_category(self.anomalies[0])
-
-            # seeds cache with initial bytes downloaded by the base class
             zip_bytes_cache = {first_cat: data}
 
             with _HttpClient() as client:
@@ -543,7 +543,7 @@ class _QAnomalies(PortfolioBase):
                         zip_bytes_cache[cat] = client.download(
                             cat_url, 
                             tag="AnomalyData", 
-                            model_name=f"Q-{cat.capitalize()}"
+                            model_name=f"Q-{cat.capitalize()}",
                         )
 
                     zip_bytes = zip_bytes_cache[cat]
@@ -557,57 +557,16 @@ class _QAnomalies(PortfolioBase):
                                     if f"_{a}_" in n.lower() 
                                     and freq_str in n.lower()
                                     and (not prefix_str or n.lower().startswith(prefix_str))),
-                                None
+                                None,
                             )
                             if not target_file:
                                 raise ValueError(f"Could not find file for: '{a}'.")
 
-                            with z.open(target_file) as f:
-                                csv_bytes = f.read()
-
-                            read_opts = pv.ReadOptions(skip_rows=0)
-                            table = pv.read_csv(io.BytesIO(csv_bytes), read_options=read_opts)
-
-                            rename_map = {
-                                "DATE": "date",
-                                "Year": "year",
-                                "Month": "month",
-                                "Quarter": "period",
-                                "Rank Decile": "rank_decile",
-                                "Rank ME": "rank_me",
-                                "Ret": "ret_vw",
-                                "Retx": "retx_vw",
-                                "N": "nstocks",
-                            }
-
-                            table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
-
-                            if self.sort_type != 'decile':
-                                cols = table.column_names
-                                for i, col in enumerate(cols):
-                                    if col.lower().startswith("rank ") and col != "rank_me":
-                                        cols[i] = "rank_anomaly"
-                                table = table.rename_columns(cols)
-
-                            if "year" in table.column_names:
-                                y_str = pc.cast(table['year'], pa.string())
-                                if "month" in table.column_names:
-                                    m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
-                                    date_str = pc.binary_join_element_wise(y_str, m_str, "")
-                                    table = table.add_column(0, "date", date_str)
-                                    table = table.drop(["year", "month"])
-                                else:
-                                    date_str = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
-                                    table = table.add_column(0, "date", date_str)
-                                    table = table.drop(["year"])
-
-                            table = offset_period_eom(table, self.frequency)
-                            table = scale_to_decimal(table)
-
-                            pivoted = self._pivot_portfolios(table, val_col, current_anomaly=a)
+                            pivoted = self._process_anomaly_file(
+                                z, target_file, a, freq_str, val_col
+                            )
                             pivoted_tables.append(pivoted)
 
-            # join all requested anomalies on 'date'
             final_table = pivoted_tables[0]
             for t in pivoted_tables[1:]:
                 final_table = final_table.join(t, keys=["date"], join_type="left outer")
@@ -615,9 +574,64 @@ class _QAnomalies(PortfolioBase):
             return final_table
 
         except ValueError as e:
-            raise ValueError(str(e))
+            raise ValueError(str(e)) from e
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            raise ValueError(f"Reading failed: {e}")
+            raise ValueError(f"Reading failed: {e}") from e
+
+    def _process_anomaly_file(
+        self,
+        z: zipfile.ZipFile,
+        target_file: str,
+        anomaly: str,
+        freq_str: str,
+        val_col: str,
+    ) -> pa.Table:
+        """Processes a single CSV from the zip archive into a table."""
+        with z.open(target_file) as f:
+            csv_bytes = f.read()
+
+        read_opts = pv.ReadOptions(skip_rows=0)
+        table = pv.read_csv(io.BytesIO(csv_bytes), read_options=read_opts)
+
+        rename_map = {
+            "DATE": "date",
+            "Year": "year",
+            "Month": "month",
+            "Quarter": "period",
+            "Rank Decile": "rank_decile",
+            "Rank ME": "rank_me",
+            "Ret": "ret_vw",
+            "Retx": "retx_vw",
+            "N": "nstocks",
+        }
+
+        table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
+
+        if self.sort_type != 'decile':
+            cols = table.column_names
+            for i, col in enumerate(cols):
+                if col.lower().startswith("rank ") and col != "rank_me":
+                    cols[i] = "rank_anomaly"
+            table = table.rename_columns(cols)
+
+        if "year" in table.column_names:
+            y_str = pc.cast(table['year'], pa.string())
+            if "month" in table.column_names:
+                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
+                date_str = pc.binary_join_element_wise(y_str, m_str, "")
+                table = table.add_column(0, "date", date_str)
+                table = table.drop(["year", "month"])
+            else:
+                date_str = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
+                table = table.add_column(0, "date", date_str)
+                table = table.drop(["year"])
+
+        table = offset_period_eom(table, self.frequency)
+        table = scale_to_decimal(table)
+
+        return self._pivot_portfolios(table, val_col, current_anomaly=anomaly)
+
+
     @property
     def _precision(self) -> int: 
         return 5
