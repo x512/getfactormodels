@@ -54,7 +54,7 @@ def portfolio(
 ):
     """Download portfolio return data.
 
-    * Currently supports Fama-French sorts and industry portfolios, US only.
+        * Currently supports Fama-French sorts and industry portfolios, US only.
 
     Args:
         source: Data source identifier (e.g., 'ff', 'q').
@@ -87,7 +87,67 @@ def portfolio(
         return _get_ff_portfolios(**params)
 
     raise ValueError(f"Portfolio source '{source}' not recognized.")
+"""
+def portfolio(
+    source: str = 'ff',                                # 'q', 'ff', or 'aqr'
+    frequency: str = 'm',                              # 'd', 'w', 'm', 'q', 'y'
+    grid: str = '2x3',                                 # '2x3', '2x3x3', '3x5', etc.
+    count: int | None = None,                          # deciles/quintiles count
+    sort: str | list[str] = 'size',                    # sorting variables
+    industry: int | None = None,                       # industry portfolio code (e.g., 48, 49)
+    weights: Literal['vw', 'ew'] | None = None,        # value-weighted or equal-weighted
+    start_date: str | None = None,
+    end_date: str | None = None,
+    #output_dir: str | Path | None = None,              # directory to save output
+    #filename: str | None = None,                       # custom file name
+    #file_format: Literal['feather', 'parquet', 'csv', 'md', 'txt'] = 'csv', # storage format
+    *,
+    cache_ttl: int | None = None,
+    dividends: bool = True,                            # True for cum-div (ret_vw), False for ex-div (retx_vw)
+    **kwargs,
+):
 
+
+    Args:
+        source: Data source identifier ('ff', 'q', 'aqr').
+        frequency: Data frequency ('d', 'w', 'm', 'q', 'y').
+        grid: Portfolio sort grid / dimensions (e.g., '2x3', '2x3x3', '3x5').
+        count: Optional numeric count for sorts (e.g., deciles).
+        sort: Factor(s) or variable(s) to sort on (e.g., 'size', ['size', 'bm']).
+        industry: Optional industry portfolio classification count.
+        weights: Weighting scheme ('vw' or 'ew').
+        start_date: Optional start date YYYY-[MM-DD].
+        end_date: Optional end date YYYY-[MM-DD].
+        cache_ttl: Optional cache Time-To-Live in seconds.
+        dividends: True for total returns (cum-div), False for capital gains (ex-div).
+    
+    src = source.lower().strip()
+
+    params = {
+        "frequency": frequency,
+        "grid": grid,
+        "count": count,
+        "sort": sort,
+        "industry": industry,
+        "weights": weights,
+        "start_date": start_date,
+        "end_date": end_date,
+        "cache_ttl": cache_ttl,
+        "dividends": dividends,
+        **kwargs,
+    }
+
+    if src in ['q', 'global-q']:
+        from getfactormodels.models.q_factors import _get_q_portfolios
+        return _get_q_portfolios(**params)
+        
+    if src in ['ff', 'famafrench']:
+        from getfactormodels.models.fama_french import _get_ff_portfolios
+        return _get_ff_portfolios(**params)
+
+    raise ValueError(f"Portfolio source '{src}' not recognized.")
+
+"""
 
 def anomaly(
     name: str | list[str] = 'abr_1',
@@ -144,7 +204,7 @@ def model(
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    force: bool = False,  #not implemented properly yet
+    #force: bool = False,  #not implemented properly yet
     clear_cache: bool = False, # ye
     **kwargs,
 ) -> FactorModel:
@@ -174,7 +234,7 @@ def model(
             frequency=frequency,
             start_date=start_date,
             end_date=end_date,
-            force=force,
+            #force=force,
             **kwargs,
         )
         if clear_cache:
@@ -203,7 +263,7 @@ def model(
         frequency=frequency,
         start_date=start_date,
         end_date=end_date,
-        force=force,
+        #force=force,
         **kwargs,
     )
 
