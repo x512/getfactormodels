@@ -599,19 +599,25 @@ class RegionMixin:
 
 class PortfolioBase(FactorModel, ABC):
     """Base class for portfolio return data."""
-    def __init__(self, frequency: str = 'm',
-                 weights: Literal['vw', 'ew'] = 'vw',
-                 *,
-                 dividends: bool = True, #tot ret by default
-                 **kwargs):
+    def __init__(
+        self,
+        frequency: str = 'm',
+        weights: Literal['vw', 'ew'] = 'vw',
+        sort: str | list[str] | None = None,
+        grid: str | None = None,
+        count: int | None = None,
+        *,
+        dividends: bool = True,  # tot ret by default
+        **kwargs,
+    ):
         super().__init__(frequency=frequency, **kwargs)
 
         #_aliases = {'size': 'me',}
-        #_portfolio_sort_map = {'2x3': 6,
-        #                       '2x3x3': 18,}
-
         self.dividends = dividends
         self.weights = weights.lower()
+        self.sort = sort
+        self.grid = grid
+        self.count = count
 
         if self.weights not in ('vw', 'ew'):
             msg = f'weights should be either "vw" or "ew", not {weights}'

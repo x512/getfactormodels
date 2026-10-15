@@ -310,17 +310,23 @@ class _QPortfolios(PortfolioBase):
 
 # Keeping private until ff/q/aqr portfolios have some kind of unified ux
 # and redone params. works.
-def _get_q_portfolios(formed_on=None, sort=None, **kwargs): #q_portfolios when public?
-    # conv input to str (avoids NoneType err)
-    s_str = str(sort).lower().strip() if sort else ""
-    
-    if any(x in s_str for x in ["18", "2x3x3"]): #noqa
+def _get_q_portfolios(
+    sort: str | list[str] | None = None,
+    grid: str | None = None,
+    count: int | None = None,
+    **kwargs,
+) -> _QPortfolios:
+    """Internal helper: factory for q-factor portfolios."""
+    if count == 18 or (grid and ('18' in grid or '2x3x3' in grid)):
         final_sort = '2x3x3'
-    else:
+    elif count == 6 or (grid and ('6' in grid or '2x3' in grid)):
         final_sort = '2x3'
-        
-    return _QPortfolios(sort=final_sort, formed_on=formed_on, **kwargs)
+    else:
+        # Default based on factors or fallback
+        s_str = str(sort).lower() if sort else ""
+        final_sort = '2x3x3' if 'ia' in s_str or 'roe' in s_str else '2x3'
 
+    return _QPortfolios(sort=final_sort, **kwargs)
 
 
 

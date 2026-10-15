@@ -87,11 +87,13 @@ select = [ "ANN201", "D",
     "UP", "C4", "PT", "LOG", "DTZ", "RET", "ICN", "TID", 
     "FBT", "BLE", "ISC"
 ]
+extend-ignore = ["D105"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/__init__.py" = ["F401"]
 "__main__.py" = ["F401"]
 "tests/**/*.py" = ["F401", "S101"]
+"src/getfactormodels/models/base.py" = ["F401", "F821", "F811"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

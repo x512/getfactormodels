@@ -41,113 +41,83 @@ def clear_global_cache() -> int:
 
 
 def portfolio(
-    formed_on: str | list[str] = 'size',
-    sort: str | int | None = None,
-    industry: int | None = None,
-    weights: str = 'vw',
     frequency: str = 'm',
+    grid: str | None = None,                # e.g., '2x3', '2x3x3', '5x5'
+    count: int | None = None,               # e.g., 10 for deciles
+    sort: str | list[str] = 'size',         # sorting variables
+    weights: Literal['vw', 'ew'] | None = None,
+    industry: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
-    *, 
-    source: str = 'ff',
+    #output_dir: str | Path | None = None,
+    #filename: str | None = None,
+    #file_format: Literal['feather', 'ipc', 'parquet', 'csv', 'md', 'txt'] = 'csv'
+    *,
+    source: str = 'ff',                     # 'q', 'ff', or 'aqr'
+    dividends: bool = True,                 # False for ex-div (retx_vw)
     **kwargs,
-):
+    ):
     """Download portfolio return data.
 
-        * Currently supports Fama-French sorts and industry portfolios, US only.
-
     Args:
-        source: Data source identifier (e.g., 'ff', 'q').
-        formed_on: Factor(s) to sort on (e.g., 'size', 'bm').
-        sort: 'decile', '5x5', also accepts integers (10, 25, etc.)
-        industry: Number of industry portfolios.
-        weights: Weighting scheme ('vw' or 'ew').
         frequency: Data frequency ('d', 'm', 'y').
+        grid: Interaction grid layout for bivariate/multivariate sorts (e.g. '2x3').
+        count: Number of portfolios for univariate sorts (e.g. 10 for deciles).
+        sort: Factor(s) to sort on (e.g., 'size', ['size', 'bm']).
+        weights: Weighting scheme ('vw' or 'ew').
+        industry: Number of industry portfolios.
         start_date: Optional start date YYYY-[MM-DD].
         end_date: Optional end date YYYY[-MM-DD].
+        source: Data source identifier ('ff', 'q').
+        dividends: if false, ex-divs (q only)
     """
     source = source.lower()
 
+    if 'formed_on' in kwargs:
+        warnings.warn(
+            "The 'formed_on' parameter is deprecated and will be removed in a future release. "
+            "Please use 'sort' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        sort = kwargs.pop('formed_on')
+
     params = {
-        "formed_on": formed_on,
+        "grid": grid,
+        "count": count,
         "sort": sort,
-        "industry": industry,
         "weights": weights,
+        "industry": industry,
         "frequency": frequency,
         "start_date": start_date,
         "end_date": end_date,
+        "dividends": dividends,
         **kwargs,
     }
+
     if source == 'q':
         from getfactormodels.models.q_factors import _get_q_portfolios
         return _get_q_portfolios(**params)
         
     if source in ['ff', 'famafrench']:
+        # Quick check
+        if frequency == 'w':
+            is_weekly = (
+            isinstance(sort, (list, tuple)) and 
+            frozenset(str(x).lower() for x in sort) == frozenset(['size', 'bm']) and
+            (grid in (None, '2x3', '6'))
+        )
+            if not is_weekly:
+                raise ValueError(
+                    "Fama-French weekly portfolio data is only available for the size "
+                        "and book-to-market (2x3) portfolio. "
+                    "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
+                )
         from getfactormodels.models.fama_french import _get_ff_portfolios
         return _get_ff_portfolios(**params)
 
     raise ValueError(f"Portfolio source '{source}' not recognized.")
-"""
-def portfolio(
-    source: str = 'ff',                                # 'q', 'ff', or 'aqr'
-    frequency: str = 'm',                              # 'd', 'w', 'm', 'q', 'y'
-    grid: str = '2x3',                                 # '2x3', '2x3x3', '3x5', etc.
-    count: int | None = None,                          # deciles/quintiles count
-    sort: str | list[str] = 'size',                    # sorting variables
-    industry: int | None = None,                       # industry portfolio code (e.g., 48, 49)
-    weights: Literal['vw', 'ew'] | None = None,        # value-weighted or equal-weighted
-    start_date: str | None = None,
-    end_date: str | None = None,
-    #output_dir: str | Path | None = None,              # directory to save output
-    #filename: str | None = None,                       # custom file name
-    #file_format: Literal['feather', 'parquet', 'csv', 'md', 'txt'] = 'csv', # storage format
-    *,
-    cache_ttl: int | None = None,
-    dividends: bool = True,                            # True for cum-div (ret_vw), False for ex-div (retx_vw)
-    **kwargs,
-):
 
-
-    Args:
-        source: Data source identifier ('ff', 'q', 'aqr').
-        frequency: Data frequency ('d', 'w', 'm', 'q', 'y').
-        grid: Portfolio sort grid / dimensions (e.g., '2x3', '2x3x3', '3x5').
-        count: Optional numeric count for sorts (e.g., deciles).
-        sort: Factor(s) or variable(s) to sort on (e.g., 'size', ['size', 'bm']).
-        industry: Optional industry portfolio classification count.
-        weights: Weighting scheme ('vw' or 'ew').
-        start_date: Optional start date YYYY-[MM-DD].
-        end_date: Optional end date YYYY-[MM-DD].
-        cache_ttl: Optional cache Time-To-Live in seconds.
-        dividends: True for total returns (cum-div), False for capital gains (ex-div).
-    
-    src = source.lower().strip()
-
-    params = {
-        "frequency": frequency,
-        "grid": grid,
-        "count": count,
-        "sort": sort,
-        "industry": industry,
-        "weights": weights,
-        "start_date": start_date,
-        "end_date": end_date,
-        "cache_ttl": cache_ttl,
-        "dividends": dividends,
-        **kwargs,
-    }
-
-    if src in ['q', 'global-q']:
-        from getfactormodels.models.q_factors import _get_q_portfolios
-        return _get_q_portfolios(**params)
-        
-    if src in ['ff', 'famafrench']:
-        from getfactormodels.models.fama_french import _get_ff_portfolios
-        return _get_ff_portfolios(**params)
-
-    raise ValueError(f"Portfolio source '{src}' not recognized.")
-
-"""
 
 def anomaly(
     name: str | list[str] = 'abr_1',

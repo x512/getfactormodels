@@ -109,18 +109,19 @@ def parse_args() -> argparse.Namespace:
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
-                            dest='formed_on', nargs='+', metavar='FACTOR',
-                            help="Factors to sort on (e.g., size, bm, inv), also accepts 'industry'.")
-    port_group.add_argument('-n', '--sort', '--count', dest='sort', metavar='SORT',
-                            help="Number of portfolios. Portfolio count ('25') or grid ('5x5').")
+                            dest='sort', nargs='+', metavar='FACTOR',
+                            help="Factors to sort on (e.g., size, bm, or ia roe for q-factors).")
+    port_group.add_argument('-n', '--sort', '--count', '--grid', dest='sort_spec', metavar='SPEC',
+                            help="Portfolio layout, count, or grid specification (e.g., '10', '2x3', '5x5', 'decile').")
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
     port_group.add_argument('-W', '-w', '--weights', '--weight', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Portfolio datasource, accepts 'q' or 'ff'.")
-    #port_group.add_argument('--ex-div', '--exdiv'
-    
+    port_group.add_argument('--ex-div', '--exdiv', dest='dividends', action='store_false',
+                            help="Exclude dividends (use ex-dividend returns retx_vw).")
+
     # ANOMALY OPTIONS
     anom_group = parser.add_argument_group('Anomaly Options')
     anom_group.add_argument('-a', '--anomaly', '--anom',
@@ -145,7 +146,7 @@ def parse_args() -> argparse.Namespace:
 
     # fix: check for portfolio here 
     args.is_anomaly = bool(args.anomaly_names)
-    args.is_portfolio = bool(args.ind_count or args.formed_on)
+    args.is_portfolio = bool(args.ind_count or args.sort)
 
     if args.anomaly_names:
         args.anomaly_names = [item.strip().lower() for s in args.anomaly_names for item in s.split(',')]
@@ -157,28 +158,26 @@ def parse_args() -> argparse.Namespace:
         elif args.is_portfolio and not args.is_anomaly:
             args.sort = '2x3x3'
 
-    if args.formed_on:
-        args.formed_on = [item.strip().lower() for s in args.formed_on for item in s.split(',')]
+    if args.sort:
+        args.sort = [item.strip().lower() for s in args.sort for item in s.split(',')]
         
         # "industry" as sort 
-        if args.formed_on[0] in ['industry', 'ind']:
-            args.ind_count = int(args.formed_on[1]) if len(args.formed_on) > 1 else 12
-            args.formed_on = None
+        if args.sort[0] in ['industry', 'ind']:
+            args.ind_count = int(args.sort[1]) if len(args.sort) > 1 else 12
             args.sort = None
         
             # "q" as sort - only 2 types of portfolios: checks for 
             # ia roe eg or q. Needs refinement.
         else:
             q_cols = {'ia', 'roe', 'eg', 'q'}
-            if any(k in args.formed_on for k in q_cols):
+            if any(k in args.sort for k in q_cols):
                 args.src = 'q'
-                if args.formed_on == ['q']:
-                    args.formed_on = None # use defaults
+                if args.sort == ['q']:
+                    args.sort = None # use defaults
 
     if args.ind_count:
         args.industry = args.ind_count
         args.sort = None
-        args.formed_on = None
     else:
         args.industry = None
 
@@ -225,7 +224,23 @@ def _cli():
         pprint(m.url)
         sys.exit(0)
     # ------------------------------------
-
+    # Initialize unified parameters on args
+    args.grid = None
+    args.count = None
+    
+    if args.sort_spec:
+        spec = str(args.sort_spec).strip().lower()
+        # Check if it's a grid (e.g., '2x3', '5x5', '2x3x3')
+        if 'x' in spec:
+            args.grid = spec
+        # Check if it's a digit integer (e.g., '10', '25', '6')
+        elif spec.isdigit():
+            args.count = int(spec)
+        else:
+            # Otherwise treat it as a sort keyword (e.g., 'decile', 'quintile')
+            # If args.sort isn't set yet, or prepend/handle it:
+            if not args.sort:
+                args.sort = [spec]
 
     try:
         rhs, lhs, anom_obj = None, None, None
@@ -243,12 +258,14 @@ def _cli():
             lhs = portfolio(
                 source=args.src, 
                 industry=args.industry,
-                formed_on=args.formed_on,
-                sort=args.sort, 
+                sort=args.sort,
+                grid=args.grid,
+                count=args.count,
                 weights=args.weights,
                 frequency=args.frequency,
                 start_date=args.start,
                 end_date=args.end,
+                dividends=args.dividends,
             )
 
         if args.is_anomaly:

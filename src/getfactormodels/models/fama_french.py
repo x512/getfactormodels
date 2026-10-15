@@ -378,35 +378,52 @@ class _FamaFrenchSorts(_FFPortfolioBase):
     #        'japan', 'asia-pacific-ex-japan', 'north-america', 
     #    ]
     # TODO: regions
-    def __init__(self,
-                 formed_on: str | list[str] = 'size',
-                 sort: str | int | None = None,
-    #            region: str = 'us', 
-                 **kwargs):
+    def __init__(
+        self,
+        sort: str | list[str] = 'size',
+        grid: str | None = None,
+        count: int | None = None,
+        dividends: bool = True,
+        **kwargs,
+    ):
+        # Pass grid, count, sort up to PortfolioBase or handle them
+        kwargs['sort'] = sort
+        kwargs['grid'] = grid
+        kwargs['count'] = count
+        kwargs['dividends'] = dividends
         super().__init__(**kwargs)
-        
-        #self.region = region
 
-        # formed_on: sorted list of lowercase strings
-        if isinstance(formed_on, str):
-            self.formed_on = [formed_on.lower()]
+        # Normalize sort variables into a sorted list of lowercase strings
+        if isinstance(sort, str):
+            sort_items = [s.strip().lower() for s in sort.split(',')] if ',' in sort else [sort.lower()]
+            if len(sort_items) == 1 and ' ' in sort_items[0]:
+                sort_items = sort_items[0].split()
+            self.formed_on = sorted(sort_items)
         else:
-            self.formed_on = sorted([f.lower() for f in formed_on])
+            self.formed_on = sorted([str(f).lower() for f in sort])
 
-        self.sort = str(sort).lower() if sort is not None else self._get_default_sort()
-        self.n_portfolios = self._map_sort_to_count()
         self.is_multivariate = len(self.formed_on) > 1
 
-        self._validate_params()
+        # Use explicit grid or count if provided, otherwise resolve default
+        if self.grid is not None:
+            self.sort_grid = str(self.grid).lower()
+            self.n_portfolios = self._map_grid_to_count(self.sort_grid)
+        elif self.count is not None:
+            self.n_portfolios = int(self.count)
+            self.sort_grid = str(self.count)
+        else:
+            self.sort_grid = self._get_default_sort()
+            self.n_portfolios = self._map_grid_to_count(self.sort_grid)
 
+        self._validate_params()
 
     def _find_table_start(self) -> str:
         """Identify the table section based on weights."""
         return "Equal Weighted Returns" if self.weights == 'ew' else "Value Weighted Returns"
 
 
-    def _map_sort_to_count(self) -> int:
-        """Map sort string/int to total portfolio count."""
+    def _map_grid_to_count(self, grid_str: str) -> int:
+        """Map grid layout or count string to total portfolio count."""
         mapping = {
             'tertile': 3, '3': 3,
             'quintile': 5, '5': 5,
@@ -416,10 +433,9 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             '10x10': 100, '100': 100,
             '2x4x4': 32, '32': 32,
         }
-        if self.sort not in mapping:
-            raise ValueError(f"Sort '{self.sort}' not recognized. Try 'decile', '5x5', etc.")
-        return mapping[self.sort]
-
+        if grid_str not in mapping:
+            raise ValueError(f"Grid/Sort '{grid_str}' not recognized. Try 'decile', '2x3', '5x5', etc.")
+        return mapping[grid_str]
 
     def _get_default_sort(self) -> str:
         """Assigns a default sort if none provided."""
@@ -597,15 +613,16 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
     _SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
 
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
+    def _frequencies(self) -> list[str]: 
+        return ['d', 'm', 'y']
 
-    def __init__(self, n_portfolios: int | str = 5, **kwargs):
-        n_portfolios = int(n_portfolios) # allow str through
-        if n_portfolios not in self._SIZES:
-            raise ValueError(f"Industry count must be one of {self._SIZES}")
-        self.n_portfolios = n_portfolios
+    def __init__(self, count: int | str = 5, dividends: bool = True, **kwargs):
+        count = int(count)
+        if count not in self._SIZES:
+            raise ValueError(f"Industry count must be one of {sorted(self._SIZES)}")
+        self.n_portfolios = count
+        kwargs['dividends'] = dividends
         super().__init__(**kwargs)
-
 
     def _find_table_start(self) -> str:
         w_str = "Value Weighted" if self.weights == 'vw' else "Equal Weighted"
@@ -624,7 +641,36 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
 
         return f"{base}/{self.n_portfolios}_Industry_Portfolios_{suffix}"
 
+def _get_ff_portfolios(
+    sort: str | list[str] = 'size',
+    grid: str | None = None,
+    count: int | None = None,
+    industry: int | None = None,
+    weights: str = 'vw',
+    frequency: str = 'm',
+    #dividends: bool = True,
+    **kwargs,
+) -> pa.Table:
+    """Internal helper: factory for Fama-French portfolios and industries."""
+    if industry is not None:
+        return _FamaFrenchIndustryPortfolios(
+            frequency=frequency, 
+            weights=weights, 
+            count=industry, 
+            #dividends=dividends,
+            **kwargs,
+        )
 
+    return _FamaFrenchSorts(
+        frequency=frequency, 
+        weights=weights, 
+        sort=sort, 
+        grid=grid, 
+        count=count, 
+        #dividends=dividends,
+        **kwargs,
+    )
+"""
 def _get_ff_portfolios(
     formed_on: str | list[str] = 'size', #on=, sorted_on=, might rename
     sort: str | int | None = None, #2x3, decile, 25
@@ -632,11 +678,11 @@ def _get_ff_portfolios(
     weights: str = 'vw',
     frequency: str = 'm',
     **kwargs) -> pa.Table:
-    """Internal helper: factory to return.
+    Internal helper: factory to return.
 
     Factory for Fama French portfolios. Either `industry` or 
     `formed_on` required.
-    """
+    
     # we industry?
     if industry is not None:
         return _FamaFrenchIndustryPortfolios(
@@ -647,5 +693,5 @@ def _get_ff_portfolios(
     return _FamaFrenchSorts(
         frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs,
     )
-
+"""
 # TODO: setters/getters, regions, tests, aggregates for q? prob not. 
