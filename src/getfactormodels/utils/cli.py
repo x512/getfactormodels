@@ -50,24 +50,39 @@ def parse_args() -> argparse.Namespace:
           getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'         
           getfactormodels -p industry 30 -o ~/ind30.csv
           getfactormodels -m ff5 -p 2x3 -x SMB HML -o ~/data.csv
-          getfactormodels -a abr_1 rer -s 2010-06 -f w
+          getfactormodels -a abr_1 rer -s 2010-06 -f w --width 3
 
         {__copyright__}.
         Distributed under {__license__}. See '--license'.
         """),
     )
-    parser.add_argument("-V", "--version", 
-                        action="version", version=f"%(prog)s (v{__version__}) {__copyright__}",
-                        )
-    parser.add_argument("--license",
-                        action="version", version=__license_text__, help="Print software license notice and exit.",
-                        )
-    parser.add_argument('-q', '--quiet', action='store_true', help='Suppress output to console.')
-    parser.add_argument('-v', '--verbose', action='store_true', help="Verbose output, enable debug logging.")
-    parser.add_argument('--list-models', action='store_true', help="Show all models and exit")
+    parser.add_argument("-V", "--version", action="version", 
+                        version=f"%(prog)s (v{__version__}) {__copyright__}")
+    
+    parser.add_argument("--license", action="version", version=__license_text__, 
+                        help="Print software license notice and exit.")
+    
+    parser.add_argument('-q', '--quiet', action='store_true', 
+                        help='Suppress output to console.')
+    
+    parser.add_argument('-v', '--verbose', action='store_true', 
+                        help="Verbose output, enable debug logging.")
+    
+    parser.add_argument('--list-models', action='store_true', 
+                        help="Show all models and exit")
+    
     parser.add_argument('--list-regions', action='store_true', 
                         help="Show all supported geographic regions and exit")
-    # Need: list portfolios, and shorthand model -ls showing id/name/freq only?
+
+    parser.add_argument('--list-anomalies', action='store_true',
+                        help="Show all available q-factor anomalies and exit.")
+
+    parser.add_argument('--url', action='store_true', 
+                        help="List target URLs and exit.")
+    
+    parser.add_argument("--delete-global-cache", action="store_true", 
+                        help="Delete all cached dataset files from disk and exit.")
+
     # MODEL OPTIONS
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
                         help="Model(s) requested ('icr', 'ff3'). Also " 
@@ -75,9 +90,9 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument('-f', '--frequency', type=str, default='m',
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
-                        help="Data frequency (default: 'm'). d w m q y w2w.")
+                        help="Data frequency 'd' 'w' 'm' (default) 'q' 'y' 'w2w'.")
 
-    parser.add_argument('-r', '--region', dest='region', metavar='REGION',
+    parser.add_argument('-r', '--region', '--location', '-l', dest='region', metavar='REGION',
                         help="Region/country code for models that support it.")
 
     parser.add_argument('-s', '--start', required=False, metavar="DATE", 
@@ -88,38 +103,31 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
                         help='A filename or path to save the data to.')
-    #TODO: output dir, outfile file, format.
 
     parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR', 
                         help="Remove specific factors from a model.")
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
-                        help='Keep only these specific factors from a model.')
+                        help='Keep specific factors from a model.')
 
-    # Cache Management
-    #
-    #parser.add_argument("-F", "--force", "--no-cache" action="store_true", help="Bypass local cache and force download.")
-    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
-    #
-    parser.add_argument("--delete-global-cache", action="store_true", 
-                        help="Delete all cached dataset files from disk and exit.")
-
-    # METADATA/CLI CONTROLS
-    
-    
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
     port_group.add_argument('-p', '--portfolio', '--on', '--by', 
                             dest='sort', nargs='+', metavar='FACTOR',
-                            help="Factors to sort on (e.g., size, bm, or ia roe for q-factors).")
+                            help="Factors to sort on (size, bm, or ia roe for q-factors).")
+    
     port_group.add_argument('-n', '--sort', '--count', '--grid', dest='sort_spec', metavar='SPEC',
-                            help="Portfolio layout, count, or grid specification (e.g., '10', '2x3', '5x5', 'decile').")
+                            help="Portfolio count, sort or grid. ('10', '2x3', '5x5', 'decile').")
+    
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
-                            help="Shortcut for Fama-French industry portfolios (e.g., -I 12).")
-    port_group.add_argument('-W', '-w', '--weights', '--weight', choices=['vw', 'ew'], default='vw',
+                            help="Shortcut for Fama-French industry portfolios (-I 12).")
+    
+    port_group.add_argument('-w', '--weights', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
+    
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Portfolio datasource, accepts 'q' or 'ff'.")
+    
     port_group.add_argument('--ex-div', '--exdiv', dest='dividends', action='store_false',
                             help="Exclude dividends (use ex-dividend returns retx_vw).")
 
@@ -127,20 +135,21 @@ def parse_args() -> argparse.Namespace:
     anom_group = parser.add_argument_group('Anomaly Options')
     anom_group.add_argument('-a', '--anomaly', '--anom',
                         dest='anomaly_names', nargs='+', metavar='ANOM',
-                        help="Anomaly or categories to retrieve (e.g., abr_1, momentum, rer).")
-    parser.add_argument('--list-anomalies', action='store_true',
-                        help="Show all available q-factor anomalies and categories and exit.")
+                        help="Anomaly or categories to retrieve (abr_1, momentum, rer).")
 
-    #parser.add_argument('--as-percent', action='store_true',
-    #help="Scale factor values to percentages.")
+    anom_group.add_argument('-b', '--bivariate', '--3x5',
+                        action='store_true',
+                        help="Use bivariate (2-way) sorts instead of default deciles.")
     
-    #--decimals COUNT
-
-    #data source citation
-
-    # new, uses the url @property 
-    parser.add_argument('--url', action='store_true', help="List target URLs for the specified models and exit.")
-   
+    # PREVIEW / DISPLAY CONTROLS
+    parser.add_argument('--no-prev', '--no-preview', action='store_true',
+                            help="Suppress the terminal table preview output.")
+    
+    parser.add_argument('-H', '--height', type=int, default=6, metavar='ROWS',
+                            help="Number of head/tail rows to show in preview (default: 6).")
+    
+    parser.add_argument('-W', '--width', type=int, default=5, metavar='COLS',
+                            help="Number of data columns to show. Not incl. truncated column or index. (default: 5).")
 
     parser.set_defaults(industry=None)
     args = parser.parse_args()
@@ -152,7 +161,6 @@ def parse_args() -> argparse.Namespace:
     if args.anomaly_names:
         args.anomaly_names = [item.strip().lower() for s in args.anomaly_names for item in s.split(',')]
 
-    # Smart default sorting depending on what was requested
     if args.sort is None:
         if args.is_anomaly and not args.is_portfolio:
             args.sort = 'decile'
@@ -208,8 +216,6 @@ def _cli():
             print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
 
-    # ------------------------------------------------------
-    # NEW -- testing 
     if args.url:
         from getfactormodels.main import model
         from pprint import pprint
@@ -223,23 +229,20 @@ def _cli():
         )
         
         pprint(m.url)
-        sys.exit(0)
-    # ------------------------------------
-    # Initialize unified parameters on args
+        sys.exit(0) #TODO: nicer output, print after table, no exit.
+
     args.grid = None
     args.count = None
     
     if args.sort_spec:
         spec = str(args.sort_spec).strip().lower()
-        # Check if it's a grid (e.g., '2x3', '5x5', '2x3x3')
+        # Check for grid
         if 'x' in spec:
             args.grid = spec
-        # Check if it's a digit integer (e.g., '10', '25', '6')
+        # Check for int
         elif spec.isdigit():
             args.count = int(spec)
         else:
-            # Otherwise treat it as a sort keyword (e.g., 'decile', 'quintile')
-            # If args.sort isn't set yet, or prepend/handle it:
             if not args.sort:
                 args.sort = [spec]
 
@@ -276,20 +279,23 @@ def _cli():
 
         if args.is_anomaly:
             from getfactormodels.main import anomaly
+            
+            anom_sort = '3x5' if args.bivariate else 'decile'
+
             anom_obj = anomaly(
                 source='q',
                 name=args.anomaly_names,
                 frequency=args.frequency,
-                sort=args.sort_spec or 'decile',
+                sort=anom_sort,
                 start_date=args.start,
                 end_date=args.end,
             )
-
-        # Handle joining or single dataset selection
+        
+        # TODO: handle --no-join/--seperate
         active_components = [c for c in [rhs, lhs, anom_obj] if c is not None]
 
         if len(active_components) > 1:
-            # Load and side-by-side join multiple components on 'date'
+            # Join on 'date'
             for comp in active_components:
                 comp.load()
             
@@ -337,10 +343,12 @@ def _cli():
     else:
         # we're interactive/IPython: print preview of table to stderr. 
         # uses the model_obj's __str__ (which prints the Table preview)
-        if not args.quiet:
-            sys.stderr.write(f"{str(model_obj)}\n")
+        if not args.quiet and not args.no_prev:
+            preview_str = model_obj.preview(n_rows=args.height, n_cols=args.width)
+            if preview_str:
+                sys.stderr.write(f"{preview_str}\n")
 
-
+# TODO: not here ----------------------------------------------------------
 def _cli_list_anomalies():
     """Lists all available q-factor anomalies categorized by group."""
     from getfactormodels.models.q_factors import _QAnomalies
@@ -363,7 +371,7 @@ def _cli_list_regions():
 
 
 def _cli_list_models():
-    """Lists all model ID's, names, frequencies and aliases to stderr."""
+    """Lists all model IDs, names, frequencies and aliases to stderr."""
     from getfactormodels.main import model as model_factory
     header = f"{'ID':<7} {'MODEL NAME':<32} {'FREQ':<15} {'ALIASES'}"
     sys.stderr.write(f"{header}\n")
@@ -378,7 +386,7 @@ def _cli_list_models():
             freqs = ",".join(inst._frequencies)
         except (ValueError, NotImplementedError):
             try:
-                # Try fallback frequency 'm' or 'd' for regional models
+                # Try 'm' or 'd' fallback for regional models
                 inst = model_factory(key, frequency='m', region='ch')
                 freqs = ",".join(inst._frequencies)
             except (ValueError, NotImplementedError):
@@ -391,3 +399,16 @@ def _cli_list_models():
         sys.stderr.write(row)
 
     sys.stderr.write("\n")
+
+# TODO:
+#   -F/--force 
+#   --clear-cache per model.
+#   --as-percent 
+#   --decimals
+#   data source citation, reference paper citation
+#   --output to --output-dir, --format, --output, --fname or something
+#   --list-portfolios
+#   --list-models should prob show only id/name/freq? or have --list-models-long and --list-models idk.
+    #parser.add_argument("-F", "--force", "--no-cache" action="store_true", help="Bypass local cache and force download.")
+    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
+    #parser.add_argument('--as-percent', action='store_true', help="Scale factor values to percentages.")

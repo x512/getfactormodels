@@ -202,8 +202,10 @@ def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None
 
         return dt.strftime("%Y-%m-%d")
 
-    except Exception:
-        raise ValueError(f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.")
+    except (ValueError, TypeError, calendar.IllegalMonthError) as e:
+        raise ValueError(
+            f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.",
+        ) from e
 
 # test:
 # yyyy, yyyy-mm, yyyymm, yyyymmdd end dates 

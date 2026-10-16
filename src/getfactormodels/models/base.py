@@ -92,7 +92,7 @@ class FactorModel(ABC):
     def __len__(self) -> int:
         """Length of the pa.Table after filtering."""
         return len(self.data)
-
+    """
     def __str__(self) -> str:
         if self.data is None:
             return self.__repr__()
@@ -104,6 +104,10 @@ class FactorModel(ABC):
 
         header = f"{self.__class__.__name__}{region_label}\n"
         return header + print_table_preview(self.data)
+    """
+    # Let .preview do the work
+    def __str__(self) -> str:
+        return self.preview()
 
     def __repr__(self) -> str:
         params = []
@@ -291,10 +295,25 @@ class FactorModel(ABC):
             return pl.from_arrow(self.data)
         except ImportError:
             raise ImportError("Requires Polars. Try `pip install polars`") from None
+    
     # maybe
-    #def preview(self, n: int = 4):
-    #    """Prints the formatted table preview."""
-    #    print(print_table_preview(self.data, n_rows=n))
+    def preview(self, n_rows: int = 6, n_cols: int = 5) -> str | None:
+        if self.data is None:
+            return self.__repr__()
+
+        if isinstance(self, RegionMixin):
+            region_label = f" ({self.region})"
+        else:
+            region_label = ""
+
+        header = f"{self.__class__.__name__}{region_label}\n"
+        table_str = print_table_preview(self.data, n_rows=n_rows, n_cols=n_cols)
+        
+        if table_str is None:
+            return header + "Empty Table"
+            
+        return header + table_str
+
 
     def load(self, client: _HttpClient | None = None) -> pa.Table:
         if self._data is not None and not self.force:

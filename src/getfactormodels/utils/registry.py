@@ -119,6 +119,17 @@ _LOOKUP: Final[MappingProxyType[str, str]] = MappingProxyType({
 
 
 def get_model_key(user_input: str | int) -> str:
+    """Resolves model name or alias to its registry key.
+
+    Args:
+        user_input: The model name, ID, or alias provided by the user.
+
+    Returns (str): 
+        The model's registry key.
+
+    Raises:
+        ValueError: If the model or portfolio is empty or unknown.
+    """
     if not user_input:
         raise ValueError("Model name cannot be empty.")
 
@@ -131,6 +142,14 @@ def get_model_key(user_input: str | int) -> str:
 
 
 def get_model_class(key: str) -> str:
+    """Retrieve the model class name string from the registry for a given key.
+
+    Args:
+        key: The model registry key or alias.
+
+    Returns:
+        The model class name.
+    """
     if key not in _MODEL_REGISTRY:
         key = get_model_key(key)
     return _MODEL_REGISTRY[key]["model_class"]
