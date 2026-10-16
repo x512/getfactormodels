@@ -5,7 +5,7 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -82,7 +82,7 @@ class QFactors(FactorModel):
                 }.get(self.frequency)
 
         url = 'https://global-q.org/uploads/1/2/2/6/122679606'
-        last_year = datetime.now().year - 1
+        last_year = datetime.now(tz=timezone.utc).year - 1
         url += f'/q5_factors_{file}_{last_year}.csv'
         return url
 
@@ -476,7 +476,7 @@ class _QAnomalies(PortfolioBase):
         freq = self._FREQ_STR[self.frequency]
         cat_slug = self._CATEGORY_SLUG[category]
         prefix = "me_" if self.sort_type == '3x5' else ""
-        last_year = datetime.now().year - 1
+        last_year = datetime.now(tz=timezone.utc).year - 1
         return f"{base}/{prefix}{cat_slug}_{freq}_{last_year}.zip"
 
     def _get_url(self) -> str:

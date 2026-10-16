@@ -4,7 +4,7 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 #import warnings
 from io import BytesIO
 from pathlib import Path
@@ -59,7 +59,7 @@ def _generate_filename(model: 'FactorModel') -> str: # type: ignore [reportUndef
 
         date_str = f"{start_dt.strftime('%Y%m%d')}-{end_dt.strftime('%Y%m%d')}"
     else:
-        date_str = f"no_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        date_str = f"no_data_{datetime.now(tz=timezone.utc).strftime('%Y%m%d_%H%M%S')}"
 
     parts = [model_name, freq, region, date_str]
     filename = "_".join(str(p).lower() for p in parts if p)

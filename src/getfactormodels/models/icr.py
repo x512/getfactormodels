@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Intermediary Capital Ratio (He, Kelly and Manela, 2017)."""
+
 import io
 import pyarrow as pa
 import pyarrow.csv as pv
@@ -14,16 +16,14 @@ from getfactormodels.utils.date_utils import (
 
 
 class ICRFactors(FactorModel):
-    """Download the Intermediary Capital Ratio (He-Kelly-Manela, 2017).
+    """Download the Intermediary Capital Ratio of He, Kelly and Manela (2017).
 
     Monthly and quarterly data start in 1970, daily begins on 1999-05-03.
 
     References:
-        Z. He, B. Kelly, and A. Manela, 2017. Intermediary asset pricing: 
-        New evidence from many asset classes. Journal of Financial Economics, 
-        vol. 126, no. 1, pp. 1–35.
-
-    ---
+        - Z. He, B. Kelly, and A. Manela, 2017. Intermediary asset 
+          pricing: New evidence from many asset classes. Journal of 
+          Financial Economics, vol. 126, no. 1, pp. 1–35.
 
     Notes:
         - quarterly data (as of Dec 2025) contains a duplicate entry

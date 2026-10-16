@@ -7,14 +7,14 @@ import calendar
 import logging
 import re
 import sys
-from datetime import date, datetime
+from datetime import datetime, timezone
 from typing import Any
 import pyarrow as pa
 import pyarrow.compute as pc
 
 log = logging.getLogger(__name__)
 
-def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
+def offset_period_eom(table: pa.Table, frequency: str | None = 'm') -> pa.Table:
     """Offset a table's date column to the last day of its period.
 
     Args:
@@ -28,7 +28,9 @@ def offset_period_eom(table: pa.Table, frequency: str) -> pa.Table:
         return table
         
     orig_name = table.column_names[0]
-    freq = frequency.lower()
+
+    #if None, assume 'm'
+    freq = (frequency or 'm').lower()
 
     # remove non digits 
     raw = pc.replace_substring_regex(table.column(0).cast(pa.string()), r"\D", "")
@@ -119,7 +121,7 @@ def validate_date_range(start: str | None, end: str | None) -> tuple[str | None,
     Raises:
         ValueError: If start date is after end date or set in the future.
     """
-    today = date.today().isoformat()
+    today = datetime.now(tz=timezone.utc).date().isoformat()
 
     if start and end and start > end:
         raise ValueError(f"start_date ({start}) is after end_date ({end}).")
@@ -184,22 +186,29 @@ def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None
 
     clean_str = re.sub(r'\D', '', raw_str) 
     try:
+        #DTZ001 fix.
         if len(clean_str) == 4:  # YYYY
-            dt = datetime(int(clean_str), 12, 31) if is_end else datetime(int(clean_str), 1, 1)
-        elif len(clean_str) == 6: # YYYYMM
-            dt = datetime.strptime(clean_str, "%Y%m")
+            dt = (
+                datetime(int(clean_str), 12, 31, tzinfo=timezone.utc) 
+                if is_end 
+                else datetime(int(clean_str), 1, 1, tzinfo=timezone.utc)
+            )
+        elif len(clean_str) == 6:  # YYYYMM
+            # DTZ007: chained .replace(tzinfo=timezone.utc) to strptime
+            dt = datetime.strptime(clean_str, "%Y%m").replace(tzinfo=timezone.utc)
             if is_end:
                 dt = dt.replace(day=calendar.monthrange(dt.year, dt.month)[1])
-        elif len(clean_str) == 8: # YYYYMMDD
-            dt = datetime.strptime(clean_str, "%Y%m%d")
+        elif len(clean_str) == 8:  # YYYYMMDD
+            #DTZ007 fix
+            dt = datetime.strptime(clean_str, "%Y%m%d").replace(tzinfo=timezone.utc)
         else:
             try:
                 dt = datetime.fromisoformat(raw_str.replace('/', '-'))
             except ValueError:
-                dt = datetime.strptime(raw_str, "%Y-%m")
+                # DTZ007 
+                dt = datetime.strptime(raw_str, "%Y-%m").replace(tzinfo=timezone.utc)
                 if is_end:
                     dt = dt.replace(day=calendar.monthrange(dt.year, dt.month)[1])
-
         return dt.strftime("%Y-%m-%d")
 
     except (ValueError, TypeError, calendar.IllegalMonthError) as e:

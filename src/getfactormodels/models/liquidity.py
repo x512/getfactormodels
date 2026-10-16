@@ -5,7 +5,7 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import io
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 import pyarrow as pa
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel
@@ -55,7 +55,7 @@ class LiquidityFactors(FactorModel):
 
 
     def _get_url(self) -> str:
-        last_year = datetime.now().year - 1
+        last_year = datetime.now(tz=timezone.utc).year - 1
         base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/liq_data_1962_"
 
         return f"{base_url}{last_year}.txt" # TODO: check the URL with check_connection, fallback to year before.

@@ -28,7 +28,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Natural Language :: English",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<4"
 
 dependencies = [
     "pyarrow>=23.0.1,<=25.0.1",
@@ -39,6 +39,8 @@ dependencies = [
     "platformdirs>=4.0.0,<5.0.0",           # 4.12 verified
     "python-dateutil>=2.9.0.post0,<3.0.0",
     "typing-extensions>=4.15.0,<5.0.0",
+    "pyright (>=1.1.414,<2.0.0)",
+
 ]
 
 packages = [
@@ -52,6 +54,8 @@ pytest = ">=9.0.3"               # 9.0.3 fixes vulnerable tmpdir handling in <9.
 pytest-randomly = ">=4.0.1"
 tox = ">=4.32.0,<=4.64.9"
 isort = "^7.0"
+pyarrow-stubs = ">=20.0.0.20260819,<21.0.0.0"
+pyright = "^1.1.414"
 
 [project.urls]
 Homepage = "https://github.com/x512/getfactormodels"

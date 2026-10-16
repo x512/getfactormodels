@@ -3,11 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
-"""Liu, Stambaugh & Yuan (2019) Size and Value factor models for China.
-
-Provides monthly and daily data for the CH-3 (SMB, VMG) and CH-4 
-(SMB, VMG, PMO) models, along with market excess returns and risk-free rates.
-"""
+"""Size and Value in China (Liu, Stambaugh & Yuan, 2019)."""
 
 import io
 import httpx
@@ -42,7 +38,7 @@ class CHFactors(FactorModel, RegionMixin):
     def _regions(self) -> list[str]: return ["china", "ch"]
 
     def __init__(self, 
-                 frequency: str = 'm', 
+                 frequency: str | None = 'm', 
                  model: int | str = '3',
                  *,
                  region: str | None = None, # China only 
@@ -59,7 +55,9 @@ class CHFactors(FactorModel, RegionMixin):
             ValueError: If an invalid frequency, model, or region is provided.
         """
         # Validations
-        freq = str(frequency).lower().strip()
+        freq_input = frequency if frequency is not None else 'm'
+
+        freq = str(freq_input).lower().strip()
         if freq not in self._frequencies:
             raise ValueError(f"Invalid frequency ('{frequency}'), must be one of {self._frequencies}.")
 
