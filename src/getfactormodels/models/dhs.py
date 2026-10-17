@@ -26,7 +26,6 @@ class DHSFactors(FactorModel):
     References:
         K. Daniel, D. Hirshleifer and L. Sun, 2020. Short and Long Horizon
         Behavioral Factors. Review of Financial Studies, 33 (4): 1673-1736.
-
     """
     @property
     def _frequencies(self) -> list[str]: return ['d', 'm']
@@ -81,9 +80,15 @@ class DHSFactors(FactorModel):
         if "Date" in table.column_names:
             table = table.rename_columns(["date"] + table.column_names[1:])
 
-        # Wrap in FF Mkt-RF and RF
-        _ff = FamaFrenchFactors(model='3', 
-                                frequency=self.frequency).load()
-        _ff = select_table_columns(_ff.data, ['Mkt-RF', 'RF'])
+        # fix: freq handed to ff might be None, default to m. appease pyright.
+        ff_frequency = self.frequency if self.frequency is not None else 'm'
+        
+        ff_model = FamaFrenchFactors(model='3', frequency=ff_frequency)
+        ff_model.load()
+        
+        if ff_model.data is None:
+            raise ValueError("Failed to load FamaFrenchFactors for DHS model.")
 
-        return table.join(_ff, keys="date", join_type="inner").combine_chunks()
+        ff_table = select_table_columns(ff_model.data, ['Mkt-RF', 'RF'])
+
+        return table.join(ff_table, keys="date", join_type="inner").combine_chunks()

@@ -47,7 +47,8 @@ class ICRFactors(FactorModel):
     @property
     def schema(self) -> pa.Schema:
         """ICR factor model schema."""
-        date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(self.frequency, 'yyyyq')
+        freq = self.frequency or 'm'
+        date_col = {'d': 'yyyymmdd', 'm': 'yyyymm'}.get(freq, 'yyyyq')
 
         return pa.schema([
             (date_col, pa.string()),
@@ -57,13 +58,12 @@ class ICRFactors(FactorModel):
             ('intermediary_leverage_ratio_squared', pa.float64()),
         ])
 
-
     def _get_url(self) -> str:
+        freq = self.frequency or 'm'
         _file = {"d": "daily", "m": "monthly", 
-                 "q": "quarterly"}.get(self.frequency)
+            "q": "quarterly"}.get(freq, "monthly")
 
         return f"https://zhiguohe.net/wp-content/uploads/2025/07/He_Kelly_Manela_Factors_{_file}_250627.csv"
-
 
     def _read(self, data: bytes):
         try:

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Liquidity factors of Pastor-Stambaugh (2003)."""
 import io
 import re
 from datetime import datetime, timezone
@@ -16,26 +17,14 @@ class LiquidityFactors(FactorModel):
     """Liquidity factors of Pastor-Stambaugh (2003).
 
     Download the Pastor-Stambaugh Liquidity Factors. Only available 
-    in monthly.
-
-    Args:
-        frequency (str): The data frequency, 'm'.
-        start_date (str, optional): The start date YYYY-MM-DD.
-        end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): file path to save to.
-          Supports csv, pkl.
-        cache_ttl (int, optional): download time-to-live in secs 
-        (default: 86400).
+    in monthly frequency.
 
     References:
-    - L. Pastor and R. Stambaugh, ‘Liquidity Risk and Expected Stock 
-      Returns’, Journal of Political Economy, vol. 111, no. 3, pp. 
-      642–685, 2003.
-
-    ---
+        L. Pastor and R. Stambaugh (2003). Liquidity Risk and Expected Stock 
+        Returns. Journal of Political Economy, vol. 111, no. 3, pp. 642–685.
 
     Note:
-        the leading 65 values of TRADED_LIQ are NaNs.
+        - The leading 65 values of 'TRADED_LIQ' are NaNs.
     """
     @property
     def _frequencies(self) -> list[str]: return ["m"]
@@ -55,7 +44,7 @@ class LiquidityFactors(FactorModel):
 
 
     def _get_url(self) -> str:
-        last_year = datetime.now(tz=timezone.utc).year - 1
+        last_year = datetime.now(tz=timezone.utc).year - 1 # noqa: UP017    keep this until strictly >=3.11 (datetime.UTC)
         base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/liq_data_1962_"
 
         return f"{base_url}{last_year}.txt" # TODO: check the URL with check_connection, fallback to year before.
@@ -96,7 +85,7 @@ class LiquidityFactors(FactorModel):
             table = offset_period_eom(table, self.frequency)
             #table.validate()
             return table.rename_columns(['date', 'AGG_LIQ', 
-                                         'INNOV_LIQ', 'TRADED_LIQ'])   #TODO: fix, not enforcing schema...
+                                         'INNOV_LIQ', 'TRADED_LIQ']).combine_chunks()   #TODO: fix, not enforcing schema...
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
                 msg = f"{self.__class__.__name__}: reading failed: {e}"

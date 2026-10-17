@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Mispricing Factors of Stambaugh & Yuan (2016)."""
+
 import io
 import pyarrow as pa
 import pyarrow.csv as pv
@@ -15,17 +17,6 @@ class MispricingFactors(FactorModel):
 
     Download and process the Mispricing factor data of Stambaugh-Yuan
     (2016). Data from 1963 to 2016. The SMB factor is returned as SMB_SY.
-
-    Args:
-        frequency(str, optional): 'm' (monthly), 'd' (daily)
-        start_date (str, optional): The start date YYYY-MM-DD.
-        end_date (str, optional): The end date YYYY-MM-DD.
-        output_file (str, optional): Optional file path to save to file. 
-            Supports csv, pkl.
-        classic (bool, optional): returns the classic 4-factor q-factor 
-            model. Default: False.
-        cache_ttl (int, optional): Cached download time-to-live in 
-            seconds (default: 86400).
 
     References:
         R. F. Stambaugh and Y. Yuan (2016). Mispricing Factors. The Review 
@@ -40,6 +31,7 @@ class MispricingFactors(FactorModel):
 
     @property
     def schema(self) -> pa.Schema:
+        """Schema for Mispricing factors."""
         date_col = "DATE" if self.frequency == "d" else "YYYYMM"
         return pa.schema([
             (date_col, pa.string()),
@@ -49,7 +41,6 @@ class MispricingFactors(FactorModel):
             ('PERF', pa.float64()),
             ('RF', pa.float64()),
         ])
-
 
     def _get_url(self) -> str:
         #base_url = "https://finance.wharton.upenn.edu/~stambaug"
