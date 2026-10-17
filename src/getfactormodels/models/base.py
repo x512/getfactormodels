@@ -432,36 +432,59 @@ class FactorModel(ABC):
     @property
     def url(self) -> str | dict[str, str | dict[str, str]]:
         """Returns the endpoint URL(s) for the model data."""
-        if hasattr(self, 'instances'):
-            # ModelCollection
-            return {
-                getattr(inst, 'model', inst.__class__.__name__): inst.url
-                for inst in self.instances
-            }
         return self._get_url()
 
 
 class CompositeModel(FactorModel):
     """Base for models constructed from other models."""
-    def __init__(self, frequency: str = 'm', *, drop_null: bool = True, **kwargs):
+    def __init__(self,
+                 frequency: str = 'm',
+                 *,
+                 drop_null: bool = True,
+                 **kwargs):
         self.drop_null = drop_null
         super().__init__(frequency=frequency, **kwargs)
 
     @abstractmethod
     def _construct(self, client: _HttpClient) -> pa.Table:
         pass
-    
-    def _get_url(self) -> str:
-        raise NotImplementedError("CompositeModel: no remote source.")
+   
+    # TEST new
+    @property
+    def components(self) -> list[FactorModel]:
+        """Sub-models that make up this composite model. Override in subclasses if needed."""
+        return getattr(self, "instances", [])
+
+    def _get_url(self) -> dict[str, str | dict]:
+        """Returns URLs of all underlying component models."""
+        if self.components:
+            return {
+                getattr(inst, 'model', inst.__class__.__name__): inst.url
+                for inst in self.components
+            }
+        return {}
     
     def _read(self, data: bytes) -> pa.Table:
         raise NotImplementedError("CompositeModel: _read called on a composite models.")
 
 
 class ModelCollection(CompositeModel):
-    """A ModelCollection holds multiple models and/or portfolios of the same frequency."""
-    def __init__(self, model_keys: list[str] | None = None, 
-                 instances: list[FactorModel] | None = None, **kwargs):
+    """Internal container holding multiple joined models, portfolios, or datasets.
+    
+    Used to automatically join multiple datasets when requested. Not initialized by 
+    the end under.
+    """
+    def __init__(self,
+                 model_keys: list[str] | None = None, 
+                 instances: list[FactorModel] | None = None,
+                 **kwargs):
+        """Initialize the ModelCollection instance.
+
+        Args:
+            model_keys (list[str], optional): List of model names to instantiate and combine.
+            instances (list[FactorModel], optional): Pre-instantiated factor model instances.
+            **kwargs: Additional keyword arguments forwarded to component models.
+        """
         from getfactormodels.main import model
         
         if instances:
@@ -617,18 +640,29 @@ class RegionMixin:
 
 
 class PortfolioBase(FactorModel, ABC):
-    """Base class for portfolio return data."""
+    """Abstract base class for portfolio return datasets."""
     def __init__(
         self,
         frequency: str = 'm',
-        weights: Literal['vw', 'ew'] = 'vw',
         sort: str | list[str] | None = None,
         grid: str | None = None,
         count: int | None = None,
+        weights: Literal['vw', 'ew'] = 'vw',
         *,
         dividends: bool = True,  # tot ret by default
         **kwargs,
     ):
+        """Initialize the portfolio model instance.
+
+        Args:
+            frequency (str, optional): Data frequency ('m' or 'd'). Default is 'm'.
+            sort (str | list[str], optional): Sorting variable(s) for portfolios.
+            grid (str, optional): 
+            count (int, optional): Number of portfolios.
+            weights (str, optional): Weighting scheme ('vw' for value-weighted, 'ew' for equal-weighted). Default is 'vw'.
+            dividends (bool, optional): Include dividends in total returns. Default is True.
+            **kwargs: Additional keyword arguments passed to base models.
+        """
         super().__init__(frequency=frequency, **kwargs)
 
         #_aliases = {'size': 'me',}

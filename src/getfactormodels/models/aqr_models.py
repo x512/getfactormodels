@@ -268,18 +268,38 @@ class BABFactors(_AQRModel):
 
 
 class AQR6Factors(CompositeModel, RegionMixin):
-    """AQR 6-Factor Model, Frazzini, Kabiller & Pederson (2018).
+    """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018).
 
-    This is the model used 'Buffett's Alpha'. The factors 
-    are: Mkt-RF, SMB, HML, UMD, BAB, QMJ.
+    This is the model used in 'Buffett's Alpha'. The factors are:
+    Mkt-RF, SMB, HML_FF, UMD, BAB, QMJ, and RF_AQR.
 
     References:
-        Frazzini, Kabiller & Pedersen (2018). Buffett’s Alpha. 
-        Financial Analysts Journal, 74:4, 35-55.
-    """
+        Frazzini, A., Kabiller, D., & Pedersen, L. H. (2018). Buffett’s Alpha. 
+        Financial Analysts Journal, 74(4), 35–55.
+    """    
     def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
+        """Initialize the AQR 6-Factor Model instance.
+
+        Args:
+            frequency (str, optional): The frequency of the data ('m' for monthly, 
+                'd' for daily). Default is 'm'.
+            region (str, optional): Region or country to return data for. Default is 'usa'.
+            **kwargs: Additional keyword arguments passed down to component models 
+                (e.g., start_date, end_date, cache_ttl, output_file).
+        """
+        kwargs.pop('model', None)
         super().__init__(frequency=frequency, **kwargs)
-        self.region = region 
+        self.region = region
+
+        # initialize component models (allow for introspection, URLs etc.)
+        self.bab_model = BABFactors(frequency=frequency, region=region, **kwargs)
+        self.qmj_model = QMJFactors(frequency=frequency, region=region, **kwargs)
+        self.instances = [self.bab_model, self.qmj_model]
+
+    @property
+    def components(self) -> list:
+        """Models that make up this composite model."""
+        return self.instances
 
     @property
     def _regions(self) -> list[str]: return _AQR_REGIONS
@@ -288,15 +308,16 @@ class AQR6Factors(CompositeModel, RegionMixin):
     def _frequencies(self) -> list[str]: return ['m', 'd']
 
     def _construct(self, client: _HttpClient) -> pa.Table:
-        bab_t = BABFactors(frequency=self.frequency, region=self.region).load(client=client)
-        qmj_t = QMJFactors(frequency=self.frequency, region=self.region).load(client=client)
+        self.bab_model.load(client=client)
+        self.qmj_model.load(client=client)
 
-        bab = select_table_columns(bab_t.data, ['BAB', 'Mkt-RF', 'SMB'])
-        qmj = select_table_columns(qmj_t.data, ['QMJ', 'HML', 'UMD', 'RF_AQR'])  # We use 'HML FF' on BAB and QMJ, renamed HML. AQR's data.
+        bab = select_table_columns(self.bab_model.data, ['BAB', 'Mkt-RF', 'SMB'])
+        qmj = select_table_columns(self.qmj_model.data, ['QMJ', 'HML', 'UMD', 'RF_AQR'])
 
-        # Renaming HML to HML_FF: user doesn't know if it's HML Devil otherwise, and RF to RF_AQR. 
+        # HML to HML_FF
         qmj = qmj.rename_columns([
-            "HML_FF" if col == "HML" else "RF_AQR" if col == "RF" else col for col in qmj.column_names
+            "HML_FF" if col == "HML" else "RF_AQR" if col == "RF" else col 
+            for col in qmj.column_names
         ])
 
         table = bab.join(qmj, keys='date').combine_chunks()
@@ -304,6 +325,7 @@ class AQR6Factors(CompositeModel, RegionMixin):
 
     @property
     def schema(self) -> pa.Schema:
+        """Schema for AQR 6-Factor Model."""
         return pa.schema([
             ('date', pa.string()),
             ('Mkt-RF', pa.float64()),
