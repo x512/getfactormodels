@@ -31,13 +31,17 @@ class ICRFactors(FactorModel):
         - NaNs: daily IC_RISK factor doesn't begin until 2008.
         - Precision: Quarterly: 4 decimals before 2013, 18 after.
 
-    Factors
+    Factors:
     - IC_RATIO: Intermediary Capital Ratio 
     - IC_RISK: Intermediary Capital Risk Factor 
     - VW_IR: Intermediary Value Weighted Investment Return
     - LEV_SQ: Intermediary Leverage Ratio Squared
 
     """
+    #TODO:
+    #_dataset_author = "He, Z., Kelly, B., & Manela, A."
+    #_dataset_title = "Intermediary Capital Ratio and Risk Factors"
+    #_dataset_repository = "Zhiguo He Academic Repository"
     @property
     def _frequencies(self) -> list[str]: return ["d", "m", "q"]
 

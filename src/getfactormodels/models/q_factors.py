@@ -3,6 +3,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Global-Q factor models, portfolios, and anomaly datasets.
+
+Provides data retrieval, parsing, and processing for q-factor models (Q4/Q5), 
+benchmark portfolios, and anomaly datasets from global-q.org (Hou, Xue, and Zhang).
+
+Classes:
+    - QFactors:
+    - _QPortfolios: 
+    - _QAnomalies: 
+"""
 import io
 import zipfile
 from datetime import datetime, timezone
@@ -21,28 +31,29 @@ from getfactormodels.utils.date_utils import (
 class QFactors(FactorModel): 
     """Download and process q-factor data from global-q.org.
 
-    Args:
-        frequency (str): the frequency of the data. d, m, y, q, w, w2w.
-        start_date (str, optional): start date, YYYY-MM-DD.
-        end_date (str, optional): end date, YYYY-MM-DD.
-        classic (bool, optional): returns original 4-factor model.
-        output_file (str, optional): Path to save the data automatically.
-        cache_ttl (int, optional): cache TTL in seconds.
+    Attributes:
+        classic (bool): Whether to return the original 4-factor model.
 
     References:
-    - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented 
-      q-factor model with expected growth, Review of Finance 25 (1), 
-      1-41.
-    - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An 
-      investment approach, Review of Financial Studies 28 (3), 650-705.
-
+        - Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented 
+        q-factor model with expected growth, Review of Finance 25 (1), 
+        1-41.
+        - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An 
+        investment approach, Review of Financial Studies 28 (3), 650-705.
     """
     @property
     def _frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
 
     def __init__(self, *, classic: bool = False, **kwargs) -> None:
-        """Initialize the QFactors model."""
+        """Initialize the QFactors model.
+
+        Args:
+            classic (bool, optional): Returns the original 4-factor model 
+                instead of the augmented 5-factor model. Default: `False`.
+            **kwargs: Additional keyword arguments passed to `FactorModel` 
+                (`frequency`, `start_date`, `end_date`, `cache_ttl`).
+        """
         self.classic = classic
         super().__init__(**kwargs)
     
@@ -154,19 +165,18 @@ class QFactors(FactorModel):
 class _QPortfolios(PortfolioBase):
     """Download q-factor portfolio data from global-q.org.
 
-    Work in progress.
+    Work in progress. 
 
     q-global offers two portfolio sorts for each frequency:
-    - 18 portfolios (2x3x3) on size (ME), investment-to-assets (IA) 
-      and return on equity (ROE).
-    - 6 portfolios (2x3) on size and Expected Growth (EG).
-
-    Source: 
-    - https://global-q.org/factors.html
+    - "18 (2 by 3 by 3) Size, Investment-to-assets, and Return on Equity 
+      Benchmark Portfolios Underlying the q-factors." 
+    - "6 (2 by 3) Size and Expected Growth Benchmark Portfolios Underlying 
+      the Expected Growth Factor."
 
     Notes:
     - Ranks are in ascending order. For size (ME): "1" is small, "2" big. 
       For IA, ROE, EG: "1" means low, "2" median, "3" high.
+    - Source: https://global-q.org/factors.html
     """
     @property
     def _frequencies(self) -> list[str]: 
@@ -307,6 +317,12 @@ class _QPortfolios(PortfolioBase):
 
         return pa.table(columns, names=names)
 
+        # https://global-q.org/factors.html:
+        #
+        # "For a given anomaly, we offer value-weighted returns in percent for 1-way 
+        # sorted portfolios (mostly deciles, with a few quantiles) and 2-way (3 by 5) 
+        # independently sorted portfolios by interacting the anomaly with size."
+
 
 # Keeping private until ff/q/aqr portfolios have some kind of unified ux
 # and redone params. works.
@@ -314,6 +330,8 @@ def _get_q_portfolios(
     sort: str | list[str] | None = None,
     grid: str | None = None,
     count: int | None = None,
+    #*,
+    #weights: str | None = 'vw'
     **kwargs,
 ) -> _QPortfolios:
     """Internal helper: factory for q-factor portfolios."""
@@ -329,32 +347,28 @@ def _get_q_portfolios(
     return _QPortfolios(sort=final_sort, **kwargs)
 
 
-
 ### ----------------------------------------- WIP - ANOMALIES ------------
 
 class _QAnomalies(PortfolioBase):
     """Download q-factor anomaly portfolio return data from global-q.org.
 
-    References:
-        - Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies, 
-          Review of Financial Studies 33 (5), 2019-2133.
-
     Args:
-        anomaly: Anomaly identifier(s) or category name(s) (e.g., 'abr_1', 
-            'momentum', ['bm', 'roe_1']).
-        sort: Portfolio sort grid layout ('decile', '2x3', or '3x5').
-        frequency: Data frequency ('m' for monthly, 'y' for annual, 'w' for weekly).
+        anomaly: Anomaly identifiers or category names ('abr_1', 
+                 'momentum', ['bm', 'roe_1']).
+        sort: Portfolio sorts (decile, or 3x5).
+        frequency: Data frequency ('d', 'w', 'w2w', 'm', 'y').
         dividends: True for total returns (cum-div, ret_vw), False for capital gains (ex-div, retx_vw).
         **kwargs: Additional parameters passed to `PortfolioBase`.
 
     Notes:
-        - Ranks are in ascending order (e.g., decile '1' represents the lowest 
-          anomaly score, '10' the highest).
+        - Ranks are in ascending order
         - Multiple anomalies requested simultaneously are automatically joined 
           side-by-side by date.
+        - 1-way sort vary: most are deciles, some are quintiles.
 
-    - Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies, 
-      Review of Financial Studies 33 (5), 2019-2133. 
+    References:
+        - Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies, 
+          Review of Financial Studies 33 (5), 2019-2133.
     """
     Q_REGISTRY = {
         "momentum": {
@@ -407,7 +421,7 @@ class _QAnomalies(PortfolioBase):
 
     @property
     def _frequencies(self) -> list[str]:
-        return ["m", "y", "w"]
+        return ["m", "y", "w"]  #TODO: add d, w2w, q, 
 
     @classmethod
     def _resolve_anomalies(cls, raw_inputs: list[str]) -> list[str]:
@@ -488,7 +502,7 @@ class _QAnomalies(PortfolioBase):
     @property
     def schema(self) -> pa.Schema:
         """Schema for global-q anomalies."""
-        fields = [("date", pa.date32())]
+        fields = [("date", pa.string())]
         if self.frequency == 'm':
             fields.append(("nstocks", pa.int32()))
 

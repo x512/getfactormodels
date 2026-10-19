@@ -21,6 +21,7 @@ import sys
 import textwrap
 from pathlib import Path
 
+from pandas import test
 import pyarrow.csv as pv
 
 from getfactormodels._metadata import (

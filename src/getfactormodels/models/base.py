@@ -23,20 +23,44 @@ from getfactormodels.utils.date_utils import (
 from getfactormodels.utils.http_client import _HttpClient
 from getfactormodels.utils.utils import _save_to_file
 
-"""An abstract base class for model implementations.
+"""Abstract base classes, mixins, and containers for factor data.
 
-- FactorModel: abstract base class. Provides common data handling, 
-  caching, and date-filtering logic implemented by all factor models.
-- RegionMixin: A mixin for models supporting international data.
-- CompositeModel: base class for models built from other models.
-- ModelCollection: for returning multiple models in a combined table.
+Classes:
+    - FactorModel: abstract base class. Provides common data handling, 
+      caching, and date-filtering logic implemented by all factor models.
+    - RegionMixin: A mixin for models supporting international data.
+    - CompositeModel: base class for models built from other models.
+    - ModelCollection: for returning multiple models in a combined table.
+    - PortfolioBase: Abstract base class specialized for portfolio return 
+          datasets (sorting, weighting, and dividend handling).
 """
 logger = logging.getLogger(__name__)
 
 
 class FactorModel(ABC):
-    """Abstract Base Class used by all factor model implementations."""
-    def __init__(self, frequency: str | None = 'm',
+    """Abstract Base Class used by all factor model implementations.
+
+    Provides common data handling, caching, validation, and date-filtering 
+    logic implemented by all factor models.
+
+    Note:
+        Subclasses must inherit from `FactorModel` and implement the 
+        following abstract members:
+        
+        - `schema` (property): The PyArrow schema defining the table structure.
+        - `_frequencies` (property): List of supported frequencies.
+        - `_get_url()`: Method returning endpoint URL(s) as a string or dict.
+        - `_read(data)`: Method parsing raw downloaded bytes into a `pa.Table`.
+    """
+    """
+    # NEW TESTING FOR FOOTERS
+    _dataset_author: str | None = None
+    _dataset_repository: str | None = None
+    _dataset_year: str | None = None
+    _dataset_title: str | None = None
+    """
+    def __init__(self, 
+                 frequency: str | None = 'm',  #might remove None.
                  start_date: str | None  = None,
                  end_date: str | None = None,
                  output_file: str | None = None,
@@ -59,7 +83,7 @@ class FactorModel(ABC):
         self._start_date = None
         self._end_date = None
         self._frequency = None
-
+ 
         self.frequency = frequency 
         self.start_date = start_date 
         self.end_date = end_date
@@ -92,7 +116,7 @@ class FactorModel(ABC):
     def __len__(self) -> int:
         """Length of the pa.Table after filtering."""
         return len(self.data)
-    """
+    
     def __str__(self) -> str:
         if self.data is None:
             return self.__repr__()
@@ -104,10 +128,9 @@ class FactorModel(ABC):
 
         header = f"{self.__class__.__name__}{region_label}\n"
         return header + print_table_preview(self.data)
-    """
-    # Let .preview do the work
-    def __str__(self) -> str:
-        return self.preview()
+    
+    #def __str__(self) -> str:
+    #    return f"{self.preview}"
 
     def __repr__(self) -> str:
         params = []
@@ -336,6 +359,9 @@ class FactorModel(ABC):
 
         if getattr(self, 'drop_null', False):
             table = table.drop_null()
+
+        # TODO: change Mkt-RF to rmrf on ingest.
+        #table = table.rename_columns({'Mkt-RF': 'RMRF'})
 
         table.validate(full=True)
         self._data = rearrange_columns(table=table).combine_chunks()

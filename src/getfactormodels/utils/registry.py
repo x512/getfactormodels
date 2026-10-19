@@ -100,12 +100,12 @@ _MODEL_REGISTRY: Final = MappingProxyType({
     "ch3": {
         "model_class": "CHFactors",
         "name": "CH-3: Size and Value in China",
-        "aliases": ["ch3", "ch-3"],
+        "aliases": ["ch3", "ch-3", "cn3"],
     },
     "ch4": {
         "model_class": "CHFactors",
         "name": "CH-4: Size and Value in China",
-        "aliases": ["ch4", "ch-4"],
+        "aliases": ["ch4", "ch-4", "cn4"],
     },
 
 })

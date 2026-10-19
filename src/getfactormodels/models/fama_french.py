@@ -38,14 +38,16 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         region (str, optional): return an international/emerging market 
             model.
 
-    References:
-    - E. F. Fama and K. R., 1993. French. Common risk factors in the returns 
-      on stocks and bonds. Journal of Financial Economics, vol. 33, no. 1,
-      pp. 3–56.
-    - E. F. Fama and K. R. French, 2015. A five-factor asset pricing model. 
-      Journal of Financial Economics, vol. 116, no. 1, pp. 1–22.
-    - E. F. Fama and K. R. French, 2018. Choosing factors. Journal of 
-      Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
+    Reference:
+        - E. F. Fama and K. R., 1993. French. Common risk factors in the returns 
+        on stocks and bonds. Journal of Financial Economics, vol. 33, no. 1,
+        pp. 3–56.
+        
+        - E. F. Fama and K. R. French, 2015. A five-factor asset pricing model. 
+        Journal of Financial Economics, vol. 116, no. 1, pp. 1–22.
+        
+        - E. F. Fama and K. R. French, 2018. Choosing factors. Journal of 
+        Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
 
     """
     # TODO: NaNs in FamaFrench models! check
@@ -126,7 +128,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
 
     @property
     def _ff_region_map(self) -> dict[str, str]:
-        """Private: maps region input to region URL str"""
+        """Private: maps region input to region URL str."""
         return {
             'us': 'US',
             'emerging': 'Emerging',
@@ -598,6 +600,11 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         grid_map = {6: ("6_Portfolios", "2x3"),
                     25: ("25_Portfolios", "5x5"),
                     100: ("100_Portfolios", "10x10")}
+        if self.n_portfolios not in grid_map:
+            raise ValueError(
+                f"Unsupported portfolio count '{self.n_portfolios}' for bivariate sorts. "
+                f"Valid counts are: {sorted(grid_map.keys())}"
+            )
         prefix, grid = grid_map.get(self.n_portfolios, ("25_Portfolios", "5x5"))
 
         if not slug_part: # bivariate

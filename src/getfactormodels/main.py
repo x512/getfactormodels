@@ -20,7 +20,6 @@ from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
-from pathlib import Path
 from typing import Literal
 
 log = logging.getLogger("getfactormodels")
@@ -174,7 +173,7 @@ def anomaly(
 
 
 def model(
-    model: str | int | list[str | int] = 3,
+    model: str | int | list[str | int] = "3",
     region: str = 'usa',
     frequency: str = 'm',
     start_date: str | None = None,

@@ -28,7 +28,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Natural Language :: English",
 ]
-requires-python = ">=3.10,<4"
+requires-python = ">=3.11,<3.16"
 
 dependencies = [
     "pyarrow>=23.0.1,<=25.0.1",
@@ -54,6 +54,14 @@ tox = ">=4.32.0,<=4.64.9"
 isort = "^7.0"
 pyarrow-stubs = ">=20.0.0.20260819,<21.0.0.0"
 pyright = "^1.1.414"
+
+
+[tool.poetry.group.docs.dependencies]
+mkdocs-material = "^9.7.7"
+mkdocstrings = {extras = ["python"], version = "^1.0.7"}
+mkdocs-bibtex = "^4.4.0"
+pymdown-extensions = "^12.3"
+mkdocs-awesome-nav = "^3.3.0"
 
 [project.urls]
 Homepage = "https://github.com/x512/getfactormodels"
