@@ -8,7 +8,7 @@ authors:
 repository-code: "https://github.com/x512/getfactormodels"
 url: "https://pypi.org/project/getfactormodels/"
 license: "AGPL-3.0-or-later"
-version: "0.0.31"
+version: "0.0.32"
 date-released: "2026-10-16"
 keywords:
   - market-data
