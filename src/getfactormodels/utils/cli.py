@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
         """),
     )
     parser.add_argument("-V", "--version", action="version", 
-                        version=f"%(prog)s (v{__version__}) {__copyright__}")
+                        version=f"%(prog)s-{__version__}")
     
     parser.add_argument("--license", action="version", version=__license_text__, 
                         help="Print software license notice and exit.")
@@ -75,7 +75,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--list-anomalies', action='store_true',
                         help="Show all available q-factor anomalies and exit.")
 
-    parser.add_argument('--url', action='store_true', 
+    parser.add_argument('--url', '--urls', action='store_true', 
                         help="List target URLs and exit.")
     
     parser.add_argument("--delete-global-cache", action="store_true", 
@@ -110,7 +110,7 @@ def parse_args() -> argparse.Namespace:
 
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
-    port_group.add_argument('-p', '--portfolio', '--on', '--by', 
+    port_group.add_argument('-p', '--portfolio', '--on', 
                             dest='sort', nargs='+', metavar='FACTOR',
                             help="Factors to sort on (size, bm, or ia roe for q-factors).")
     
@@ -209,6 +209,7 @@ def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
         if not args.quiet:
             print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
+    
     if args.url and model_obj:
         from pprint import pprint
         pprint(model_obj.url)
@@ -273,6 +274,14 @@ def _cli():
 
     try:
         model_obj = _build_model(args)
+    except (ValueError, RuntimeError) as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # quick exit, but requires model  
+    _quick_exits(args, model_obj=model_obj)
+
+    try:
         model_obj.load()
     except (ValueError, RuntimeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -285,12 +294,10 @@ def _cli():
 
     if args.output:
         model_obj.to_file(args.output)
-
         if not args.quiet:
             actual_path = Path(args.output).expanduser()
             if actual_path.is_dir():
                 actual_path = actual_path / _generate_filename(model_obj)
-
             print(f"Data saved to: {actual_path.resolve()}", file=sys.stderr)
 
     nb_env = 'ipykernel' in sys.modules or 'JPY_PARENT_PID' in os.environ

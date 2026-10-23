@@ -197,15 +197,7 @@ class QFactors(FactorModel):
             table = scale_to_decimal(table)
 
             # Removing R_ prefixes 
-            renames = {"R_F": "RF_Q", 
-                       "R_MKT": "Mkt-RF",  #TODO: make all Mkt-RF "rm_rf" and make all headers lowercase.  
-                       "R_ME": "ME",
-                       "R_IA": "IA",
-                       "R_ROE": "ROE",
-                       "R_EG": "EG",
-                       }
-            table = table.rename_columns([renames.get(n, n) for n in table.column_names])
-
+            table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
             return table.combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
@@ -287,20 +279,7 @@ class _QPortfolios(PortfolioBase):
         read_opts = pv.ReadOptions(skip_rows=0)
         table = pv.read_csv(io.BytesIO(data), read_options=read_opts)
 
-        # works for now.
-        rename_map = {
-            "DATE": "date",
-            "Year": "year",
-            "Month": "month",
-            "Rank ME": "rank_ME",
-            "Rank IA": "rank_IA",
-            "Rank ROE": "rank_ROE",
-            "Rank EG": "rank_EG",
-            "Ret": "ret_vw",
-            "Retx": "retx_vw",
-            "N": "nstocks",
-        }
-        table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
+        table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
 
         if self.frequency == 'q':  # TODO: parse quarterly dates should handle and combination of yyyy/year and period/month/quarter for freq = q.
             table = table.rename_columns([
@@ -537,9 +516,11 @@ class _QAnomalies(PortfolioBase):
             ("retx_vw", pa.float64()),
         ]
         return pa.schema(fields)
+
+    @property
+    def _precision(self) -> int: 
+        return 5
     
-
-
 
     # adapted from jupyter notebook, don't use yet!
     def _group_anomalies_by_category(self) -> dict[str, list[str]]:
@@ -647,63 +628,8 @@ class _QAnomalies(PortfolioBase):
 
         return _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
 
-    def _process_anomaly_file(
-        self,
-        z: zipfile.ZipFile,
-        target_file: str,
-        anomaly: str,
-        freq_str: str,
-        val_col: str,
-    ) -> pa.Table:
-        """Processes a single CSV from the zip archive into a table."""
-        with z.open(target_file) as f:
-            csv_bytes = f.read()
-
-        read_opts = pv.ReadOptions(skip_rows=0)
-        table = pv.read_csv(io.BytesIO(csv_bytes), read_options=read_opts)
-
-        rename_map = {
-            "DATE": "date",
-            "Year": "year",
-            "Month": "month",
-            "Quarter": "period",
-            "Rank Decile": "rank_decile",
-            "Rank ME": "rank_me",
-            "Ret": "ret_vw",
-            "Retx": "retx_vw",
-            "N": "nstocks",
-        }
-
-        table = table.rename_columns([rename_map.get(c, c) for c in table.column_names])
-
-        if self.sort_type != 'decile':
-            cols = table.column_names
-            for i, col in enumerate(cols):
-                if col.lower().startswith("rank ") and col != "rank_me":
-                    cols[i] = "rank_anomaly"
-            table = table.rename_columns(cols)
-
-        if "year" in table.column_names:
-            y_str = pc.cast(table['year'], pa.string())
-            if "month" in table.column_names:
-                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
-                date_str = pc.binary_join_element_wise(y_str, m_str, "")
-                table = table.add_column(0, "date", date_str)
-                table = table.drop(["year", "month"])
-            else:
-                date_str = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
-                table = table.add_column(0, "date", date_str)
-                table = table.drop(["year"])
-
-        table = offset_period_eom(table, self.frequency)
-        table = scale_to_decimal(table)
-
-        return _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
 
 
-    @property
-    def _precision(self) -> int: 
-        return 5
 
 def _get_q_anomalies(name: str | list[str], **kwargs):
     return _QAnomalies(anomaly=name, **kwargs) 
