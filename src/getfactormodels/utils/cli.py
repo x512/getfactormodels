@@ -20,10 +20,7 @@ import os
 import sys
 import textwrap
 from pathlib import Path
-
-from pandas import test
 import pyarrow.csv as pv
-
 from getfactormodels._metadata import (
     __copyright__,
     __description__,
@@ -32,8 +29,8 @@ from getfactormodels._metadata import (
     __title__,
     __version__,
 )
-from getfactormodels.utils.utils import _generate_filename
 from getfactormodels.utils.registry import _MODEL_REGISTRY
+from getfactormodels.utils.utils import _generate_filename
 
 log = logging.getLogger("getfactormodels")
 
@@ -123,7 +120,7 @@ def parse_args() -> argparse.Namespace:
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (-I 12).")
     
-    port_group.add_argument('-w', '--weights', choices=['vw', 'ew'], default='vw',
+    port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
     
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
@@ -149,13 +146,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-H', '--height', type=int, default=6, metavar='ROWS',
                             help="Number of head/tail rows to show in preview (default: 6).")
     
-    parser.add_argument('-W', '--width', type=int, default=5, metavar='COLS',
+    parser.add_argument('-w', '--width', type=int, default=5, metavar='COLS',
                             help="Number of data columns to show. Not incl. truncated column or index. (default: 5).")
 
     parser.set_defaults(industry=None)
     args = parser.parse_args()
 
-    # fix: check for portfolio here 
     args.is_anomaly = bool(args.anomaly_names)
     args.is_portfolio = bool(args.ind_count or args.sort)
 
@@ -164,157 +160,120 @@ def parse_args() -> argparse.Namespace:
 
     if args.sort is None:
         if args.is_anomaly and not args.is_portfolio:
-            args.sort = 'decile'
+            args.sort = ['decile']
         elif args.is_portfolio and not args.is_anomaly:
-            args.sort = '2x3x3'
+            args.sort = ['2x3x3']
 
     if args.sort:
         args.sort = [item.strip().lower() for s in args.sort for item in s.split(',')]
         
-        # "industry" as sort 
         if args.sort[0] in ['industry', 'ind']:
             args.ind_count = int(args.sort[1]) if len(args.sort) > 1 else 12
             args.sort = None
-        
-            # "q" as sort - only 2 types of portfolios: checks for 
-            # ia roe eg or q. Needs refinement.
         else:
             q_cols = {'ia', 'roe', 'eg', 'q'}
             if any(k in args.sort for k in q_cols):
                 args.src = 'q'
                 if args.sort == ['q']:
-                    args.sort = None # use defaults
+                    args.sort = None
 
-    if args.ind_count:
-        args.industry = args.ind_count
-        args.sort = None
-    else:
-        args.industry = None
+    args.industry = args.ind_count if args.ind_count else None
+
+    args.grid, args.count = None, None
+    if args.sort_spec:
+        spec = str(args.sort_spec).strip().lower()
+        if 'x' in spec:
+            args.grid = spec
+        elif spec.isdigit():
+            args.count = int(spec)
+        elif not args.sort:
+            args.sort = [spec]
 
     return args
 
 
-# From main.py
-def _cli():
-    from getfactormodels.main import model, portfolio, clear_global_cache
-    args = parse_args()
+def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
+    from getfactormodels.main import clear_global_cache
 
     if args.list_regions:
         _cli_list_regions()
         sys.exit(0)
-
     if args.list_models:
         _cli_list_models()
         sys.exit(0)
-
     if args.list_anomalies:
         _cli_list_anomalies()
         sys.exit(0)
-
     if args.delete_global_cache:
         clear_global_cache()
         if not args.quiet:
             print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
-
-    if args.url:
-        from getfactormodels.main import model
+    if args.url and model_obj:
         from pprint import pprint
-        
-        m = model(
+        pprint(model_obj.url)
+        sys.exit(0)
+
+
+def _build_model(args: argparse.Namespace):
+    """Instantiates and combines requested models, portfolios, or anomalies."""
+    from getfactormodels.main import model, portfolio, anomaly 
+    from getfactormodels.models.base import ModelCollection
+
+    if args.is_portfolio and args.region:
+        raise NotImplementedError("Regional portfolio data not yet supported. Please omit the -r / --region flag.")
+
+    components = []
+
+    if args.model:
+        components.append(model(
             model=args.model,
             frequency=args.frequency,
             start_date=args.start,
             end_date=args.end,
             region=args.region,
-        )
-        
-        pprint(m.url)
-        sys.exit(0) #TODO: nicer output, print after table, no exit.
+        ))
 
-    args.grid = None
-    args.count = None
-    
-    if args.sort_spec:
-        spec = str(args.sort_spec).strip().lower()
-        # Check for grid
-        if 'x' in spec:
-            args.grid = spec
-        # Check for int
-        elif spec.isdigit():
-            args.count = int(spec)
-        else:
-            if not args.sort:
-                args.sort = [spec]
+    if args.is_portfolio:
+        components.append(portfolio(
+            source=args.src,
+            industry=args.industry,
+            sort=args.sort,
+            grid=args.grid,
+            count=args.count,
+            weights=args.weights,
+            frequency=args.frequency,
+            start_date=args.start,
+            end_date=args.end,
+            dividends=args.dividends,
+        ))
+
+    if args.is_anomaly:
+        components.append(anomaly(
+            source='q',
+            name=args.anomaly_names,
+            frequency=args.frequency,
+            sort='3x5' if args.bivariate else 'decile',
+            start_date=args.start,
+            end_date=args.end,
+        ))
+
+    if not components:
+        log.error("No data returned.")
+        print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
+        sys.exit(1)
+
+    return components[0] if len(components) == 1 else ModelCollection(instances=components)
+
+
+def _cli():
+    args = parse_args()
+
+    _quick_exits(args)
 
     try:
-        rhs, lhs, anom_obj = None, None, None
-
-        if args.is_portfolio and args.region:
-            raise NotImplementedError(
-                "Regional portfolio data not yet supported. Please omit the -r / --region flag."
-            )
-        
-        if args.model:
-            rhs = model(
-                model=args.model, 
-                frequency=args.frequency, 
-                start_date=args.start, 
-                end_date=args.end, 
-                region=args.region,
-            )
-
-        if args.is_portfolio:
-            lhs = portfolio(
-                source=args.src, 
-                industry=args.industry,
-                sort=args.sort,
-                grid=args.grid,
-                count=args.count,
-                weights=args.weights,
-                frequency=args.frequency,
-                start_date=args.start,
-                end_date=args.end,
-                dividends=args.dividends,
-            )
-
-        if args.is_anomaly:
-            from getfactormodels.main import anomaly
-            
-            anom_sort = '3x5' if args.bivariate else 'decile'
-
-            anom_obj = anomaly(
-                source='q',
-                name=args.anomaly_names,
-                frequency=args.frequency,
-                sort=anom_sort,
-                start_date=args.start,
-                end_date=args.end,
-            )
-        
-        # TODO: handle --no-join/--seperate
-        active_components = [c for c in [rhs, lhs, anom_obj] if c is not None]
-
-        if len(active_components) > 1:
-            # Join on 'date'
-            for comp in active_components:
-                comp.load()
-            
-            _table = active_components[0].data
-            for comp in active_components[1:]:
-                _table = _table.join(comp.data, keys="date", join_type="inner")
-            
-            model_obj = active_components[0]
-            model_obj._data = _table.sort_by("date")
-        else:
-            model_obj = active_components[0] if active_components else None
-         
-            if model_obj is None:
-                log.error("No data returned.")
-                print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
-                sys.exit(1)
-            model_obj.load()
-
+        model_obj = _build_model(args)
+        model_obj.load()
     except (ValueError, RuntimeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
@@ -334,20 +293,19 @@ def _cli():
 
             print(f"Data saved to: {actual_path.resolve()}", file=sys.stderr)
 
-    # fix: '%%bash' commands are run in a subprocess (output was entire table)
     nb_env = 'ipykernel' in sys.modules or 'JPY_PARENT_PID' in os.environ
 
-    if not sys.stdout.isatty() and not nb_env: # piped
-        # model_obj.data's been filtered. Write csv stream of it:
+    if not sys.stdout.isatty() and not nb_env:
         pv.write_csv(model_obj.data, sys.stdout.buffer)
-
     else:
-        # we're interactive/IPython: print preview of table to stderr. 
-        # uses the model_obj's __str__ (which prints the Table preview)
         if not args.quiet and not args.no_prev:
             preview_str = model_obj.preview(n_rows=args.height, n_cols=args.width)
             if preview_str:
                 sys.stderr.write(f"{preview_str}\n")
+
+
+if __name__ == '__main__':
+    _cli()
 
 # TODO: not here ----------------------------------------------------------
 def _cli_list_anomalies():
