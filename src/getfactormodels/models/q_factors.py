@@ -27,6 +27,58 @@ from getfactormodels.utils.date_utils import (
     parse_quarterly_dates,
 )
 
+_GLOBAL_Q_RENAME_MAP = {
+    "DATE": "date",
+    "Year": "year",
+    "Month": "month",
+    "Quarter": "period",
+    "Rank ME": "rank_ME",
+    "Rank IA": "rank_IA",
+    "Rank ROE": "rank_ROE",
+    "Rank EG": "rank_EG",
+    "Rank Decile": "rank_decile",
+    "Ret": "ret_vw",
+    "Retx": "retx_vw",
+    "N": "nstocks",
+}
+
+
+def _pivot_global_q_table(
+    table: pa.Table, 
+    value_col: str, 
+    anomaly_name: str | None = None
+) -> pa.Table:
+    rank_cols = [c for c in table.column_names if c.startswith("rank_")]
+    dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
+
+    sort_keys = [(col, "ascending") for col in rank_cols]
+    uniq_ports = table.group_by(rank_cols).aggregate([]).sort_by(sort_keys)
+
+    columns = [dates.column("date")]
+    names = ["date"]
+
+    for port in uniq_ports.to_pylist():
+        name_parts = []
+        for c in rank_cols:
+            clean_col = c.replace('rank_', '')
+            if clean_col == 'anomaly' and anomaly_name:
+                clean_col = anomaly_name
+            name_parts.append(f"{clean_col}_{port[c]}")
+        
+        name = "_".join(name_parts).lower()
+
+        mask = None
+        for col in rank_cols:
+            m = pc.equal(table[col], port[col])
+            mask = m if mask is None else pc.and_(mask, m)
+
+        subset = table.filter(mask).select(["date", value_col])
+        aligned = dates.join(subset, keys=["date"], join_type="left outer")
+        columns.append(aligned.column(value_col))
+        names.append(name)
+
+    return pa.table(columns, names=names)
+
 
 class QFactors(FactorModel): 
     """Download and process q-factor data from global-q.org.
@@ -283,39 +335,8 @@ class _QPortfolios(PortfolioBase):
 
         val_col = 'ret_vw' if self.dividends else 'retx_vw' 
 
-        return self._pivot_portfolios(table, val_col)
+        return _pivot_global_q_table(table, val_col)
 
-
-    # this is for both portfolios AND soon anomalies. 
-    # TODO: utils filter by date, quarterly offset and period offset need to be redone.
-    def _pivot_portfolios(self, table: pa.Table, value_col: str) -> pa.Table:
-        rank_cols = [c for c in table.column_names if c.startswith("rank_")]
-        # unique dates for an index
-        dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
-
-        sort_keys = [(col, "ascending") for col in rank_cols]
-        uniq_ports = table.group_by(rank_cols).aggregate([]).sort_by(sort_keys)
-
-        columns = [dates.column("date")]
-        names = ["date"]
-
-        for port in uniq_ports.to_pylist():
-            # builds column name (me1_eg2)
-            name = "_".join([f"{c.replace('rank_', '')}{port[c]}" for c in rank_cols]).lower()
-
-            mask = None
-            for col in rank_cols:
-                m = pc.equal(table[col], port[col])
-                mask = m if mask is None else pc.and_(mask, m)
-
-            # filter and align
-            subset = table.filter(mask).select(["date", value_col])
-            # left outer for dates that exist
-            aligned = dates.join(subset, keys=["date"], join_type="left outer")
-            columns.append(aligned.column(value_col))
-            names.append(name)
-
-        return pa.table(columns, names=names)
 
         # https://global-q.org/factors.html:
         #
@@ -502,7 +523,7 @@ class _QAnomalies(PortfolioBase):
     @property
     def schema(self) -> pa.Schema:
         """Schema for global-q anomalies."""
-        fields = [("date", pa.string())]
+        fields = [("date", pa.date32())]
         if self.frequency == 'm':
             fields.append(("nstocks", pa.int32()))
 
@@ -517,88 +538,66 @@ class _QAnomalies(PortfolioBase):
         ]
         return pa.schema(fields)
     
-    # adapted from .portfolio
-    def _pivot_portfolios(self, table: pa.Table, value_col: str, current_anomaly: str) -> pa.Table:
-        rank_cols = [c for c in table.column_names if c.startswith("rank_")]
-        dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
 
-        sort_keys = [(col, "ascending") for col in rank_cols]
-        uniq_ports = table.group_by(rank_cols).aggregate([]).sort_by(sort_keys)
-
-        columns = [dates.column("date")]
-        names = ["date"]
-
-        for port in uniq_ports.to_pylist():
-            name_parts = []
-            for c in rank_cols:
-                clean_col = c.replace('rank_', '')
-                if clean_col == 'anomaly':
-                    clean_col = current_anomaly
-                name_parts.append(f"{clean_col}_{port[c]}")
-
-            name = "_".join(name_parts).lower()
-
-            mask = None
-            for col in rank_cols:
-                m = pc.equal(table[col], port[col])
-                mask = m if mask is None else pc.and_(mask, m)
-
-            subset = table.filter(mask).select(["date", value_col])
-            aligned = dates.join(subset, keys=["date"], join_type="left outer")
-            columns.append(aligned.column(value_col))
-            names.append(name)
-
-        return pa.table(columns, names=names)
 
 
     # adapted from jupyter notebook, don't use yet!
-    def _read(self, data: bytes) -> pa.Table:
+    def _group_anomalies_by_category(self) -> dict[str, list[str]]:
+        """Group requested anomalies by their respective dataset categories."""
+        cat_to_anoms = {}
+        for a in self.anomalies:
+            cat = self._get_category(a)
+            cat_to_anoms.setdefault(cat, []).append(a)
+        return cat_to_anoms
+
+    def _fetch_category_zips(self, cat_to_anoms: dict[str, list[str]], initial_data: bytes) -> dict[str, bytes]:
+        """Download or retrieve from cache all zip archives required for the requested anomalies."""
         from getfactormodels.utils.http_client import _HttpClient
 
-        try:
-            cat_to_anoms = {}
-            for a in self.anomalies:
-                cat = self._get_category(a)
-                cat_to_anoms.setdefault(cat, []).append(a)
+        first_cat = self._get_category(self.anomalies[0])
+        zip_bytes_cache = {first_cat: initial_data}
 
-            freq_str = self._FREQ_STR[self.frequency]
+        with _HttpClient() as client:
+            for cat in cat_to_anoms:
+                if cat not in zip_bytes_cache:
+                    cat_url = self._get_category_url(cat)
+                    zip_bytes_cache[cat] = client.download(
+                        cat_url, tag="AnomalyData", model_name=f"Q-{cat.capitalize()}"
+                    )
+        return zip_bytes_cache
+
+    def _find_target_file(self, namelist: list[str], anomaly: str, freq_str: str, prefix_str: str) -> str:
+        """Locate the exact CSV filename inside the zip archive namelist."""
+        target_file = next(
+            (n for n in namelist 
+             if f"_{anomaly}_" in n.lower() 
+             and freq_str in n.lower()
+             and (not prefix_str or n.lower().startswith(prefix_str))),
+            None,
+        )
+        if not target_file:
+            raise ValueError(f"Could not find file for anomaly: '{anomaly}'.")
+        return target_file
+
+    def _read(self, data: bytes) -> pa.Table:
+        """Orchestrates fetching, extraction, processing, and joining of anomaly datasets."""
+        try:
+            cat_to_anoms = self._group_anomalies_by_category()
+            zip_bytes_cache = self._fetch_category_zips(cat_to_anoms, data)
+
+            _freq_str = self._FREQ_STR[self.frequency]
             prefix_str = "me_" if self.sort_type == '3x5' else ""
-            val_col = 'ret_vw' if self.dividends else 'retx_vw'
+            _val_col = 'ret_vw' if self.dividends else 'retx_vw'
 
             pivoted_tables = []
-            first_cat = self._get_category(self.anomalies[0])
-            zip_bytes_cache = {first_cat: data}
-
-            with _HttpClient() as client:
-                for cat, anoms in cat_to_anoms.items():
-                    if cat not in zip_bytes_cache:
-                        cat_url = self._get_category_url(cat)
-                        zip_bytes_cache[cat] = client.download(
-                            cat_url, 
-                            tag="AnomalyData", 
-                            model_name=f"Q-{cat.capitalize()}",
-                        )
-
-                    zip_bytes = zip_bytes_cache[cat]
-
-                    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
-                        namelist = z.namelist()
-
-                        for a in anoms:
-                            target_file = next(
-                                (n for n in namelist 
-                                    if f"_{a}_" in n.lower() 
-                                    and freq_str in n.lower()
-                                    and (not prefix_str or n.lower().startswith(prefix_str))),
-                                None,
-                            )
-                            if not target_file:
-                                raise ValueError(f"Could not find file for: '{a}'.")
-
-                            pivoted = self._process_anomaly_file(
-                                z, target_file, a, freq_str, val_col,
-                            )
-                            pivoted_tables.append(pivoted)
+            for cat, anoms in cat_to_anoms.items():
+                with zipfile.ZipFile(io.BytesIO(zip_bytes_cache[cat])) as z:
+                    namelist = z.namelist()
+                    for a in anoms:
+                        target_file = self._find_target_file(namelist, a, _freq_str, prefix_str)
+                        pivoted = self._process_anomaly_file(z, target_file, a, _freq_str, _val_col)
+                        
+                        pivoted_tables.append(pivoted)
 
             final_table = pivoted_tables[0]
             for t in pivoted_tables[1:]:
@@ -610,6 +609,43 @@ class _QAnomalies(PortfolioBase):
             raise ValueError(str(e)) from e
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
             raise ValueError(f"Reading failed: {e}") from e
+
+
+    def _process_anomaly_file(
+        self, z: zipfile.ZipFile, target_file: str, anomaly: str, val_col: str
+    ) -> pa.Table:
+        """Processes a single CSV from the zip archive into a pivoted table."""
+        with z.open(target_file) as f:
+            csv_bytes = f.read()
+
+        read_opts = pv.ReadOptions(skip_rows=0)
+        table = pv.read_csv(io.BytesIO(csv_bytes), read_options=read_opts)
+
+        table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
+
+        if self.sort_type != 'decile':
+            cols = table.column_names
+            for i, col in enumerate(cols):
+                if col.lower().startswith("rank ") and col != "rank_me":
+                    cols[i] = "rank_anomaly"
+            table = table.rename_columns(cols)
+
+        if "year" in table.column_names:
+            y_str = pc.cast(table['year'], pa.string())
+            if "month" in table.column_names:
+                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
+                date_str = pc.binary_join_element_wise(y_str, m_str, "")
+                table = table.add_column(0, "date", date_str)
+                table = table.drop(["year", "month"])
+            else:
+                date_str = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
+                table = table.add_column(0, "date", date_str)
+                table = table.drop(["year"])
+
+        table = offset_period_eom(table, self.frequency)
+        table = scale_to_decimal(table)
+
+        return _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
 
     def _process_anomaly_file(
         self,
@@ -662,7 +698,7 @@ class _QAnomalies(PortfolioBase):
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
 
-        return self._pivot_portfolios(table, val_col, current_anomaly=anomaly)
+        return _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
 
 
     @property

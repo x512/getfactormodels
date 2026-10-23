@@ -16,11 +16,11 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
+from typing import Literal
 from getfactormodels import models as factor_models
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
-from typing import Literal
 
 log = logging.getLogger("getfactormodels")
 
@@ -55,7 +55,7 @@ def portfolio(
     source: str = 'ff',                     # 'q', 'ff', or 'aqr'
     dividends: bool = True,                 # False for ex-div (retx_vw)
     **kwargs,
-    ):
+):
     """Download portfolio return data.
 
     Args:
@@ -75,13 +75,13 @@ def portfolio(
     if kwargs.get('region') is not None:
         raise NotImplementedError(
             "Regional data is not yet supported for portfolios (US only). "
-            "Please omit the region parameter."
+                "Please omit the region parameter."
         )
 
     if 'formed_on' in kwargs:
         warnings.warn(
             "The 'formed_on' parameter is deprecated and will be removed in a future release. "
-            "Please use 'sort' instead.",
+                "Please use 'sort' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -103,7 +103,7 @@ def portfolio(
     if source == 'q':
         from getfactormodels.models.q_factors import _get_q_portfolios
         return _get_q_portfolios(**params)
-        
+
     if source in ['ff', 'famafrench']:
         # Quick check
         if frequency == 'w':
@@ -161,15 +161,15 @@ def anomaly(
         "start_date": start_date,
         "end_date": end_date,
         "cache_ttl": cache_ttl,
-     #   **output_opts,
+        #   **output_opts,
         **kwargs,
     }
 
     if src in ["q", "global-q"]:
         from getfactormodels.models.q_factors import _get_q_anomalies
         return _get_q_anomalies(**params)
-    else:
-        raise NotImplementedError(f"Anomalies not supported for source: '{source}'")
+    
+    raise NotImplementedError(f"Anomalies not supported for source: '{src}'")
 
 
 def model(
@@ -184,7 +184,7 @@ def model(
     **kwargs,
 ) -> FactorModel:
     """Download factor model data.
-    
+
     Args:
         model (str | list[str]): Model identifier.
         region: Geographical region (e.g., 'usa', 'developed').
@@ -200,7 +200,6 @@ def model(
         model_input = model
 
     if isinstance(model_input, list):
-        # Multi-model collection
         from getfactormodels.models.base import ModelCollection
         model_keys = [get_model_key(m) for m in model_input]
         collection = ModelCollection(
@@ -218,7 +217,7 @@ def model(
 
     model_key = get_model_key(model_input)
     class_name = get_model_class(model_key)
-    
+
     model_class = getattr(factor_models, class_name, None)
     if model_class is None:
         raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
@@ -226,11 +225,11 @@ def model(
     is_regional = issubclass(model_class, RegionMixin)
     if not is_regional:
         if region is not None and region.lower() not in ['usa', 'us']:
-             raise ValueError(f"Model '{class_name}' does not support region: {region}")
+            raise ValueError(f"Model '{class_name}' does not support region: {region}")
         kwargs.pop('region', None)
     else:
         kwargs['region'] = region
-    
+
     kwargs.pop('model', None)
 
     instance = model_class(
@@ -238,7 +237,6 @@ def model(
         frequency=frequency,
         start_date=start_date,
         end_date=end_date,
-        #force=force,
         **kwargs,
     )
 
@@ -252,7 +250,7 @@ def get_factors(*args, **kwargs):  # noqa
     """DEPRECATED: Use `model()` instead."""
     warnings.warn(
         "get_factors() is deprecated and will be removed in a future version. "
-        "Please use model() for factor data or portfolio() for return data.",
+            "Please use model() for factor data or portfolio() for return data.",
         FutureWarning,
         stacklevel=2,
     )
