@@ -40,13 +40,13 @@ logger = logging.getLogger(__name__)
 class FactorModel(ABC):
     """Abstract Base Class used by all factor model implementations.
 
-    Provides common data handling, caching, validation, and date-filtering 
+    Provides common data handling, caching, validation, and date-filtering
     logic implemented by all factor models.
 
     Note:
-        Subclasses must inherit from `FactorModel` and implement the 
+        Subclasses must inherit from `FactorModel` and implement the
         following abstract members:
-        
+
         - `schema` (property): The PyArrow schema defining the table structure.
         - `_frequencies` (property): List of supported frequencies.
         - `_get_url()`: Method returning endpoint URL(s) as a string or dict.
@@ -59,18 +59,18 @@ class FactorModel(ABC):
     _dataset_year: str | None = None
     _dataset_title: str | None = None
     """
-    def __init__(self, 
-                 frequency: str | None = 'm',  #might remove None.
+    def __init__(self,
+                 frequency: str | None = 'm',
                  start_date: str | None  = None,
                  end_date: str | None = None,
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
                  #force: bool = False,  # NEW force redownload
                  **kwargs):
-        """Initialize the factor model instance.
+        """Initialize a model instance.
 
         Args:
-            frequency (str): the frequency of the data. Default: 'm'.
+            frequency (str): the frequency of the data. Default: m.
             start_date (str, opt): The start date YYYY[-MM-DD]
             end_date (str, opt): The end date YYYY[-MM-DD]
             output_file (str): optional path to save data to.
@@ -83,18 +83,17 @@ class FactorModel(ABC):
         self._start_date = None
         self._end_date = None
         self._frequency = None
- 
-        self.frequency = frequency 
-        self.start_date = start_date 
+
+        self.frequency = frequency
+        self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
         self.cache_ttl = cache_ttl
-
-       # self.force = force # not impl
+        # self.force = force # not impl
         self.model = str(kwargs.get("model", self.__class__.__name__))
-
         self.copyright: str = ""  # NEW, TEST. fix: Carhart erroring with FF with copyright
         self._selected_factors: list[str] | None = None  # for eg drop/extract  # changing
+        
         super().__init__()
 
     def clear_cache(self) -> int:
@@ -103,24 +102,24 @@ class FactorModel(ABC):
         from getfactormodels.utils.cache import _Cache
 
         cache_dir = user_cache_path(appname="getfactormodels", appauthor="x512", ensure_exists=True)
-        
+
         # Handle ModelCollection/CompositeModel vs standard FactorModel
         keys_to_evict = getattr(self, "model_keys", self.model)
 
         with _Cache(cache_dir) as cache:
             count = cache.evict_model(keys_to_evict)
-            
+
         self._data = None
         return count
 
     def __len__(self) -> int:
         """Length of the pa.Table after filtering."""
         return len(self.data)
-    
+
     def __str__(self) -> str:
         if self.data is None:
             return self.__repr__()
-        
+
         if isinstance(self, RegionMixin):
             region_label = f" ({self.region})"
         else:
@@ -128,7 +127,7 @@ class FactorModel(ABC):
 
         header = f"{self.__class__.__name__}{region_label}\n"
         return header + print_table_preview(self.data)
-    
+
     #def __str__(self) -> str:
     #    return f"{self.preview}"
 
@@ -185,7 +184,7 @@ class FactorModel(ABC):
         self._start_date, self._end_date = validate_date_range(self._start_date, valid)
 
     @property
-    def frequency(self) -> str | None: 
+    def frequency(self) -> str | None:
         return self._frequency
     @frequency.setter
     def frequency(self, value: str | None):
@@ -195,11 +194,11 @@ class FactorModel(ABC):
 
         val = value.lower()
         if val not in self._frequencies:
-            raise ValueError(f"Invalid '{val}'. Options: {self._frequencies}") 
+            raise ValueError(f"Invalid '{val}'. Options: {self._frequencies}")
 
         if val != self._frequency:
             if self._frequency is not None:
-                msg = f"Freq. changed from {self._frequency} to {val}." 
+                msg = f"Freq. changed from {self._frequency} to {val}."
                 self.log.info(msg)
             self._frequency = val
             self._data = None
@@ -207,10 +206,10 @@ class FactorModel(ABC):
 
     @property
     def data(self) -> pa.Table:
-        """Returns a pa.Table with requested data (sliced)."""
+        """Return a table with requested data."""
         if self._data is None:
-            self.load()   # Don't know if good idea
-            
+            self.load()
+
         table = self._data
 
         # drop/extract handled here.
@@ -226,7 +225,6 @@ class FactorModel(ABC):
         """(rows, columns), like Pandas/Numpy."""
         return self.data.shape
 
-   
 
     def join(self, other: "FactorModel") -> "ModelCollection":
         """Joins this model with another model or portfolio."""
@@ -236,17 +234,16 @@ class FactorModel(ABC):
 
     def extract(self, factor: str | list[str]) -> "FactorModel":   #Self
         """Select specific factors from the model. Str or list[str]."""
-        table = select_table_columns(self.load(), factor)
+        table = select_table_columns(self.data, factor)
         self._selected_factors = [f for f in table.column_names if f != 'date']
         return self
 
 
     def drop(self, factor: str | list[str]) -> "FactorModel": #Self
         """Remove specific factors from the model. Str or list[str]."""
-        t_cols = self.load().column_names
+        t_cols = self.data.column_names
         to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
 
-        # select: cols (lowercase) not in the to_drop set
         selection = [c for c in t_cols if c.lower() not in to_drop and c != 'date']
 
         if not selection:
@@ -260,7 +257,7 @@ class FactorModel(ABC):
         """Save data to a file.
 
         Supports .parquet, .ipc, .feather, .csv, .txt, .pkl, .md
-        
+
         Args:
             filepath (str | Path, optional): filepath to save data to.
         """
@@ -282,7 +279,7 @@ class FactorModel(ABC):
     def to_pandas(self) -> "pd.DataFrame":
         """Convert model to a pandas DataFrame.
 
-        Triggers a data download if the model has not yet been loaded. 
+        Triggers a data download if the model has not yet been loaded.
         Sets the 'date' column as the index.
 
         Returns:
@@ -304,9 +301,9 @@ class FactorModel(ABC):
     def to_polars(self) -> "pl.DataFrame":
         """Convert model to a polars DataFrame.
 
-        A wrapper around Polars `from_arrow()`. Triggers 
+        A wrapper around Polars `from_arrow()`. Triggers
         download if not already loaded.
-        
+
         Returns:
             polars.DataFrame
 
@@ -318,7 +315,7 @@ class FactorModel(ABC):
             return pl.from_arrow(self.data)
         except ImportError:
             raise ImportError("Requires Polars. Try `pip install polars`") from None
-    
+
     # maybe
     def preview(self, n_rows: int = 6, n_cols: int = 5) -> str | None:
         if self.data is None:
@@ -331,28 +328,38 @@ class FactorModel(ABC):
 
         header = f"{self.__class__.__name__}{region_label}\n"
         table_str = print_table_preview(self.data, n_rows=n_rows, n_cols=n_cols)
-        
+
         if table_str is None:
             return header + "Empty Table"
-            
+
         return header + table_str
 
 
-    def load(self, client: _HttpClient | None = None) -> pa.Table:
-        if self._data is not None and not self.force:
-            return self._data
+    def load(self, client: _HttpClient | None = None) -> "FactorModel":
+        if self._data is not None: # and not force
+            return self
 
+        raw_table = self._get_data(client)
+        self._data = self._process_table(raw_table)
+        return self
+
+
+    def _get_data(self, client: _HttpClient | None = None) -> pa.Table:
         if hasattr(self, '_construct'):
             if client is None:
                 with _HttpClient() as shared_client:
-                    table = self._construct(shared_client)
-            else:
-                table = self._construct(client)
-        else:
-            raw_bytes = self._download(client=client)
-            table = self._read(raw_bytes)
+                    return self._construct(shared_client)
+            return self._construct(client)
 
+        raw_bytes = self._download(client=client)
+        return self._read(raw_bytes)
+
+
+    def _process_table(self, table: pa.Table) -> pa.Table:
         if "date" in table.column_names:
+            if table.column("date").type != pa.date32():
+                idx = table.column_names.index("date")
+                table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
             table = table.sort_by([("date", "ascending")])
 
         table = round_to_precision(table, self._precision)
@@ -360,12 +367,10 @@ class FactorModel(ABC):
         if getattr(self, 'drop_null', False):
             table = table.drop_null()
 
-        # TODO: change Mkt-RF to rmrf on ingest.
-        #table = table.rename_columns({'Mkt-RF': 'RMRF'})
-
         table.validate(full=True)
-        self._data = rearrange_columns(table=table).combine_chunks()
-        return self
+
+        return rearrange_columns(table=table).combine_chunks()
+
 
     def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
         urls = self._get_url()
@@ -399,6 +404,7 @@ class FactorModel(ABC):
         except Exception as e:
             self.log.error(f"Download failed: {e}")
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
+
 
     # might move to utils
     def __dataframe__(self, *, nan_as_null: bool = False):
@@ -445,7 +451,7 @@ class FactorModel(ABC):
     def _frequencies(self) -> list[str]:
         pass
 
-    @abstractmethod 
+    @abstractmethod
     def _get_url(self) -> str | dict[str, str]:
         """Build the unique data source URL."""
         pass
@@ -474,8 +480,7 @@ class CompositeModel(FactorModel):
     @abstractmethod
     def _construct(self, client: _HttpClient) -> pa.Table:
         pass
-   
-    # TEST new
+
     @property
     def components(self) -> list[FactorModel]:
         """Sub-models that make up this composite model. Override in subclasses if needed."""
@@ -489,38 +494,45 @@ class CompositeModel(FactorModel):
                 for inst in self.components
             }
         return {}
-    
+
     def _read(self, data: bytes) -> pa.Table:
         raise NotImplementedError("CompositeModel: _read called on a composite models.")
 
 
-class ModelCollection(CompositeModel):
-    """Internal container holding multiple joined models, portfolios, or datasets.
-    
-    Used to automatically join multiple datasets when requested. Not initialized by 
-    the end under.
-    """
+class ModelCollection(FactorModel):
+    """Container holding multiple joined models, portfolios, or datasets."""
     def __init__(self,
-                 model_keys: list[str] | None = None, 
+                 model_keys: list[str] | None = None,
                  instances: list[FactorModel] | None = None,
                  **kwargs):
-        """Initialize the ModelCollection instance.
+        """Initialize ModelCollection instance.
 
         Args:
             model_keys (list[str], optional): List of model names to instantiate and combine.
             instances (list[FactorModel], optional): Pre-instantiated factor model instances.
             **kwargs: Additional keyword arguments forwarded to component models.
         """
-        from getfactormodels.main import model
-        
         if instances:
             self.instances = instances
             self.model_keys = [i.__class__.__name__ for i in instances]
         elif model_keys:
+            #temp FIXME
+            import getfactormodels.models as factor_models
+            from getfactormodels.utils.registry import (
+                get_model_class,
+                get_model_key,
+            )
+
             self.model_keys = model_keys
-            self.instances = [model(m, **kwargs) for m in model_keys]
+            self.instances = []
+            for m in model_keys:
+                key = get_model_key(m)
+                class_name = get_model_class(key)
+                model_class = getattr(factor_models, class_name)
+                self.instances.append(model_class(model=key, **kwargs))
         else:
             raise ValueError("model_keys or instances required.")
+
         super().__init__(**kwargs)
 
     def __str__(self) -> str:
@@ -538,7 +550,6 @@ class ModelCollection(CompositeModel):
 
     @property
     def _frequencies(self) -> list[str]:
-        # the intersection of frequencies btw models
         freqs = set(self.instances[0]._frequencies)
         for inst in self.instances[1:]:
             freqs &= set(inst._frequencies)
@@ -547,48 +558,59 @@ class ModelCollection(CompositeModel):
     @property
     def schema(self) -> pa.Schema:   #TODO: FIXME: all schemas match source. Apply new schema from cols or just rework the entire schema thing...?
         return _merge_schemas([inst.schema for inst in self.instances])
-    
+
 
     def _construct(self, client: _HttpClient) -> pa.Table:
-        # .load() all instances
         for inst in self.instances:
             inst.load(client=client)
-        
-        # first table is the base. Redundant recast date32 here...
-        base_table = self.instances[0].data
-        if base_table.column("date").type != pa.date32():
-            base_table = base_table.set_column(0, "date", base_table.column("date").cast(pa.date32()))
-        
-        final_table = base_table
+
+        if not self.instances:
+            raise ValueError("ModelCollection has no instances to construct.")
+
+        final_table = self._cast_dates(self.instances[0].data)
+
+        is_portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
+        join_type = "inner" if is_portfolio_join else "left outer"
 
         for inst in self.instances[1:]:
-            next_table = inst.data
-            
-            if next_table.column("date").type != pa.date32():
-                next_table = next_table.set_column(0, "date", next_table.column("date").cast(pa.date32()))
-            
-            # overlaps are kept from the first table. TODO: only actual dupe cols, 
-            # every factor needs a unique ID.
-            overlaps = set(final_table.column_names) & set(next_table.column_names)
-            overlaps.discard('date')
-
-            uniq_cols = [c for c in next_table.column_names if c not in overlaps]
-            if "date" not in uniq_cols:
-                uniq_cols.insert(0, "date")
-
-            table_to_join = next_table.select(uniq_cols)
-
-            # Portfolio to FactorModel: inner. FactorModel to FactorModel: left outer
-            is_portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
-            join_type = "inner" if is_portfolio_join else "left outer"
-
-            final_table = final_table.join(
-                table_to_join,
-                keys="date",
-                join_type=join_type,
-            )
+            next_table = self._cast_dates(inst.data)
+            final_table = self._join_method(final_table, next_table, join_type=join_type)
 
         return final_table.sort_by([("date", "ascending")])
+
+    @staticmethod
+    def _cast_dates(table: pa.Table) -> pa.Table:
+        from getfactormodels.utils.date_utils import offset_period_eom
+        return offset_period_eom(table)
+
+    @staticmethod
+    def _join_method(base_table: pa.Table, next_table: pa.Table, join_type: str) -> pa.Table:
+        overlaps = set(base_table.column_names) & set(next_table.column_names)
+        overlaps.discard('date')
+
+        uniq_cols = [c for c in next_table.column_names if c not in overlaps]
+        if "date" not in uniq_cols:
+            uniq_cols.insert(0, "date")
+
+        table_to_join = next_table.select(uniq_cols)
+
+        return base_table.join(
+            table_to_join,
+            keys="date",
+            join_type=join_type,
+        ).combine_chunks()
+
+    def _get_url(self) -> dict[str, str | dict]:
+        """Returns URLs of all underlying component models."""
+        if getattr(self, "instances", None):
+            return {
+                getattr(inst, 'model', inst.__class__.__name__): inst.url
+                for inst in self.instances
+            }
+        return {}
+
+    def _read(self, data: bytes) -> pa.Table:
+        raise NotImplementedError("ModelCollection: _read called on a collection.")
 
 
 class RegionMixin:
@@ -606,11 +628,11 @@ class RegionMixin:
         'ex-us': 'global ex usa',
         'north-america': 'north america', 'north america': 'north-america',
 
-        # FF regions : AQR Aggregate Portfolios. 
+        # FF regions : AQR Aggregate Portfolios.
         # Note: AQR's 'pacific' includes japan.
         #for VME
         'global_stocks': 'all_equities',
-        
+
         # Aus
         'australia': 'aus', 'au': 'aus',
     }
@@ -627,13 +649,13 @@ class RegionMixin:
         if not self._regions:
             return ""
 
-        # set default: usa, else first region if no usa in model's regions... 
+        # set default: usa, else first region if no usa in model's regions...
         if 'us' in self._regions:
             return 'us'
         if 'usa' in self._regions:
             return 'usa'
         return self._regions[0]
-            
+
     @region.setter
     def region(self, value: str | None):
         if value is None:
@@ -643,7 +665,7 @@ class RegionMixin:
         val = str(value).strip().lower()
         # Try a direct match, then alias, else keep (to fail)
         resolved = val if val in self._regions else self._aliases.get(val, val)
-        
+
         if resolved not in self._regions:
             raise ValueError(f"Region '{value}' not supported for {self.__class__.__name__}. "
                              f"Available: {self._regions}")
@@ -655,35 +677,35 @@ class RegionMixin:
                 self.log.info(f"Region changed to {resolved}. Cache reset.")
 
         self._region = resolved
-    
+
     @classmethod
     def list_regions(cls) -> list[str]:
         """List available regions without instantiation."""
         if isinstance(cls._regions, property):
             # reach into the fget of the property
-            return cls._regions.fget(cls) 
+            return cls._regions.fget(cls)
         return cls._regions
 
 
 class PortfolioBase(FactorModel, ABC):
     """Abstract base class for portfolio return datasets."""
     def __init__(
-        self,
-        frequency: str = 'm',
-        sort: str | list[str] | None = None,
-        grid: str | None = None,
-        count: int | None = None,
-        weights: Literal['vw', 'ew'] = 'vw',
-        *,
-        dividends: bool = True,  # tot ret by default
-        **kwargs,
+            self,
+            frequency: str = 'm',
+            sort: str | list[str] | None = None,
+            grid: str | None = None,
+            count: int | None = None,
+            weights: Literal['vw', 'ew'] = 'vw',
+            *,
+            dividends: bool = True,  # tot ret by default
+            **kwargs,
     ):
         """Initialize the portfolio model instance.
 
         Args:
             frequency (str, optional): Data frequency ('m' or 'd'). Default is 'm'.
             sort (str | list[str], optional): Sorting variable(s) for portfolios.
-            grid (str, optional): 
+            grid (str, optional):
             count (int, optional): Number of portfolios.
             weights (str, optional): Weighting scheme ('vw' for value-weighted, 'ew' for equal-weighted). Default is 'vw'.
             dividends (bool, optional): Include dividends in total returns. Default is True.
@@ -708,7 +730,7 @@ class PortfolioBase(FactorModel, ABC):
 
 #class AnomalyBase(PortfolioBase):
 #    """Base class for anomaly datasets."""
-#    
+#
 #    def __init__(self, anomaly: str | list[str], **kwargs):
 #        self.anomaly = [anomaly] if isinstance(anomaly, str) else anomaly
 #        super().__init__(**kwargs)
