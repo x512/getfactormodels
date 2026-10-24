@@ -7,11 +7,6 @@
 
 Provides data retrieval, parsing, and processing for q-factor models (Q4/Q5), 
 benchmark portfolios, and anomaly datasets from global-q.org (Hou, Xue, and Zhang).
-
-Classes:
-    - QFactors:
-    - _QPortfolios: 
-    - _QAnomalies: 
 """
 import io
 import zipfile
@@ -40,14 +35,40 @@ _GLOBAL_Q_RENAME_MAP = {
     "Ret": "ret_vw",
     "Retx": "retx_vw",
     "N": "nstocks",
+    "R_F": "RF_Q",
 }
 
+def _format_date_column(table: pa.Table, frequency: str) -> pa.Table:
+    """Format and standardize date columns for global-q tables based on frequency."""
+    cols = table.column_names
+
+    # quarterly columns or frequency here
+    if frequency == 'q' or "quarter" in cols:
+        if "quarter" in cols and "period" not in cols:
+            table = table.rename_columns(['period' if c == 'quarter' else c for c in table.column_names])
+        return parse_quarterly_dates(table=table)
+
+    if frequency == 'y' and "year" in cols:
+        idx = cols.index("year")
+        return table.set_column(idx, "date", table.column(idx).cast(pa.string()))
+
+    time_col = "period" if "period" in cols else ("month" if "month" in cols else None)
+
+    if "year" in cols and time_col:
+        yr = table.column("year").cast(pa.string())
+        val = pc.utf8_lpad(table.column(time_col).cast(pa.string()), width=2, padding="0")
+        dates = pc.binary_join_element_wise(yr, val, "")
+        table = table.drop(["year", time_col]).combine_chunks()
+        return table.add_column(0, "date", dates)
+
+    return table
 
 def _pivot_global_q_table(
     table: pa.Table, 
     value_col: str, 
     anomaly_name: str | None = None
 ) -> pa.Table:
+    """Pivot Global Q's portfolio sorts and anomalies."""
     rank_cols = [c for c in table.column_names if c.startswith("rank_")]
     dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
 
@@ -103,8 +124,6 @@ class QFactors(FactorModel):
         Args:
             classic (bool, optional): Returns the original 4-factor model 
                 instead of the augmented 5-factor model. Default: `False`.
-            **kwargs: Additional keyword arguments passed to `FactorModel` 
-                (`frequency`, `start_date`, `end_date`, `cache_ttl`).
         """
         self.classic = classic
         super().__init__(**kwargs)
@@ -149,28 +168,6 @@ class QFactors(FactorModel):
         url += f'/q5_factors_{file}_{last_year}.csv'
         return url
 
-
-    def _format_date_column(self, table: pa.Table) -> pa.Table:
-        freq = self.frequency
-        cols = table.column_names
-
-        if freq == 'q':
-            return parse_quarterly_dates(table=table)
-        
-        if "year" in cols and "period" in cols:
-            yr = table.column("year").cast(pa.string())
-            month = pc.utf8_lpad(table.column("period").cast(pa.string()), width=2, padding="0")
-            dates = pc.binary_join_element_wise(yr, month, "")
-            table = table.drop(["year", "period"]).combine_chunks()
-            return table.add_column(0, "date", dates)
-
-        if "year" in cols:
-            idx = cols.index("year")
-            return table.set_column(idx, "date", table.column(idx).cast(pa.string()))
-
-        return table
-
-
     def _read(self, data: bytes) -> pa.Table:
         try:
             read_opts = pv.ReadOptions(
@@ -191,13 +188,13 @@ class QFactors(FactorModel):
             if self.classic and "R_EG" in table.column_names:
                 table = table.drop(["R_EG"])
 
-            table = self._format_date_column(table)
+            table = _format_date_column(table, self.frequency)
             table = offset_period_eom(table, self.frequency)
-
             table = scale_to_decimal(table)
 
-            # Removing R_ prefixes 
+            # Rename R_F to RF_Q and drop R_ prefixes
             table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
+            table = table.rename_columns([c.removeprefix("R_") for c in table.column_names])
             return table.combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
@@ -271,7 +268,6 @@ class _QPortfolios(PortfolioBase):
         f_str = freq_map.get(self.frequency, 'monthly')
 
         slug = 'me_ia_roe' if self.sort_type == '2x3x3' else 'me_eg'
-        #return f'{base_url}/benportf_{slug}_{f_str}_2024.csv'
         return f'{base_url}/benportf_{slug}_{f_str}_2025.csv'
     
 
@@ -281,59 +277,35 @@ class _QPortfolios(PortfolioBase):
 
         table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
 
-        if self.frequency == 'q':  # TODO: parse quarterly dates should handle and combination of yyyy/year and period/month/quarter for freq = q.
+        if self.frequency == 'q':
             table = table.rename_columns([
                 'period' if c == 'quarter' else c 
                 for c in table.column_names
             ])
-            
             table = parse_quarterly_dates(table)
-    
-        elif "year" in table.column_names:
-            y_str = pc.cast(table['year'], pa.string())
-            if "month" in table.column_names:
-                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
-                date_val = pc.binary_join_element_wise(y_str, m_str, "")
-            else:
-                date_val = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
+        else:
+            table = _format_date_column(table, self.frequency)
             
-            table = table.add_column(0, "date", date_val)
-            table = table.drop(["year", "month"] if "month" in table.column_names else ["year"])
-
         table = offset_period_eom(table, self.frequency)
-        # enforcing schema here. entire schema thing needs rework.
-        table = table.select(self.schema.names).cast(self.schema)
 
+        table = table.select(self.schema.names).cast(self.schema)
         table = scale_to_decimal(table)
 
-        # https://global-q.org/factors.html:
-        #
-        #   "ret_vw denotes value-weighted total (cum-dividend) returns, 
-        #   and retx_vw denotes value-weighted ex-dividend returns (capital 
-        #   gains)" 
-
         val_col = 'ret_vw' if self.dividends else 'retx_vw' 
-
         return _pivot_global_q_table(table, val_col)
 
-
-        # https://global-q.org/factors.html:
-        #
-        # "For a given anomaly, we offer value-weighted returns in percent for 1-way 
-        # sorted portfolios (mostly deciles, with a few quantiles) and 2-way (3 by 5) 
-        # independently sorted portfolios by interacting the anomaly with size."
+    # https://global-q.org/factors.html:
+    #
+    # "For a given anomaly, we offer value-weighted returns in percent for 1-way 
+    # sorted portfolios (mostly deciles, with a few quantiles) and 2-way (3 by 5) 
+    # independently sorted portfolios by interacting the anomaly with size."
 
 
 # Keeping private until ff/q/aqr portfolios have some kind of unified ux
 # and redone params. works.
 def _get_q_portfolios(
-    sort: str | list[str] | None = None,
-    grid: str | None = None,
-    count: int | None = None,
-    #*,
-    #weights: str | None = 'vw'
-    **kwargs,
-) -> _QPortfolios:
+    sort: str | list[str] | None = None, grid: str | None = None, 
+    count: int | None = None, weights: str | None = 'vw', **kwargs):
     """Internal helper: factory for q-factor portfolios."""
     if count == 18 or (grid and ('18' in grid or '2x3x3' in grid)):
         final_sort = '2x3x3'
@@ -347,8 +319,7 @@ def _get_q_portfolios(
     return _QPortfolios(sort=final_sort, **kwargs)
 
 
-### ----------------------------------------- WIP - ANOMALIES ------------
-
+# -------------------- WIP - ANOMALIES ------------
 class _QAnomalies(PortfolioBase):
     """Download q-factor anomaly portfolio return data from global-q.org.
 
@@ -416,12 +387,12 @@ class _QAnomalies(PortfolioBase):
     }
 
     _FREQ_STR = {
-        'm': 'monthly', 'y': 'annual', 'w': 'weekly',
+        'm': 'monthly', 'y': 'annual', 'w': 'weekly', 'd': 'daily', 'q': 'quarterly',
     }
 
     @property
     def _frequencies(self) -> list[str]:
-        return ["m", "y", "w"]  #TODO: add d, w2w, q, 
+        return ["m", "y", "w", "d", "q"]  #TODO: add d, w2w, q, 
 
     @classmethod
     def _resolve_anomalies(cls, raw_inputs: list[str]) -> list[str]:
@@ -454,7 +425,7 @@ class _QAnomalies(PortfolioBase):
             )
 
         freq = kwargs.get('frequency', 'm').lower().strip()
-        if freq not in ['m', 'y', 'w']:
+        if freq not in ['m', 'y', 'w', 'd', 'q']:
             raise ValueError(f"Frequency '{freq}' is not supported for anomalies. Use 'm', 'y', or 'w'.")
 
         raw_inputs = [anomaly] if isinstance(anomaly, str) else anomaly
@@ -524,15 +495,15 @@ class _QAnomalies(PortfolioBase):
 
     # adapted from jupyter notebook, don't use yet!
     def _group_anomalies_by_category(self) -> dict[str, list[str]]:
-        """Group requested anomalies by their respective dataset categories."""
+        """Group anomalies by category."""
         cat_to_anoms = {}
         for a in self.anomalies:
             cat = self._get_category(a)
             cat_to_anoms.setdefault(cat, []).append(a)
         return cat_to_anoms
 
-    def _fetch_category_zips(self, cat_to_anoms: dict[str, list[str]], initial_data: bytes) -> dict[str, bytes]:
-        """Download or retrieve from cache all zip archives required for the requested anomalies."""
+    def _get_cat_zips(self, cat_to_anoms: dict[str, list[str]], initial_data: bytes) -> dict[str, bytes]:
+        """Download all zips for the requested anomalies."""
         from getfactormodels.utils.http_client import _HttpClient
 
         first_cat = self._get_category(self.anomalies[0])
@@ -548,7 +519,7 @@ class _QAnomalies(PortfolioBase):
         return zip_bytes_cache
 
     def _find_target_file(self, namelist: list[str], anomaly: str, freq_str: str, prefix_str: str) -> str:
-        """Locate the exact CSV filename inside the zip archive namelist."""
+        """Locate the anomaly CSV."""
         target_file = next(
             (n for n in namelist 
              if f"_{anomaly}_" in n.lower() 
@@ -561,10 +532,9 @@ class _QAnomalies(PortfolioBase):
         return target_file
 
     def _read(self, data: bytes) -> pa.Table:
-        """Orchestrates fetching, extraction, processing, and joining of anomaly datasets."""
         try:
             cat_to_anoms = self._group_anomalies_by_category()
-            zip_bytes_cache = self._fetch_category_zips(cat_to_anoms, data)
+            zip_bytes_cache = self._get_cat_zips(cat_to_anoms, data)
 
             _freq_str = self._FREQ_STR[self.frequency]
             prefix_str = "me_" if self.sort_type == '3x5' else ""
@@ -576,7 +546,7 @@ class _QAnomalies(PortfolioBase):
                     namelist = z.namelist()
                     for a in anoms:
                         target_file = self._find_target_file(namelist, a, _freq_str, prefix_str)
-                        pivoted = self._process_anomaly_file(z, target_file, a, _freq_str, _val_col)
+                        pivoted = self._process_anomaly_file(z, target_file, a, _val_col)
                         
                         pivoted_tables.append(pivoted)
 
@@ -584,7 +554,7 @@ class _QAnomalies(PortfolioBase):
             for t in pivoted_tables[1:]:
                 final_table = final_table.join(t, keys=["date"], join_type="left outer")
 
-            return final_table
+            return final_table.combine_chunks()
 
         except ValueError as e:
             raise ValueError(str(e)) from e
@@ -593,8 +563,8 @@ class _QAnomalies(PortfolioBase):
 
 
     def _process_anomaly_file(
-        self, z: zipfile.ZipFile, target_file: str, anomaly: str, val_col: str
-    ) -> pa.Table:
+    self, z: zipfile.ZipFile, target_file: str, anomaly: str, val_col: str
+) -> pa.Table:
         """Processes a single CSV from the zip archive into a pivoted table."""
         with z.open(target_file) as f:
             csv_bytes = f.read()
@@ -611,25 +581,11 @@ class _QAnomalies(PortfolioBase):
                     cols[i] = "rank_anomaly"
             table = table.rename_columns(cols)
 
-        if "year" in table.column_names:
-            y_str = pc.cast(table['year'], pa.string())
-            if "month" in table.column_names:
-                m_str = pc.utf8_lpad(pc.cast(table['month'], pa.string()), width=2, padding="0")
-                date_str = pc.binary_join_element_wise(y_str, m_str, "")
-                table = table.add_column(0, "date", date_str)
-                table = table.drop(["year", "month"])
-            else:
-                date_str = pc.binary_join_element_wise(y_str, pa.scalar("12"), "")
-                table = table.add_column(0, "date", date_str)
-                table = table.drop(["year"])
-
+        table = _format_date_column(table, self.frequency)
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
 
         return _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
-
-
-
 
 def _get_q_anomalies(name: str | list[str], **kwargs):
     return _QAnomalies(anomaly=name, **kwargs) 
