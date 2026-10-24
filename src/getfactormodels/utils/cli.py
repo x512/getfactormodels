@@ -21,6 +21,7 @@ import sys
 import textwrap
 from pathlib import Path
 import pyarrow.csv as pv
+from pyarrow.lib import as_buffer
 from getfactormodels._metadata import (
     __copyright__,
     __description__,
@@ -107,6 +108,12 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
                         help='Keep specific factors from a model.')
+
+    parser.add_argument(
+        "--as-percent", '--pct',
+        action="store_true", 
+        help="Return returns as percentages (e.g. 5.0 instead of 0.05)"
+    )
 
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
@@ -233,6 +240,7 @@ def _build_model(args: argparse.Namespace):
             start_date=args.start,
             end_date=args.end,
             region=args.region,
+            as_percent=args.as_percent,
         ))
 
     if args.is_portfolio:
@@ -247,6 +255,7 @@ def _build_model(args: argparse.Namespace):
             start_date=args.start,
             end_date=args.end,
             dividends=args.dividends,
+            as_percent=args.as_percent,
         ))
 
     if args.is_anomaly:
@@ -257,6 +266,7 @@ def _build_model(args: argparse.Namespace):
             sort='3x5' if args.bivariate else 'decile',
             start_date=args.start,
             end_date=args.end,
+            as_percent=args.as_percent,
         ))
 
     if not components:

@@ -15,6 +15,7 @@ from getfactormodels.utils.arrow_utils import (
     rearrange_columns,
     round_to_precision,
     select_table_columns,
+    scale_to_percent,
 )
 from getfactormodels.utils.date_utils import (
     _validate_input_date,
@@ -66,6 +67,8 @@ class FactorModel(ABC):
                  output_file: str | None = None,
                  cache_ttl: int = 86400,
                  #force: bool = False,  # NEW force redownload
+                 *,
+                 as_percent: bool = False,
                  **kwargs):
         """Initialize a model instance.
 
@@ -88,6 +91,7 @@ class FactorModel(ABC):
         self.start_date = start_date
         self.end_date = end_date
         self.output_file = output_file
+        self.as_percent = as_percent
         self.cache_ttl = cache_ttl
         # self.force = force # not impl
         self.model = str(kwargs.get("model", self.__class__.__name__))
@@ -361,6 +365,9 @@ class FactorModel(ABC):
                 idx = table.column_names.index("date")
                 table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
             table = table.sort_by([("date", "ascending")])
+
+        if self.as_percent:
+            table = scale_to_percent(table)
 
         table = round_to_precision(table, self._precision)
 
