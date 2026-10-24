@@ -28,8 +28,6 @@ def offset_period_eom(table: pa.Table, frequency: str | None = 'm') -> pa.Table:
         return table
         
     orig_name = table.column_names[0]
-
-    #if None, assume 'm'
     freq = (frequency or 'm').lower()
 
     # remove non digits 
@@ -46,18 +44,23 @@ def offset_period_eom(table: pa.Table, frequency: str | None = 'm') -> pa.Table:
     dates = pc.strptime(clean, format="%Y%m%d", unit="s")
 
     if freq in ['m', 'q', 'y']:
-        # Map the frequency to ceil_temporal's unit. 
         unit_map = {'m': 'month', 'q': 'quarter', 'y': 'year'}
         unit = unit_map[freq]
 
-        # Add a day to make sure we're strictly inside the period.
+        if freq == 'y':
+            clean = pc.if_else(pc.equal(lengths, 4), 
+                               pc.binary_join_element_wise(raw, pa.scalar("1201"), ""), clean)
+
+        dates = pc.strptime(clean, format="%Y%m%d", unit="s")
+
+        # Add a day to ensure we are strictly inside the period boundary
         _one_day = pa.scalar(86400000, type=pa.duration('ms'))
         extra_day = pc.add(dates, _one_day)
 
-        # From the start of the next period, subtract one day to get EOM/Q/Y
+        # Subtract one day to get the exact eop
         next_period_start = pc.ceil_temporal(extra_day, unit=unit)
         final_dates = pc.subtract(next_period_start, _one_day)
-    else: # 'd' or unknown, just return the parsed dates.
+    else:
         final_dates = dates
 
     return table.set_column(0, orig_name, final_dates.cast(pa.date32()))
@@ -102,7 +105,6 @@ def parse_quarterly_dates(table: pa.Table) -> pa.Table:
     
     try:
         date_col = datestr.cast(pa.date32())
-        # Re-insert as the first column
         return table.add_column(0, "date", date_col).combine_chunks()
     except pa.ArrowInvalid as e:
         raise ValueError(f"Failed to parse quarterly dates: {e}") from e

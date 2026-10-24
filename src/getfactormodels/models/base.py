@@ -60,7 +60,7 @@ class FactorModel(ABC):
     _dataset_title: str | None = None
     """
     def __init__(self,
-                 frequency: str | None = 'm',
+                 frequency: str = 'm', # str | None removed
                  start_date: str | None  = None,
                  end_date: str | None = None,
                  output_file: str | None = None,
@@ -580,8 +580,11 @@ class ModelCollection(FactorModel):
 
     @staticmethod
     def _cast_dates(table: pa.Table) -> pa.Table:
-        from getfactormodels.utils.date_utils import offset_period_eom
-        return offset_period_eom(table)
+        # ensure date is date32, don't offset
+        if "date" in table.column_names and table.column("date").type != pa.date32():
+            idx = table.column_names.index("date")
+            table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
+        return table
 
     @staticmethod
     def _join_method(base_table: pa.Table, next_table: pa.Table, join_type: str) -> pa.Table:
