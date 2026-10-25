@@ -71,7 +71,6 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                  region: str | None = 'us', 
                  **kwargs) -> None:
         """Initialize a Fama-French factor model."""
-        # Clean model string upfront ('ff3' -> '3')
         model_str = str(model).lower().replace('ff', '').strip()
         
         # Pop 'model' out of kwargs so it's not passed twice

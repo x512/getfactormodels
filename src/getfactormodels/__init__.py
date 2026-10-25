@@ -15,14 +15,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
-
 from ._metadata import __author__, __copyright__, __license_text__, __version__
-from .main import model, portfolio, anomaly
+from .main import anomaly, model, portfolio
 from .models import (
     AQR6Factors,
     BABFactors,
     BarillasShankenFactors,
     CarhartFactors,
+    CHFactors,
     ConditionalCAPM,
     DHSFactors,
     FamaFrenchFactors,
@@ -34,7 +34,6 @@ from .models import (
     QFactors,
     QMJFactors,
     VMEFactors,
-    CHFactors,
     _QAnomalies,
 )
 

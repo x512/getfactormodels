@@ -6,7 +6,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Any
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
@@ -433,6 +433,7 @@ class FactorModel(ABC):
             df = pd.api.interchange.from_dataframe(model.data)
         """
         table = self.data
+        col_type = None
 
         if table.column_names[0] == "date":
             col_type = table.schema.field(0).type
@@ -469,7 +470,7 @@ class FactorModel(ABC):
         pass
 
     @property
-    def url(self) -> str | dict[str, str | dict[str, str]]:
+    def url(self) -> str | dict[str, Any]:
         """Returns the endpoint URL(s) for the model data."""
         return self._get_url()
 

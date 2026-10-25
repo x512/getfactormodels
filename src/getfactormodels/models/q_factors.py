@@ -76,7 +76,7 @@ def _format_date_column(table: pa.Table, frequency: str) -> pa.Table:
 def _pivot_global_q_table(
     table: pa.Table, 
     value_col: str, 
-    anomaly_name: str | None = None
+    anomaly_name: str | None = None,
 ) -> pa.Table:
     """Pivot Global Q's portfolio sorts and anomalies."""
     rank_cols = [c for c in table.column_names if c.startswith("rank_")]
@@ -408,7 +408,7 @@ class _QAnomalies(PortfolioBase):
         weights = kwargs.pop('weights', 'vw')
         if weights and weights.lower() != 'vw':
             raise ValueError(
-                f"{self.__class__.__name__} only supports value-weighted ('vw') returns. "
+                f"{self.__class__.__name__} only supports value-weighted ('vw') returns. ",
             )
 
         freq = kwargs.get('frequency', 'm').lower().strip()
@@ -490,7 +490,7 @@ class _QAnomalies(PortfolioBase):
                 if cat not in zip_bytes_cache:
                     cat_url = self._get_category_url(cat)
                     zip_bytes_cache[cat] = client.download(
-                        cat_url, tag="AnomalyData", model_name=f"Q-{cat.capitalize()}"
+                        cat_url, tag="AnomalyData", model_name=f"Q-{cat.capitalize()}",
                     )
         return zip_bytes_cache
 

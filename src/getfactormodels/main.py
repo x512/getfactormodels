@@ -26,11 +26,7 @@ log = logging.getLogger("getfactormodels")
 
 
 def clear_global_cache() -> int:
-    """Clear all cached data files across all models globally.
-
-    Returns:
-        int: Total number of cache entries removed.
-    """
+    """Clear all cached data files across all models globally."""
     from platformdirs import user_cache_path
     from getfactormodels.utils.cache import _Cache
 
