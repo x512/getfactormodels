@@ -1,6 +1,6 @@
 [project]
 name = "getfactormodels"
-version = "0.0.32"
+version = "0.0.33"
 description = "Download datasets for various multifactor asset pricing models."
 
 license = "AGPL-3.0-or-later"
@@ -28,7 +28,7 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Natural Language :: English",
 ]
-requires-python = ">=3.11,<3.16"
+requires-python = ">=3.11"
 
 dependencies = [
     "pyarrow>=23.0.1,<=25.0.1",
