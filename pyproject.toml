@@ -28,13 +28,13 @@ classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Natural Language :: English",
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<4"
 
 dependencies = [
     "pyarrow>=23.0.1,<=25.0.1",
     "diskcache>=5.6.3",                     # see: dependabot/4, https://github.com/EthanKim88/ethan-cve-disclosures/blob/main/CVE-2025-69872-DiskCache-Pickle-Deserialization.md
     "httpx>=0.28.1,<0.29.0",
-    "certifi>=2025.11.12,<2027.0.0",
+    "certifi>=2026.10.19,<2027.0.0",
     "python-calamine>=0.6.1,<=0.8.2",       # 0.6.1, 0.8.2 verified
     "platformdirs>=4.0.0,<5.0.0",           # 4.12 verified
     "python-dateutil>=2.9.0.post0,<3.0.0",
@@ -57,7 +57,7 @@ pyright = "^1.1.414"
 
 
 [tool.poetry.group.docs.dependencies]
-mkdocs-material = "^9.7.7"
+mkdocs-material = "^9.8.0"
 mkdocstrings = {extras = ["python"], version = "^1.0.7"}
 mkdocs-bibtex = "^4.4.0"
 pymdown-extensions = "^12.3"
