@@ -6,7 +6,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Literal, Any
+from typing import Any, Literal
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
@@ -14,8 +14,8 @@ from getfactormodels.utils.arrow_utils import (
     print_table_preview,
     rearrange_columns,
     round_to_precision,
-    select_table_columns,
     scale_to_percent,
+    select_table_columns,
 )
 from getfactormodels.utils.date_utils import (
     _validate_input_date,
@@ -340,6 +340,7 @@ class FactorModel(ABC):
 
 
     def load(self, client: _HttpClient | None = None) -> "FactorModel":
+        """Download or load data from cache."""
         if self._data is not None: # and not force
             return self
 
@@ -706,7 +707,7 @@ class PortfolioBase(FactorModel, ABC):
             sort: str | list[str] | None = None,
             grid: str | None = None,
             count: int | None = None,
-            weights: Literal['vw', 'ew'] = 'vw',
+            weights: Literal['vw', 'ew'] | None = 'vw',
             *,
             dividends: bool = True,  # tot ret by default
             **kwargs,
@@ -726,7 +727,7 @@ class PortfolioBase(FactorModel, ABC):
 
         #_aliases = {'size': 'me',}
         self.dividends = dividends
-        self.weights = weights.lower()
+        self.weights = (weights or 'vw').lower()  # Fallback to 'vw' if None
         self.sort = sort
         self.grid = grid
         self.count = count

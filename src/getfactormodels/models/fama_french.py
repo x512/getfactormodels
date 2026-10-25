@@ -265,8 +265,20 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
 # TODO: FactorModel to BaseModel.
 class _FFPortfolioBase(PortfolioBase, ABC):
     """Base class for Fama-French portfolio return data."""
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, sort: str | list[str] | None = None, **kwargs):
+        super().__init__(sort=sort, **kwargs)
+        self.formed_on = self._normalize_sort(sort)
+
+    @staticmethod
+    def _normalize_sort(sort: str | list[str] | None) -> list[str]:
+        if sort is None:
+            return ['size']
+        if isinstance(sort, str):
+            sort_items = [s.strip().lower() for s in sort.split(',')] if ',' in sort else [sort.lower()]
+            if len(sort_items) == 1 and ' ' in sort_items[0]:
+                sort_items = sort_items[0].split()
+            return sorted(sort_items)
+        return sorted([str(f).lower() for f in sort])
 
     @abstractmethod
     def _find_table_start(self) -> str:
@@ -368,17 +380,6 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
 
 class _FamaFrenchSorts(_FFPortfolioBase):
-    @property
-    def _frequencies(self) -> list[str]:
-        return ['d', 'w', 'm', 'y']
-    
-    #@property 
-    #def _regions(self) -> list[str]:
-    #    return [
-    #        'us', 'emerging', 'developed', 'ex-us', 'europe',
-    #        'japan', 'asia-pacific-ex-japan', 'north-america', 
-    #    ]
-    # TODO: regions
     def __init__(
         self,
         sort: str | list[str] = 'size',
@@ -387,25 +388,10 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         dividends: bool = True,
         **kwargs,
     ):
-        # Pass grid, count, sort up to PortfolioBase or handle them
-        kwargs['sort'] = sort
-        kwargs['grid'] = grid
-        kwargs['count'] = count
-        kwargs['dividends'] = dividends
-        super().__init__(**kwargs)
-
-        # Normalize sort variables into a sorted list of lowercase strings
-        if isinstance(sort, str):
-            sort_items = [s.strip().lower() for s in sort.split(',')] if ',' in sort else [sort.lower()]
-            if len(sort_items) == 1 and ' ' in sort_items[0]:
-                sort_items = sort_items[0].split()
-            self.formed_on = sorted(sort_items)
-        else:
-            self.formed_on = sorted([str(f).lower() for f in sort])
+        super().__init__(sort=sort, grid=grid, count=count, dividends=dividends, **kwargs)
 
         self.is_multivariate = len(self.formed_on) > 1
 
-        # Use explicit grid or count if provided, otherwise resolve default
         if self.grid is not None:
             self.sort_grid = str(self.grid).lower()
             self.n_portfolios = self._map_grid_to_count(self.sort_grid)
@@ -417,6 +403,9 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             self.n_portfolios = self._map_grid_to_count(self.sort_grid)
 
         self._validate_params()
+   
+    @property
+    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
 
     def _find_table_start(self) -> str:
         """Identify the table section based on weights."""
@@ -656,7 +645,7 @@ def _get_ff_portfolios(
     frequency: str = 'm',
     #dividends: bool = True,
     **kwargs,
-) -> pa.Table:
+):
     """Internal helper: factory for Fama-French portfolios and industries."""
     if industry is not None:
         return _FamaFrenchIndustryPortfolios(

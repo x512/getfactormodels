@@ -87,7 +87,7 @@ def portfolio(
         "grid": grid,
         "count": count,
         "sort": sort,
-        "weights": weights,
+        "weights": weights if weights is not None else 'vw',
         "industry": industry,
         "frequency": frequency,
         "start_date": start_date,

@@ -225,7 +225,7 @@ def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
 
 def _build_model(args: argparse.Namespace):
     """Instantiates and combines requested models, portfolios, or anomalies."""
-    from getfactormodels.main import model, portfolio, anomaly 
+    from getfactormodels.main import anomaly, model, portfolio
     from getfactormodels.models.base import ModelCollection
 
     if args.is_portfolio and args.region:
