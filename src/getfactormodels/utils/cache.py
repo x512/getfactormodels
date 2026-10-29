@@ -3,11 +3,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
-from __future__ import annotations  #dont want, fixme
+from __future__ import annotations  # dont want, fixme
 import logging
 from pathlib import Path
 from diskcache import Cache
-
 
 log = logging.getLogger(__name__)
 
