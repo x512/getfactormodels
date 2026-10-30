@@ -226,7 +226,7 @@ def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
 def _build_model(args: argparse.Namespace):
     """Instantiates and combines requested models, portfolios, or anomalies."""
     from getfactormodels.main import anomaly, model, portfolio
-    from getfactormodels.models.base import ModelCollection
+    from getfactormodels.models.base import Collection
 
     if args.is_portfolio and args.region:
         raise NotImplementedError("Regional portfolio data not yet supported. Please omit the -r / --region flag.")
@@ -240,7 +240,7 @@ def _build_model(args: argparse.Namespace):
             start_date=args.start,
             end_date=args.end,
             region=args.region,
-            as_percent=args.as_percent,
+            as_percentage=args.as_percent,
         ))
 
     if args.is_portfolio:
@@ -255,18 +255,18 @@ def _build_model(args: argparse.Namespace):
             start_date=args.start,
             end_date=args.end,
             dividends=args.dividends,
-            as_percent=args.as_percent,
+            as_percentage=args.as_percent,
         ))
 
     if args.is_anomaly:
         components.append(anomaly(
-            source='q',
+            provider='q',
             name=args.anomaly_names,
             frequency=args.frequency,
             sort='3x5' if args.bivariate else 'decile',
             start_date=args.start,
             end_date=args.end,
-            as_percent=args.as_percent,
+            as_percentage=args.as_percent,
         ))
 
     if not components:
@@ -274,7 +274,7 @@ def _build_model(args: argparse.Namespace):
         print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
         sys.exit(1)
 
-    return components[0] if len(components) == 1 else ModelCollection(instances=components)
+    return components[0] if len(components) == 1 else Collection(instances=components)
 
 
 def _cli():
@@ -288,7 +288,6 @@ def _cli():
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # quick exit, but requires model  
     _quick_exits(args, model_obj=model_obj)
 
     try:
@@ -316,15 +315,13 @@ def _cli():
         pv.write_csv(model_obj.data, sys.stdout.buffer)
     else:
         if not args.quiet and not args.no_prev:
-            preview_str = model_obj.preview(n_rows=args.height, n_cols=args.width)
-            if preview_str:
-                sys.stderr.write(f"{preview_str}\n")
+            sys.stderr.write(f"{str(model_obj)}\n")
 
 
 if __name__ == '__main__':
     _cli()
 
-# TODO: not here ----------------------------------------------------------
+
 def _cli_list_anomalies():
     """Lists all available q-factor anomalies categorized by group."""
     from getfactormodels.models.q_factors import _QAnomalies
@@ -338,11 +335,11 @@ def _cli_list_anomalies():
 
 def _cli_list_regions():
     """Helper to display regions and exit."""
-    from getfactormodels.models.aqr_models import _AQRModel
+    from getfactormodels.models.aqr_models import HMLDevilFactors
     from getfactormodels.models.fama_french import FamaFrenchFactors
     
     print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
-    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(_AQRModel.list_regions()), width=70)}")
+    print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(HMLDevilFactors.list_regions()), width=70)}")
     print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
 
 
@@ -355,16 +352,14 @@ def _cli_list_models():
     for key in _MODEL_REGISTRY:
         data = _MODEL_REGISTRY[key]
 
-        freqs = "d,m"  # Safe default fallback
+        freqs = "d,m" 
         try:
-            # Try default first
             inst = model_factory(key)
-            freqs = ",".join(inst._frequencies)
+            freqs = ",".join(inst.frequencies)
         except (ValueError, NotImplementedError):
             try:
-                # Try 'm' or 'd' fallback for regional models
                 inst = model_factory(key, frequency='m', region='ch')
-                freqs = ",".join(inst._frequencies)
+                freqs = ",".join(inst.frequencies)
             except (ValueError, NotImplementedError):
                 pass
 
