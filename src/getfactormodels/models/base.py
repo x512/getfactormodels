@@ -601,7 +601,7 @@ class Collection(Composite):
                 else:
                     model_kwargs["region"] = region
 
-                resolved_instances.append(model_class(model=key, **model_kwargs))
+                resolved_instances.append(model_class(**model_kwargs))
             instances = resolved_instances
 
         if not instances:

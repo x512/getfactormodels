@@ -75,15 +75,15 @@ class _AQRModel(FactorModel, RegionMixin):
 
     @override
     def _download(self, client: _HttpClient | None = None) -> bytes:
-        url = self.url
+               
+        url = self.url() if callable(self.url) else self.url
         
         if client is not None:
             return client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
         # direct calls
         with _HttpClient(timeout=15.0) as new_client:
             return new_client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
-
-
+    
     def _aqr_dt_fix(self, d) -> str:
         """Private helper to fix AQR's MM/DD/YYYY format."""
         # dt objects from calamine
@@ -292,7 +292,7 @@ class AQR6Factors(Composite, RegionMixin):
         ]
 
     @property
-    def _regions(self) -> list[str]: return _AQR_REGIONS
+    def regions(self) -> list[str]: return _AQR_REGIONS
 
     @property
     def frequencies(self) -> list[str]: return ['m', 'd']
