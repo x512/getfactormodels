@@ -10,12 +10,12 @@ from getfactormodels.utils.arrow_utils import select_table_columns
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 from .aqr_models import HMLDevilFactors
-from .base import CompositeModel
+from .base import Composite
 from .fama_french import FamaFrenchFactors
 from .q_factors import QFactors
 
 
-class BarillasShankenFactors(CompositeModel):
+class BarillasShankenFactors(Composite):
     """Barillas-Shanken 6-Factor Model (2018).
 
     Constructs a factor model combining Mkt-RF, SMB (Fama-French 
@@ -27,27 +27,13 @@ class BarillasShankenFactors(CompositeModel):
         Journal of Finance, vol. 73, no. 2, pp. 715–754.
     """
     @property
-    def _frequencies(self) -> list[str]: return ["d", "m"]
-    
+    def frequencies(self) -> list[str]:
+        return ["d", "m"]
+
     @property
-    def _precision(self) -> int: return 8
-
-    def _construct(self, client: _HttpClient) -> pa.Table:
-        ff = FamaFrenchFactors(model='3', frequency=self.frequency, start_date=self.start_date, end_date=self.end_date).load(client=client)
-        q = QFactors(frequency=self.frequency, start_date=self.start_date, end_date=self.end_date).load(client=client)
-        aqr = HMLDevilFactors(frequency=self.frequency, start_date=self.start_date, end_date=self.end_date).load(client=client)
-        
-        mkt_smb = select_table_columns(ff.data, ['Mkt-RF', 'SMB'])
-        ia_roe = select_table_columns(q.data, ['IA', 'ROE'])
-        umd_hml = select_table_columns(aqr.data, ['UMD', 'HML_Devil', 'RF_AQR'])
-        
-        table = (
-            mkt_smb.join(ia_roe, keys='date')
-            .join(umd_hml, keys='date')
-        )
-        table = offset_period_eom(table, self.frequency)
-        return table.select(self.schema.names).cast(self.schema)
-
+    def _precision(self) -> int:
+        return 8
+    
     @property
     def schema(self) -> pa.Schema:
         """Barillas-Shanken schema."""
@@ -61,3 +47,19 @@ class BarillasShankenFactors(CompositeModel):
             ('UMD', pa.float64()),
             ('RF_AQR', pa.float64()),
         ])
+
+    def _construct(self, client: _HttpClient) -> pa.Table:
+        freq = self.frequency or "m"
+
+        ff = FamaFrenchFactors(model="3", frequency=freq).load(client=client)
+        q = QFactors(frequency=freq).load(client=client)
+        aqr = HMLDevilFactors(frequency=freq).load(client=client)
+
+        mkt_smb = select_table_columns(ff.data, ["Mkt-RF", "SMB"])
+        ia_roe = select_table_columns(q.data, ["IA", "ROE"])
+        umd_hml = select_table_columns(aqr.data, ["UMD", "HML_Devil", "RF_AQR"])
+
+        table = mkt_smb.join(ia_roe, keys="date").join(umd_hml, keys="date")
+        table = offset_period_eom(table, freq)
+
+        return table.select(self.schema.names).cast(self.schema)

@@ -9,11 +9,11 @@ import io
 import httpx
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from getfactormodels.models.base import FactorModel, RegionMixin
+from getfactormodels.models.base import BaseModel, RegionMixin
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
-class CHFactors(FactorModel, RegionMixin):
+class CHFactors(BaseModel, RegionMixin):
     """Size and Value in China of Liu, Stambaugh & Yuan (2019).
 
     Monthly and daily data for the CH-3 (SMB, VMG) and CH-4 
@@ -29,7 +29,7 @@ class CHFactors(FactorModel, RegionMixin):
           China. Journal of Financial Economics, 134(1), 48–69.
     """
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'm']
+    def frequencies(self) -> list[str]: return ['d', 'm']
     
     @property
     def _precision(self) -> int: return 4
@@ -100,7 +100,13 @@ class CHFactors(FactorModel, RegionMixin):
             factors.append(("PMO", pa.float64()))
 
         return pa.schema(date_col + mktrf_col + rf_col + factors)
-
+    
+    @property
+    def url(self) -> str:
+        base_url = 'https://en.mingshiim.com/static/'
+        _freq = 'monthly' if self.frequency == 'm' else 'daily'
+        return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx" # URLs gonna change, FIXME TODO
+        # TODO: look for new URL
 
     @property
     def model(self) -> str:
@@ -118,12 +124,6 @@ class CHFactors(FactorModel, RegionMixin):
             self._view = None
         self._model = val
 
-
-    def _get_url(self) -> str:
-        base_url = 'https://en.mingshiim.com/static/'
-        _freq = 'monthly' if self.frequency == 'm' else 'daily'
-        return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx" # URLs gonna change, FIXME TODO
-        # TODO: look for new URL
 
     # TEMP FIX: FIXME: TODO: bypass SSL with verify=False works, verify=ssl_context wasn't.
     def _download(self, client=None) -> bytes:

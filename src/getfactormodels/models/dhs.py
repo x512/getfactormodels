@@ -8,7 +8,7 @@
 import io
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from getfactormodels.models.base import FactorModel
+from getfactormodels.models.base import BaseModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.arrow_utils import (
     scale_to_decimal,
@@ -17,7 +17,7 @@ from getfactormodels.utils.arrow_utils import (
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
-class DHSFactors(FactorModel):
+class DHSFactors(BaseModel):
     """The Behavioural Factors of Daniel, Hirshleifer and Sun (2020).
     
     FIN and PEAD factors. Data from July 1972 - December, 2023. Adds 
@@ -28,10 +28,23 @@ class DHSFactors(FactorModel):
         Behavioral Factors. Review of Financial Studies, 33 (4): 1673-1736.
     """
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'm']
+    def frequencies(self) -> list[str]: return ['d', 'm']
     
     @property
     def _precision(self) -> int: return 12
+
+    @property
+    def url(self) -> str:
+        base_url = 'https://docs.google.com/spreadsheets/d/'
+
+        if self.frequency == 'd':
+            sheet_id = '15wTRI_vf7pXSyEW1VeYkNIGWxRyUtBLf'
+            #info_id =
+        else:
+            sheet_id = '1K78rVuWEW6doD7ZdMVQCRJ4z0azM50vP'
+            #info_sheet_id = '#gid=96292754'  # Construction, Universe, Period, More Details
+
+        return  f'{base_url}{sheet_id}/export?format=xlsx'
 
     @property  
     def schema(self) -> pa.Schema:
@@ -44,20 +57,6 @@ class DHSFactors(FactorModel):
         if self.frequency == 'd':
             return pa.schema(date + fin + pead)
         return pa.schema(date + pead + fin)
-
-
-    def _get_url(self) -> str:
-        base_url = 'https://docs.google.com/spreadsheets/d/'
-
-        if self.frequency == 'd':
-            sheet_id = '15wTRI_vf7pXSyEW1VeYkNIGWxRyUtBLf'
-            #info_id =
-        else:
-            sheet_id = '1K78rVuWEW6doD7ZdMVQCRJ4z0azM50vP'
-            #info_sheet_id = '#gid=96292754'  # Construction, Universe, Period, More Details
-
-        return  f'{base_url}{sheet_id}/export?format=xlsx'
-
 
     # Precision fix: export as .xlsx, then read with Calamine. 
     def _read(self, data: bytes) -> pa.Table:
@@ -81,9 +80,8 @@ class DHSFactors(FactorModel):
             table = table.rename_columns(["date"] + table.column_names[1:])
 
         # fix: freq handed to ff might be None, default to m. appease pyright.
-        ff_frequency = self.frequency if self.frequency is not None else 'm'
-        
-        ff_model = FamaFrenchFactors(model='3', frequency=ff_frequency)
+        ff_frequency = self.frequency or "m"
+        ff_model = FamaFrenchFactors(model="3", frequency=ff_frequency)
         ff_model.load()
         
         if ff_model.data is None:
