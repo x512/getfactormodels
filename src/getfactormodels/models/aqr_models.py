@@ -17,11 +17,7 @@ from abc import ABC, abstractmethod
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from typing_extensions import override
-from getfactormodels.models.base import (
-    Composite,
-    FactorModel,
-    RegionMixin,
-)
+from getfactormodels.models.base import Composite, FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     select_table_columns,

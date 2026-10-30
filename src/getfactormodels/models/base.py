@@ -572,7 +572,10 @@ class Collection(Composite):
 
         if model_keys:
             import getfactormodels.models as factor_models
-            from getfactormodels.utils.registry import get_model_class, get_model_key
+            from getfactormodels.utils.registry import (
+                get_model_class,
+                get_model_key,
+            )
 
             resolved_instances = []
             for m in model_keys:

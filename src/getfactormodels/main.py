@@ -224,22 +224,18 @@ def model(
 
     kwargs.pop('model', None)
 
-    # In main.py, inside model():
-    if issubclass(model_class, Composite):
-        instance = model_class(
-            frequency=frequency,
-            start_date=start_date,
-            end_date=end_date,
+    model_kwargs = {
+            "frequency": frequency,
+            "start_date": start_date,
+            "end_date": end_date,
             **kwargs,
-        )
-    else:
-        instance = model_class(
-            model=model_key,
-            frequency=frequency,
-            start_date=start_date,
-            end_date=end_date,
-            **kwargs,
-        )
+        }
+
+    if not issubclass(model_class, Composite):
+        model_kwargs["model"] = model_key
+
+    instance = model_class(**model_kwargs)
+
     if clear_cache:
         instance.clear_cache()
 

@@ -103,7 +103,7 @@ class _HttpClient:
             resp.raise_for_status()
 
             total = int(resp.headers.get("Content-Length", 0))
-            if total > 1_048_576:
+            if total > 524_288:
                 log.debug(f"File size: {total} bytes. Streaming...")
                 new_data = self._progress_bar(resp, model_name)
             else:
