@@ -25,7 +25,7 @@ from getfactormodels.utils.arrow_utils import (
 from getfactormodels.utils.date_utils import offset_period_eom
 from getfactormodels.utils.http_client import _HttpClient
 
-_AQR_REGIONS = [
+_AQR_REGIONS: list[str] = [
     'aus', 'aut', 'bel', 'can', 'che', 'deu', 'dnk', 'esp', 
     'fin', 'fra', 'gbr', 'grc', 'hkg', 'irl', 'isr', 'ita', 
     'jpn', 'nld', 'nor', 'nzl', 'prt', 'sgp', 'swe', 'usa',
@@ -41,10 +41,10 @@ class _AQRModel(FactorModel, RegionMixin):
     """
     @property
     def frequencies(self) -> list[str]: return ["d", "m"]
-    
+
     @property
     def _precision(self) -> int: return 8
-    
+
     @property
     def regions(self) -> list[str]:
         """List of supported AQR countries/regions."""
@@ -65,218 +65,129 @@ class _AQRModel(FactorModel, RegionMixin):
         """
         self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
-        self.frequency = frequency
         self.region = region
 
-
-    @override
-    def _download(self, client: _HttpClient | None = None) -> bytes:
-               
-        url = self.url() if callable(self.url) else self.url
-        
-        if client is not None:
-            return client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
-        # direct calls
-        with _HttpClient(timeout=15.0) as new_client:
-            return new_client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
-    
     def _aqr_dt_fix(self, d) -> str:
-        """Private helper to fix AQR's MM/DD/YYYY format."""
-        # dt objects from calamine
-        if hasattr(d, 'strftime'): 
+        if hasattr(d, 'strftime'):
             return d.strftime("%Y%m%d")
-        
         if isinstance(d, str) and '/' in d:
             m, day, y = d.split('/')
             return f"{y}{m.zfill(2)}{day.zfill(2)}"
-        
         return str(d)
 
-
     def _get_header(self, rows: list[list]) -> int:
-        """Finds row index containing 'DATE'."""
         for i, row in enumerate(rows):
             if row and str(row[0]).strip().upper() == 'DATE':
                 return i
-        raise ValueError(f"Could not find a header row containing 'DATE' in {self.__class__.__name__}")
+        raise ValueError(f"Header row 'DATE' not found in {self.__class__.__name__}")
 
+    @override
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
+        if isinstance(data, dict):
+            raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")
 
-    def _process_sheet(self, 
-                       sheet_name: str, 
-                       rows: list[list], 
-                       header_row: int) -> pa.Table:
-        """Extracts date and factor values from a single sheet."""
-        headers = [str(h).strip().upper() for h in rows[header_row]]
-        
-        if sheet_name == "RF":
-            col_idx = 1
-        else:
-            try:  # map region to its col in the sheet
-                col_idx = headers.index(self.region.upper())
-            except ValueError as e:
-                msg = (
-                    f"Region '{self.region}' not found in "
-                    f"sheet '{sheet_name}'. Available: {headers}"
-                )
-                raise ValueError(msg) from e
-
-        dates, values = [], []
-        for r in rows[header_row + 1:]:
-            # Skip empty rows or footers 
-            if not r or r[0] is None or r[col_idx] == '': 
-                continue
-            try:
-                dates.append(self._aqr_dt_fix(r[0]))
-                values.append(float(r[col_idx]))
-            except (ValueError, TypeError):
-                continue
-
-        # Maps sheet name to the factor name
-        name = self._sheet_map.get(sheet_name, sheet_name)
-        col_name = 'RF_AQR' if name == 'RF' else name
-        
-        return pa.Table.from_pydict({"date": dates, col_name: values})
-
-
-    def _read(self, data: bytes) -> pa.Table:
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
 
-        for sheet_name in self._sheet_map:
+        for sheet_name, factor_name in self._sheet_map.items():
             rows = wb.get_sheet_by_name(sheet_name).to_python()
-            headers = self._get_header(rows)
-            
-            t = self._process_sheet(sheet_name, rows, headers)
+            header_row = self._get_header(rows)
+            headers = [str(h).strip().upper() for h in rows[header_row]]
+
+            col_idx = 1 if sheet_name == "RF" else headers.index(self.region.upper())
+
+            dates, values = [], []
+            for r in rows[header_row + 1:]:
+                if not r or r[0] is None or r[col_idx] == '':
+                    continue
+                try:
+                    dates.append(self._aqr_dt_fix(r[0]))
+                    values.append(float(r[col_idx]))
+                except (ValueError, TypeError):
+                    continue
+
+            col_key = 'RF_AQR' if factor_name == 'RF' else factor_name
+            t = pa.Table.from_pydict({"date": dates, col_key: values})
             tables.append(offset_period_eom(t, self.frequency))
-        
-        # using left outer join on these models. Uses the factor the 
-        #  model's named after. Gets full data for that factor, and only 
-        #  filters that factors NaNs. 
+
         result = tables[0]
         for next_t in tables[1:]:
             result = result.join(next_t, keys='date', join_type='left outer')
 
         return round_to_precision(result, self._precision).combine_chunks()
 
+
+    @property
+    def url(self) -> str:
+        f = 'daily' if self.frequency == 'd' else 'Monthly'
+        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/{self._file_slug}-{f}.xlsx'
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Dynamically build schema from date + sheet map values."""
+        fields = [('date', pa.string())]
+        for sheet_name, factor_name in self._sheet_map.items():
+            col_key = 'RF_AQR' if factor_name == 'RF' else factor_name
+            fields.append((col_key, pa.float64()))
+        return pa.schema(fields)
+
     @property
     @abstractmethod
-    def _sheet_map(self) -> dict:
-        pass
+    def _sheet_map(self) -> dict[str, str]: pass
+
+    _file_slug: str = ""
 
 
 class HMLDevilFactors(_AQRModel):
-    """HML Devil factors, Asness and Frazzini (2013).
-
-    References:
-        C. Asness and A. Frazzini (2013). The Devil in HML’s Details. 
-        The Journal of Portfolio Management, vol. 39, pp. 49–68.
-    """
-    @property
-    def _sheet_map(self):
-        return {'HML Devil': 'HML_Devil',
-                'MKT': 'Mkt-RF',
-                'SMB': 'SMB',
-                'UMD': 'UMD',
-                'RF': 'RF'}
+    """HML Devil factors, Asness and Frazzini (2013)."""
+    _file_slug = 'The-Devil-in-HMLs-Details-Factors'
 
     @property
-    def url(self):
-        f = 'daily' if self.frequency == 'd' else 'monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/The-Devil-in-HMLs-Details-Factors-{f}.xlsx'
-
-    @property
-    def schema(self) -> pa.Schema:
-        """Schema for HML Devil."""
-        return pa.schema([  
-            ('date', pa.string()),
-            ('HML Devil', pa.float64()),
-            ('MKT', pa.float64()),
-            ('SMB', pa.float64()),
-            ('UMD', pa.float64()),
-            ('RF', pa.float64()),
-        ])
+    def _sheet_map(self) -> dict[str, str]:
+        return {
+            'HML Devil': 'HML_Devil',
+            'MKT': 'Mkt-RF',
+            'SMB': 'SMB',
+            'UMD': 'UMD',
+            'RF': 'RF',
+        }
 
 
 class QMJFactors(_AQRModel):
-    """Quality Minus Junk (QMJ), Asness, Frazzini & Pedersen (2019).
-    
-    References:
-        C. Asness, A. Frazzini and L. Pedersen, 2019. Quality Minus Junk.
-        Review of Accounting Studies 24, no. 1 (2019): 34-112.
-    """
-    @property
-    def schema(self) -> pa.Schema:
-        """Schema for QMJ."""
-        return pa.schema([  
-            ('date', pa.string()),
-            ('QMJ Factors', pa.float64()),
-            ('MKT', pa.float64()),
-            ('SMB', pa.float64()),
-            ('HML FF', pa.float64()),
-            ('UMD', pa.float64()),
-            ('RF', pa.float64()),
-        ])
+    """Quality Minus Junk (QMJ), Asness, Frazzini & Pedersen (2019)."""
+    _file_slug = 'Quality-Minus-Junk-Factors'
 
     @property
-    def _sheet_map(self):
-        return {'QMJ Factors': 'QMJ',
-                'MKT': 'Mkt-RF',
-                'SMB': 'SMB',
-                'HML FF': 'HML',
-                'UMD': 'UMD',
-                'RF': 'RF'}
-
-    @property
-    def url(self):
-        f = 'Daily' if self.frequency == 'd' else 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Quality-Minus-Junk-Factors-{f}.xlsx'
+    def _sheet_map(self) -> dict[str, str]:
+        return {
+            'QMJ Factors': 'QMJ',
+            'MKT': 'Mkt-RF',
+            'SMB': 'SMB',
+            'HML FF': 'HML',
+            'UMD': 'UMD',
+            'RF': 'RF',
+        }
 
 
 class BABFactors(_AQRModel):
-    """Betting Against Beta (BAB) factors, Frazzini and Pedersen (2014).
+    """Betting Against Beta (BAB) factors, Frazzini and Pedersen (2014)."""
+    _file_slug = 'Betting-Against-Beta-Equity-Factors'
 
-    References:
-        Frazzini, A. and Pedersen, L. (2014). Betting against beta. 
-        Journal of Financial Economics, 111(1), 1-25.
-    """
     @property
-    def schema(self) -> pa.Schema:
-        return pa.schema([  
-            ('date', pa.string()),
-            ('BAB Factors', pa.float64()),
-            ('MKT', pa.float64()),
-            ('SMB', pa.float64()),
-            ('HML FF', pa.float64()),
-            ('UMD', pa.float64()),
-            ('RF', pa.float64()),
-        ])
-    
-    @property
-    def _sheet_map(self):
-        return {'BAB Factors': 'BAB',
-                'MKT': 'Mkt-RF', 
-                'SMB': 'SMB',           # SMB_AQR?
-                'UMD': 'UMD',
-                'HML FF': 'HML',
-                'RF': 'RF_AQR'} 
-
-    def url(self):
-        f = 'Daily' if self.frequency == 'd' else 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
+    def _sheet_map(self) -> dict[str, str]:
+        return {
+            'BAB Factors': 'BAB',
+            'MKT': 'Mkt-RF',
+            'SMB': 'SMB',
+            'UMD': 'UMD',
+            'HML FF': 'HML',
+            'RF': 'RF_AQR',
+        }
 
 
 class AQR6Factors(Composite, RegionMixin):
-    """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018).
-
-    This is the model used in 'Buffett's Alpha'. The factors are:
-    Mkt-RF, SMB, HML_FF, UMD, BAB, QMJ, and RF_AQR.
-
-    References:
-        Frazzini, A., Kabiller, D., & Pedersen, L. H. (2018). Buffett’s Alpha. 
-        Financial Analysts Journal, 74(4), 35–55.
-    """    
+    """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018)."""
     def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
-        kwargs.pop('model', None)
         super().__init__(frequency=frequency, **kwargs)
         self.region = region
 
@@ -288,23 +199,25 @@ class AQR6Factors(Composite, RegionMixin):
         ]
 
     @property
-    def regions(self) -> list[str]: return _AQR_REGIONS
+    def regions(self) -> list[str]:
+        return _AQR_REGIONS
 
     @property
-    def frequencies(self) -> list[str]: return ['m', 'd']
+    def frequencies(self) -> list[str]:
+        return ['m', 'd']
 
+    @override
     def _construct(self, client: _HttpClient) -> pa.Table:
         bab_inst, qmj_inst = self.components
-        
+
         bab_inst.load(client=client)
         qmj_inst.load(client=client)
 
         bab = select_table_columns(bab_inst.data, ['BAB', 'Mkt-RF', 'SMB'])
         qmj = select_table_columns(qmj_inst.data, ['QMJ', 'HML', 'UMD', 'RF_AQR'])
 
-        # HML to HML_FF
         qmj = qmj.rename_columns([
-            "HML_FF" if col == "HML" else "RF_AQR" if col == "RF" else col 
+            "HML_FF" if col == "HML" else col
             for col in qmj.column_names
         ])
 
@@ -313,7 +226,6 @@ class AQR6Factors(Composite, RegionMixin):
 
     @property
     def schema(self) -> pa.Schema:
-        """Schema for AQR 6-Factor Model."""
         return pa.schema([
             ('date', pa.string()),
             ('Mkt-RF', pa.float64()),
@@ -325,42 +237,49 @@ class AQR6Factors(Composite, RegionMixin):
             ('RF_AQR', pa.float64()),
         ])
 
-# NEW/WIP/TESTING/ETC: Value and Momentum Everywhere. --------------------------------- #
-# Returns the 'usa' VAL and MOM by defult.
+
 class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
-    @property
-    @override     # only AQR model not avail in daily.
-    def frequencies(self) -> list[str]: return ["m"]
+    _file_slug = 'Value-and-Momentum-Everywhere-Factors'
+    _VME_COL_MAP = {
+        'everywhere': 1, 'all_equities': 3, 'all_other': 5,
+        'usa': 7, 'uk': 9, 'europe': 11, 'japan': 13,
+    }
 
     @property
-    @override     # different regions to other models.
-    def _regions(self) -> list[str]:
-        """Regions specific to the VME Excel layout."""
-        return [ 
-            'everywhere', 'all_equities', 'all_other', 
-            'usa', 'uk', 'europe', 'japan',
-        ]         # all_equities by default? us?
+    def frequencies(self) -> list[str]:
+        return ["m"]
 
+    @property
+    def regions(self) -> list[str]:
+        return list(self._VME_COL_MAP.keys())
 
-    @override     # file is different to the other models.
-    def _read(self, data: bytes) -> pa.Table:
+    @property
+    def _sheet_map(self) -> dict[str, str]:
+        return {'VME Factors': 'VME'}
+
+    @property
+    def schema(self) -> pa.Schema:
+        return pa.schema([
+            ('date', pa.string()),
+            ('VAL', pa.float64()),
+            ('MOM', pa.float64()),
+        ])
+
+    @override
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
+        if isinstance(data, dict):
+            raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")
+
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = wb.get_sheet_by_name("VME Factors").to_python()
         header_idx = self._get_header(rows)
-        _vme_map = {
-            'everywhere': 1, 'all_equities': 3, 'all_other': 5,
-            'usa': 7, 'uk': 9, 'europe': 11, 'japan': 13,
-        }
-        
-        start_idx = _vme_map.get(self.region.lower(), 7)
-        
+        start_idx = self._VME_COL_MAP.get(self.region.lower(), 7)
+
         dates, val, mom = [], [], []
-        # data is from header_idx + 1
         for r in rows[header_idx + 1:]:
             if not r or r[0] is None or r[start_idx] == '':
                 continue
-            
             dates.append(self._aqr_dt_fix(r[0]))
             val.append(float(r[start_idx]))
             mom.append(float(r[start_idx + 1]))
@@ -369,25 +288,6 @@ class VMEFactors(_AQRModel):
         table = offset_period_eom(table, "m")
 
         return table.cast(self.schema).combine_chunks()
-
-
-    @property
-    def schema(self) -> pa.Schema:
-        """Schema for Value and Momentum Everywhere (VME)."""
-        return pa.schema([  
-            ('date', pa.string()),  # forcing 'DATE' to lower here
-            ('VAL', pa.float64()),  # note: actual column names: VALLS_VME_US90
-            ('MOM', pa.float64()),  #                            MOMLS_VME_UK90
-        ])
-    
-    @property
-    def _sheet_map(self) -> dict: return {'VME Factors': 'VME'}
-
-    @property
-    def url(self) -> str:
-        f = 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
-
 
 """
 class _AQRPortfolios(_AQRModel):

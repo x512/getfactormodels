@@ -163,7 +163,11 @@ class Base(ABC):
         if self._data is None:
             self.load()
 
+        if self._data is None:
+            raise RuntimeError("Failed to load table data.")
+
         table = self._data
+
         if self._selected_factors is not None:
             selection = list(dict.fromkeys(['date'] + self._selected_factors))
             table = table.select(selection)
@@ -184,14 +188,15 @@ class Base(ABC):
 
     def _get_data(self, client: _HttpClient | None = None) -> pa.Table:
         """Route table construction or standard download."""
-        if hasattr(self, '_construct'):
+        if hasattr(self, "_construct"):
+            # safer access. hasattr passed; type ignore because Base lacks _construct
+            construct_fn = self._construct  # type: ignore[attr-defined]
             if client is None:
                 with _HttpClient() as shared_client:
-                    return self._construct(shared_client)
-            return self._construct(client)
+                    return construct_fn(shared_client)
+            return construct_fn(client)
 
         raw_data = self._download(client=client)
-
         return self._read(raw_data)
 
     def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:

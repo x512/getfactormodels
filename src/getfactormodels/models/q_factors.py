@@ -49,10 +49,9 @@ _GLOBAL_Q_FREQ_MAP = {
 
 
 def _format_date_column(table: pa.Table, frequency: str) -> pa.Table:
-    """Format and standardize date columns for global-q tables based on frequency."""
+    """Helper: Format date columns for global-q datasets."""
     cols = table.column_names
 
-    # quarterly columns or frequency here
     if frequency == 'q' or "quarter" in cols:
         if "quarter" in cols and "period" not in cols:
             table = table.rename_columns(['period' if c == 'quarter' else c for c in table.column_names])
@@ -78,7 +77,7 @@ def _pivot_global_q_table(
     value_col: str, 
     anomaly_name: str | None = None,
 ) -> pa.Table:
-    """Pivot Global Q's portfolio sorts and anomalies."""
+    """Helper: Pivot Global Q's portfolio sorts and anomalies."""
     rank_cols = [c for c in table.column_names if c.startswith("rank_")]
     dates = table.select(["date"]).group_by(["date"]).aggregate([]).sort_by([("date", "ascending")])
 
@@ -124,10 +123,6 @@ class QFactors(FactorModel):
         - Hou, Kewei, Chen Xue, and Lu Zhang, 2015, Digesting anomalies: An 
         investment approach, Review of Financial Studies 28 (3), 650-705.
     """
-    @property
-    def frequencies(self) -> list[str]:
-        return ["d", "w", "w2w", "m", "q", "y"]
-
     def __init__(self, *, classic: bool = False, **kwargs) -> None:
         """Initialize the QFactors model.
 
@@ -137,7 +132,11 @@ class QFactors(FactorModel):
         """
         self.classic = classic
         super().__init__(**kwargs)
-    
+
+    @property
+    def frequencies(self) -> list[str]:
+        return ["d", "w", "w2w", "m", "q", "y"]
+
     @property
     def _precision(self) -> int: return 6
 
@@ -162,7 +161,6 @@ class QFactors(FactorModel):
             time_cols = [("date", pa.string())]
 
         return pa.schema(time_cols + factors)
-
     
     @property
     def url(self) -> str:
