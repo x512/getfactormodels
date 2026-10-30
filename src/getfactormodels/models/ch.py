@@ -28,114 +28,75 @@ class CHFactors(FactorModel, RegionMixin):
         - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in 
           China. Journal of Financial Economics, 134(1), 48–69.
     """
-    @property
-    def frequencies(self) -> list[str]: return ['d', 'm']
-    
-    @property
-    def _precision(self) -> int: return 4
-
-    @property 
-    def _regions(self) -> list[str]: return ["china", "ch"]
-
-    def __init__(self, 
-                 frequency: str | None = 'm', 
-                 model: int | str = '3',
-                 *,
-                 region: str | None = None, # China only 
-                 **kwargs) -> None:
+    def __init__(
+        self,
+        model: int | str = "3",
+        frequency: str = "m",
+        *,
+        region: str | None = "cn",
+        **kwargs,
+    ):
         """Initialize a Size and Value in China model.
 
         Args:
-            frequency (str): Data frequency, 'm' (monthly) or 'd' (daily).
-            model (int): Model variant, either '3' or '4'.
-            region: region, restricted to China (cn, china).
-            **kwargs: Additional keyword arguments passed to the base model.
-
-        Raises:
-            ValueError: If an invalid frequency, model, or region is provided.
+            model (int | str): Model variant, either '3' or '4'. Default: '3'.
+            frequency (str): Data frequency, 'm' (monthly) or 'd' (daily). Default: 'm'.
+            region (str, optional): Region code, restricted to China ('cn', 'ch', 'china').
+            **kwargs: Additional operational parameters passed to base model.
         """
-        # Validations
-        freq_input = frequency if frequency is not None else 'm'
-
-        freq = str(freq_input).lower().strip()
-        if freq not in self._frequencies:
-            raise ValueError(f"Invalid frequency ('{frequency}'), must be one of {self._frequencies}.")
-
-        model_str = str(model).lower().replace('ch', '').strip()
+        model_str = str(model).lower().replace("ch", "").strip()
         if model_str not in ["3", "4"]:
             raise ValueError(f"Invalid model ('{model}'), must be 3 or 4.")
 
-        if region is not None:
-            reg_lower = str(region).lower().strip()
-            if reg_lower not in self._regions:
-                raise ValueError(f"Invalid region ('{region}'). Size and Value in China models only accept: {self._regions}.")
-            _region = reg_lower
-        else:
-            _region = 'ch'
+        super().__init__(model=model_str, frequency=frequency, **kwargs)
+        self.region = region or "cn"
 
-        kwargs.pop('model', None)
-        
-        super().__init__(frequency=freq, model=model_str, region=_region, **kwargs)
-        self.model = model_str
-        self.region = _region
+    @property
+    def frequencies(self) -> list[str]:
+        return ["d", "m"]
 
+    @property
+    def _precision(self) -> int:
+        return 4
+
+    @property
+    def regions(self) -> list[str]:
+        return ["china", "ch", "cn"]
 
     @property
     def schema(self) -> pa.Schema:
         """Schema for Size and Value in China model."""
         if self.frequency == "d":
-            date_col = [('date', pa.string())] 
-            rf_col = [('rf_dly', pa.float64())]
+            date_col = [("date", pa.string())]
+            rf_col = [("rf_dly", pa.float64())]
         else:
-            date_col = [('mnthdt', pa.string())] 
-            rf_col = [('rf_mon', pa.float64())]
-            
-        mktrf_col = [('mktrf', pa.float64())]
-        
-        factors = [
-            ("SMB", pa.float64()),
-            ("VMG", pa.float64()),
-        ]
+            date_col = [("mnthdt", pa.string())]
+            rf_col = [("rf_mon", pa.float64())]
+
+        mktrf_col = [("mktrf", pa.float64())]
+        factors = [("SMB", pa.float64()), ("VMG", pa.float64())]
+
         if self.model == "4":
             factors.append(("PMO", pa.float64()))
 
         return pa.schema(date_col + mktrf_col + rf_col + factors)
-    
+
     @property
     def url(self) -> str:
-        base_url = 'https://en.mingshiim.com/static/'
-        _freq = 'monthly' if self.frequency == 'm' else 'daily'
-        return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx" # URLs gonna change, FIXME TODO
-        # TODO: look for new URL
+        base_url = "https://en.mingshiim.com/static/"
+        _freq = "monthly" if self.frequency == "m" else "daily"
+        return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx"
 
-    @property
-    def model(self) -> str:
-        return self._model
-
-    @model.setter
-    def model(self, value: int | str):
-        val = str(value).lower().replace('ch', '').strip()
-        if val not in ["3", "4"]:
-            raise ValueError(f"Invalid model ('{value}'), must be 3 or 4.")
-        
-        if hasattr(self, '_model') and val != self._model:
-            self.log.info(f"Model changed from {self._model} to {val}")
-            self._data = None
-            self._view = None
-        self._model = val
-
-
-    # TEMP FIX: FIXME: TODO: bypass SSL with verify=False works, verify=ssl_context wasn't.
+    # FIXME: SSL bypass temporarily required for Mingshi site
     def _download(self, client=None) -> bytes:
-        """Download using client with SSL bypass."""
-        url = self._get_url()
+        """Download using httpx with SSL bypass."""
+        url = self.url
         self.log.info(f"Downloading CHFactors from {url}")
-        
+
         with httpx.Client(verify=False, follow_redirects=True) as http_client:
-            resp = http_client.get(url, headers={"User-Agent": "Mozilla/5.0"}) #TEMPTEMPTEMP
+            resp = http_client.get(url, headers={"User-Agent": "Mozilla/5.0"})
             resp.raise_for_status()
             return resp.content
-
 
     def _read(self, data: bytes) -> pa.Table:
         workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
@@ -155,16 +116,18 @@ class CHFactors(FactorModel, RegionMixin):
         table = table.select(self.schema.names).cast(self.schema)
         table = offset_period_eom(table, self.frequency)
 
-        rename_map = {'mktrf': 'MKTRF_CH',
-                      'mnthdt': 'date',
-                      'rf_mon': 'RF_CH',
-                      'rf_dly': 'RF_CH',
-                      'rf': 'RF_CH'}
+        rename_map = {
+            "mktrf": "MKTRF_CH",
+            "mnthdt": "date",
+            "rf_mon": "RF_CH",
+            "rf_dly": "RF_CH",
+            "rf": "RF_CH",
+        }
         final_names = [rename_map.get(name.lower(), name) for name in table.column_names]
         table = table.rename_columns(final_names)
 
-        if 'RF_CH' in table.column_names:
-            cols = [c for c in table.column_names if c != 'RF_CH'] + ['RF_CH']
+        if "RF_CH" in table.column_names:
+            cols = [c for c in table.column_names if c != "RF_CH"] + ["RF_CH"]
             table = table.select(cols)
 
         return table.combine_chunks()

@@ -21,7 +21,6 @@ import sys
 import textwrap
 from pathlib import Path
 import pyarrow.csv as pv
-from pyarrow.lib import as_buffer
 from getfactormodels._metadata import (
     __copyright__,
     __description__,
@@ -218,11 +217,6 @@ def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
             print("Global cache deleted.", file=sys.stderr)
         sys.exit(0)
     
-    if args.url and model_obj:
-        from pprint import pprint
-        pprint(model_obj.url)
-        sys.exit(0)
-
 
 def _build_model(args: argparse.Namespace):
     """Instantiates and combines requested models, portfolios, or anomalies."""
@@ -321,6 +315,12 @@ def _cli():
             preview_str = print_table_preview(model_obj.data, n_rows=args.height, n_cols=args.width)
             if preview_str:
                 sys.stderr.write(f"{header}{preview_str}\n")
+
+            if args.url and model_obj:
+                from pprint import pprint
+                print("------------")
+                pprint(model_obj.url)
+                #sys.exit(0)
 
 
 if __name__ == '__main__':

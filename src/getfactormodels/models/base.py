@@ -572,10 +572,7 @@ class Collection(Composite):
 
         if model_keys:
             import getfactormodels.models as factor_models
-            from getfactormodels.utils.registry import (
-                get_model_class,
-                get_model_key,
-            )
+            from getfactormodels.utils.registry import get_model_class, get_model_key
 
             resolved_instances = []
             for m in model_keys:
@@ -583,7 +580,6 @@ class Collection(Composite):
                 class_name = get_model_class(key)
                 model_class = getattr(factor_models, class_name)
                 
-                is_regional = issubclass(model_class, RegionMixin)
                 model_kwargs = {
                     "frequency": frequency,
                     "start_date": start_date,
@@ -591,17 +587,17 @@ class Collection(Composite):
                     **kwargs,
                 }
 
-                if not is_regional:
-                    if region is not None and str(region).strip().lower() not in ['usa', 'us']:
-                        raise ValueError(
-                            f"Model '{class_name}' in collection does not support regional data (US only). "
-                            f"Region '{region}' was requested."
-                        )
-                    model_kwargs.pop("region", None)
-                else:
+                # Handle regional validation & parameters
+                if issubclass(model_class, RegionMixin):
                     model_kwargs["region"] = region
+                elif region is not None and str(region).strip().lower() not in ['usa', 'us']:
+                    raise ValueError(
+                        f"Model '{class_name}' in collection does not support regional data (US only). "
+                        f"Region '{region}' was requested."
+                    )
 
                 resolved_instances.append(model_class(**model_kwargs))
+            
             instances = resolved_instances
 
         if not instances:
