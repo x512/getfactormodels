@@ -18,7 +18,7 @@ import pyarrow as pa
 from python_calamine import CalamineWorkbook
 from typing_extensions import override
 from getfactormodels.models.base import (
-    CompositeModel,
+    Composite,
     FactorModel,
     RegionMixin,
 )
@@ -50,7 +50,7 @@ class _AQRModel(FactorModel, RegionMixin):
     def _precision(self) -> int: return 8
     
     @property
-    def _regions(self) -> list[str]:
+    def regions(self) -> list[str]:
         """List of supported AQR countries/regions."""
         return _AQR_REGIONS
 
@@ -269,7 +269,7 @@ class BABFactors(_AQRModel):
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
 
-class AQR6Factors(CompositeModel, RegionMixin):
+class AQR6Factors(Composite, RegionMixin):
     """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018).
 
     This is the model used in 'Buffett's Alpha'. The factors are:

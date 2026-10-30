@@ -18,7 +18,7 @@ import logging
 import warnings
 from typing import Literal
 from getfactormodels import models as factor_models
-from getfactormodels.models.base import BaseModel, Collection, RegionMixin
+from getfactormodels.models.base import FactorModel, Collection, RegionMixin, Composite
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
 
@@ -176,7 +176,7 @@ def model(
     #force: bool = False,  #not implemented properly yet
     clear_cache: bool = False, # ye
     **kwargs,
-) -> BaseModel | Collection:
+) -> FactorModel | Collection:
     """Download factor model data.
 
     Args:
@@ -224,14 +224,22 @@ def model(
 
     kwargs.pop('model', None)
 
-    instance = model_class(
-        model=model_key,
-        frequency=frequency,
-        start_date=start_date,
-        end_date=end_date,
-        **kwargs,
-    )
-
+    # In main.py, inside model():
+    if issubclass(model_class, Composite):
+        instance = model_class(
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
+    else:
+        instance = model_class(
+            model=model_key,
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
     if clear_cache:
         instance.clear_cache()
 

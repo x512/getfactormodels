@@ -425,14 +425,16 @@ class Base(ABC):
 
 class FactorModel(Base):
     """Standard factor model base class."""
-    def __init__(self, model: str, **kwargs):
+    def __init__(self, model: str | None = None, **kwargs):
         """Initialize a model instance.
 
         Args:
-            model (str): id of the factor model.
+            model (str, optional): id of the factor model.
             **kwargs: Additional operational parameters.
         """
-        self.model = get_model_key(model)
+        resolved_model = model or kwargs.get("model", self.__class__.__name__)
+        self.model = str(resolved_model)
+
         super().__init__(**kwargs)
 
     @property
@@ -441,15 +443,15 @@ class FactorModel(Base):
         return ["m"]
 
 
-class BasePortfolio(Base):
+class PortfolioBase(Base):
     """Base class for portfolio sorts."""
     def __init__(
         self,
-        sort_vars: str | list[str] | None = None,  # op, inv, bm, etc.
+        sort: str | list[str] | None = None,  # op, inv, bm, etc.
         count: int | None = None,  # n portfolios (e.g., 10 for deciles)
         grid: str | None = None,   # e.g., '2x3', '3x5', '5x5', '2x3x3'
         *,
-        weight: Literal['vw', 'ew'] = 'vw',
+        weights: Literal['vw', 'ew'] = 'vw',
         dividends: bool = True,
         **kwargs,
     ):
@@ -457,20 +459,20 @@ class BasePortfolio(Base):
 
         Args:
             sort (str | list[str]): Sorting variables ('size', 'op', 'bm', etc.).
-            weight (Literal['vw', 'ew']): Weights, value ('vw') or equal ('ew') weighted.
+            weights (Literal['vw', 'ew']): Weights, value ('vw') or equal ('ew') weighted.
             count (int, opt): Number of portfolios to return.
             grid (str, opt): 2x3 etc. grid sorts.
             dividends (bool): False for ex-div, true for total return (default).
             **kwargs: extra args.
         """
-        self.sort_vars = sort_vars
-        self.weight = (weight or 'vw').lower()
+        self.sort = sort
+        self.weights = (weights or 'vw').lower()
         self.count = count
         self.grid = grid.lower().strip() if grid else None
         self.dividends = dividends
 
-        if self.weight not in ('vw', 'ew'):
-            raise ValueError(f"Weights must be either 'vw' or 'ew', not '{weight}'.")
+        if self.weights not in ('vw', 'ew'):
+            raise ValueError(f"Weights must be either 'vw' or 'ew', not '{weights}'.")
 
         super().__init__(**kwargs)
 
@@ -548,6 +550,10 @@ class Collection(Composite):
         self,
         instances: list[Base] | None = None,
         model_keys: list[str] | None = None,
+        frequency: str = 'm',
+        region: str | None = 'us',
+        start_date: str | None = None,
+        end_date: str | None = None,
         **kwargs,
     ):
         """Initialize collection of models or portfolios.
@@ -555,6 +561,10 @@ class Collection(Composite):
         Args:
             instances (list[Base], optional): Pre-instantiated model/portfolio objects.
             model_keys (list[str], optional): List of model keys to instantiate automatically.
+            frequency (str): Data frequency.
+            region (str, optional): Geographic region.
+            start_date (str, optional): Start date.
+            end_date (str, optional): End date.
             **kwargs: Additional operational parameters passed to instantiated models.
         """
         if instances and model_keys:
@@ -572,8 +582,26 @@ class Collection(Composite):
                 key = get_model_key(m)
                 class_name = get_model_class(key)
                 model_class = getattr(factor_models, class_name)
-                # Instantiate using the model class and pass shared kwargs
-                resolved_instances.append(model_class(model=key, **kwargs))
+                
+                is_regional = issubclass(model_class, RegionMixin)
+                model_kwargs = {
+                    "frequency": frequency,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    **kwargs,
+                }
+
+                if not is_regional:
+                    if region is not None and str(region).strip().lower() not in ['usa', 'us']:
+                        raise ValueError(
+                            f"Model '{class_name}' in collection does not support regional data (US only). "
+                            f"Region '{region}' was requested."
+                        )
+                    model_kwargs.pop("region", None)
+                else:
+                    model_kwargs["region"] = region
+
+                resolved_instances.append(model_class(model=key, **model_kwargs))
             instances = resolved_instances
 
         if not instances:
@@ -581,7 +609,8 @@ class Collection(Composite):
 
         self.instances = instances
         self.model_keys = [getattr(i, 'model', i.__class__.__name__) for i in instances]
-        super().__init__(**kwargs)
+        super().__init__(frequency=frequency, start_date=start_date, end_date=end_date, **kwargs)
+
 
     @property
     def frequencies(self) -> list[str]:
@@ -600,13 +629,13 @@ class Collection(Composite):
 
     def _construct(self, client) -> pa.Table:
         if not self.instances:
-            raise ValueError("ModelCollection has no instances to construct.")
+            raise ValueError("Collection has no instances to construct.")
 
         for inst in self.instances:
             inst.load(client=client)
 
         final_table = self._cast_dates(self.instances[0].data)
-        portfolio_join = any(isinstance(i, BasePortfolio) for i in self.instances)
+        portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
         join_type = "inner" if portfolio_join else "left outer"
 
         for inst in self.instances[1:]:

@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Fama-French (and Carhart) factor models implementation."""
+
 import io
 import zipfile
 from abc import ABC, abstractmethod
@@ -18,7 +20,6 @@ from getfactormodels.utils.arrow_utils import (
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
-#TODO: break up _read_zip
 class FamaFrenchFactors(FactorModel, RegionMixin):
     """Download Fama-French (and Carhart) factor models.
 
@@ -33,7 +34,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             (default: 'm').
         start_date (str, optional): start date of the data. YYYY[-MM-DD].
         end_date (str, optional): end date of the data. YYYY[-MM-DD].
-        cache_ttl (int, optional`): cached download time-to-live in seconds 
+        cache_ttl (int, optional): cached download time-to-live in seconds 
             (default: 86400).
         region (str, optional): return an international/emerging market 
             model.
@@ -48,18 +49,18 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         
         - E. F. Fama and K. R. French, 2018. Choosing factors. Journal of 
         Financial Economics, vol. 128, no. 2, pp. 234–252, 2018.
-
     """
-    # TODO: NaNs in FamaFrench models! check
-    #Note: "-0.9999" should be NaNs! [TODO: FIXME]
+
     @property
-    def frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    def frequencies(self) -> list[str]:
+        return ['d', 'w', 'm', 'y']
     
     @property 
-    def _precision(self) -> int: return 6
+    def _precision(self) -> int:
+        return 6
 
-    @property 
-    def _regions(self) -> list[str]:
+    @property
+    def regions(self) -> list[str]:
         return [
             'us', 'emerging', 'developed', 'ex-us', 'europe',
             'japan', 'asia-pacific-ex-japan', 'north-america', 
@@ -73,9 +74,8 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         """Initialize a Fama-French factor model."""
         model_str = str(model).lower().replace('ff', '').strip()
         
-        # Pop 'model' out of kwargs so it's not passed twice
         kwargs.pop('model', None)
-        super().__init__(frequency=frequency, model=model_str, **kwargs)
+        super().__init__(model=model_str, frequency=frequency, **kwargs)
         
         self.model = model_str
         self.region = region
@@ -89,12 +89,10 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                 ("SMB", pa.float64()), 
                 ("HML", pa.float64())]
         
-        # 5 and 6-factor models: RMW and CMA
         if self.model in ["5", "6"]:
             cols += [("RMW", pa.float64()), 
                      ("CMA", pa.float64())]
 
-        # mom models (4/6): dev/emerging: WML. US 6 factor: UMD. US 4: MOM.
         if self.model in ["4", "6"]:
             is_intl = self.region not in ["us", None]
             mom_name = "WML" if is_intl else ("UMD" if self.model == "6" else "MOM")
@@ -108,13 +106,13 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         """Private helper: schema for momentum files. 'val' is placeholder."""
         return pa.schema([("date", pa.string()), 
                           ("val", pa.float64())])
+
     @property
     def model(self) -> str:
         return self._model
 
     @model.setter
     def model(self, value: int | str):
-        # Strip 'ff' prefix if present ('ff3' -> '3')
         val = str(value).lower().replace('ff', '').strip()
         if val not in ["3", "4", "5", "6"]:
             raise ValueError(f"Invalid Fama-French model '{value}'. Options: 3, 4, 5, 6 (or 'ff3', 'ff4', 'ff5', 'ff6')")
@@ -122,7 +120,6 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         if hasattr(self, '_model') and val != self._model:
             self.log.info(f"Model changed from {self._model} to {val}")
             self._data = None
-            self._view = None
         self._model = val
 
     @property
@@ -140,7 +137,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         }
 
     def _validate_ff_input(self) -> None:
-        """Validates input for Fama-French models for things getters/setters dont take care of."""
+        """Validates input for Fama-French models."""
         if self.region != 'us' and self.frequency == 'w':
             raise ValueError(f"Weekly frequency not available for {self.region}.")
 
@@ -159,7 +156,6 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         ff_url_name = self._ff_region_map.get(self.region)
         
         if ff_url_name == 'Emerging':
-            # Emerging: only monthly 5-factors avail
             filename = "Emerging_5_Factors_CSV.zip"
         elif ff_url_name == 'US':
             _model = "F-F_Research_Data_5_Factors_2x3" if self.model in {"5", "6"} else "F-F_Research_Data_Factors"
@@ -167,14 +163,12 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             suffix = freq_map.get(self.frequency, "")
             filename = f"{_model}{suffix}_CSV.zip"
         else:
-            # International regions
             base_model = '3' if self.model in ['3', '4'] else '5'
             daily = '_Daily' if self.frequency == 'd' else ''
             filename = f"{ff_url_name}_{base_model}_Factors{daily}_CSV.zip"
             
         url_list['factors'] = f"{base_url}/{filename}"
         
-        # Construct the momentum URL if needed.
         if self.model in ["4", "6"]:
             freq_suffix = "_daily" if self.frequency == 'd' else ""
             if self.region in ['us', None]:
@@ -185,7 +179,6 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
             url_list['momentum'] = f"{base_url}/{mom_filename}"
 
         return url_list
-
 
     def _read_zip(self, _data: bytes, use_schema: pa.Schema = None) -> pa.Table:
         """Download and read CSV from zip file."""
@@ -210,13 +203,11 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         for line in raw_content:
             clean = line.strip()
             if not clean or "copyright" in clean.lower():
-                if "copyright" in clean.lower(): self.copyright = clean
+                if "copyright" in clean.lower(): 
+                    self.copyright = clean
                 continue
             
-            # Use commas for split, not spaces!
             parts = [p.strip() for p in clean.split(',')]
-            
-            # only keeps lines that start with a date
             if parts and parts[0].isdigit():
                 content.append(",".join(parts))
 
@@ -229,24 +220,19 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
                 include_columns=_schema.names,
             ),
         )   
-    
 
     def _read(self, data: dict[str, bytes]) -> pa.Table:
         main_cols = [f for f in self.schema if f.name not in ["UMD", "MOM", "WML"]]
         
-        # Emerging Markets: base file is 5 factors (even for models 3/4)
         if self.region == 'emerging' and self.model in ["3", "4"]:
             main_cols.insert(4, pa.field("RMW", pa.float64()))
             main_cols.insert(5, pa.field("CMA", pa.float64()))
 
         main_schema = pa.schema(main_cols)
-        # data['factors']
         table = self._read_zip(data['factors'], use_schema=main_schema)
 
         if 'momentum' in data:
             mom_table = self._read_zip(data['momentum'], use_schema=self._mom_schema)
-            
-            # momentum column name based on schema
             mom_key = next(k for k in ["UMD", "MOM", "WML"] if k in self.schema.names)
             mom_table = mom_table.rename_columns(["date", mom_key])
             
@@ -255,18 +241,16 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         table = table.set_column(0, "date", table.column(0).cast(pa.string()))
         table = offset_period_eom(table, self.frequency)
         table = scale_to_decimal(table)
-        
         table = round_to_precision(table, self._precision)
 
         return table.select(self.schema.names).combine_chunks()
 
 
-# WIP ---------------------------------------------------------------------- #
-# TODO: FactorModel to BaseModel.
 class _FFPortfolioBase(PortfolioBase, ABC):
     """Base class for Fama-French portfolio return data."""
     def __init__(self, sort: str | list[str] | None = None, **kwargs):
-        super().__init__(sort=sort, **kwargs)
+        super().__init__(**kwargs)
+        self.sort_vars = sort
         self.formed_on = self._normalize_sort(sort)
 
     @staticmethod
@@ -288,8 +272,6 @@ class _FFPortfolioBase(PortfolioBase, ABC):
     def _get_ff_table(self, lines: list[str]) -> str:
         weight_ln = "Value" if self.weights == 'vw' else "Equal"
     
-        # fix: US bivariate size/OP 2x3 sorts contain an error. Header line in the daily 
-        # file is labelled 'Monthly' 
         is_size_op_2x3 = (
             hasattr(self, 'formed_on') and 
             frozenset(self.formed_on) == frozenset(['size', 'op']) and
@@ -307,11 +289,8 @@ class _FFPortfolioBase(PortfolioBase, ABC):
                 break
 
         if table_start is None:
-            raise ValueError(
-                f"Could not find table header: `{weight_ln}`",
-            )
+            raise ValueError(f"Could not find table header: `{weight_ln}`")
 
-        # Skip title line, find first non empty line
         header_idx = table_start + 1
         while header_idx < len(lines) and not lines[header_idx].strip():
             header_idx += 1
@@ -322,17 +301,15 @@ class _FFPortfolioBase(PortfolioBase, ABC):
         headers = ("date " + " ".join(lines[header_idx].split())).lower().replace("-", "_")
         cleaned = [headers]
 
-        # Extract lines
         for line in lines[header_idx + 1:]:
             clean = line.strip()
-            # Table's over if line doesn't start with a number
             if not clean or not clean[0].isdigit():
                 break
             cleaned.append("  ".join(clean.split()))
 
         return "\n".join(cleaned)
 
-
+    @override
     def _read(self, data: bytes) -> pa.Table:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             with z.open(z.namelist()[0]) as f:
@@ -357,16 +334,15 @@ class _FFPortfolioBase(PortfolioBase, ABC):
 
         return table.combine_chunks()
 
-
     def _fix_ff_nulls(self, table: pa.Table) -> pa.Table:
         ff_nans = pa.array([-99.99, -999.0, -99.9], type=pa.float64())
         for i, name in enumerate(table.column_names):
-            if name.lower() == "date": continue
+            if name.lower() == "date": 
+                continue
             col = table.column(name)
             mask = pc.is_in(col, value_set=ff_nans)
             table = table.set_column(i, name, pc.if_else(mask, pa.scalar(None, type=col.type), col))
         return table
-
 
     @property
     def schema(self) -> pa.Schema:
@@ -376,7 +352,8 @@ class _FFPortfolioBase(PortfolioBase, ABC):
         return pa.schema([pa.field("date", pa.date32())])
     
     @property
-    def _precision(self) -> int: return 6
+    def _precision(self) -> int: 
+        return 6
 
 
 class _FamaFrenchSorts(_FFPortfolioBase):
@@ -405,15 +382,13 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         self._validate_params()
    
     @property
-    def frequencies(self) -> list[str]: return ['d', 'm', 'y']
+    def frequencies(self) -> list[str]: 
+        return ['d', 'm', 'y']
 
     def _find_table_start(self) -> str:
-        """Identify the table section based on weights."""
         return "Equal Weighted Returns" if self.weights == 'ew' else "Value Weighted Returns"
 
-
     def _map_grid_to_count(self, grid_str: str) -> int:
-        """Map grid layout or count string to total portfolio count."""
         mapping = {
             'tertile': 3, '3': 3,
             'quintile': 5, '5': 5,
@@ -428,7 +403,6 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         return mapping[grid_str]
 
     def _get_default_sort(self) -> str:
-        """Assigns a default sort if none provided."""
         if len(self.formed_on) == 1:
             return 'decile'
         if len(self.formed_on) == 2:
@@ -437,9 +411,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             return '5x5'
         return '2x4x4'
 
-
     def _validate_params(self):
-        """Validates factors, frequency and sort types."""
         valid = {'size', 'bm', 'op', 'inv', 'ep', 'cfp', 'dp', 'mom',
                  'st_rev', 'lt_rev', 'ac', 'beta', 'ni', 'var', 'resvar'}
         for f in self.formed_on:
@@ -452,15 +424,13 @@ class _FamaFrenchSorts(_FFPortfolioBase):
 
         prior_rets = {'mom', 'st_rev', 'lt_rev'}
         if not self.is_multivariate:
-            # Univariate sorts only support 3, 5, 10
-            # This fixes eg, "-p 2x3 --on op" returning the full table.
             if self.n_portfolios not in {3, 5, 10}:
                  raise ValueError(
-                     f"Sort '{self.sort}' ({self.n_portfolios}) is not a valid univariate sort. "
+                     f"Sort '{self.sort_vars}' ({self.n_portfolios}) is not a valid univariate sort. "
                      f"Use 'tertile', 'quintile', 'decile' (or 3, 5 or 10).",
                  )
 
-            if self.formed_on[0] in prior_rets: #noqa
+            if self.formed_on[0] in prior_rets:
                 if self.n_portfolios != 10:
                     raise ValueError(f"{self.formed_on[0]} is only available in deciles.")
     
@@ -468,21 +438,16 @@ class _FamaFrenchSorts(_FFPortfolioBase):
     def _read(self, data: bytes) -> pa.Table:
         table = super()._read(data)
         
-        # fix: drop the "<= 0" column here (bivariates can contain it)
         neg_cols = [name for name in table.column_names if "<=" in name]
         if neg_cols:
-            table = table.drop(neg_cols) #
+            table = table.drop(neg_cols)
 
-        # Sorts on prior rets are decile only, the rest are a table 
-        # of date [+ <= 0] + tertiles, quintiles, deciles.
         if not self.is_multivariate and self.formed_on[0] not in {'mom', 'st_rev', 'lt_rev'}:
             table = self._slice_univariate(table)
         
         return table.combine_chunks()
 
-
     def _slice_univariate(self, table: pa.Table) -> pa.Table:
-        # No "< =" col now
         mapping = {
             3: slice(1, 4),
             5: slice(4, 9),
@@ -498,7 +463,6 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             if table.num_columns > 16:
                 indices = [0] + list(range(target_slice.start, target_slice.stop))
                 return table.select([i for i in indices if i < table.num_columns])
-            # quick fix: 'ac' and 'beta' univariates don't have tertiles... 
             if table.num_columns >= 15:
                 adj_mapping = {
                     5: slice(table.num_columns - 15, table.num_columns - 10),
@@ -511,7 +475,8 @@ class _FamaFrenchSorts(_FFPortfolioBase):
 
         return table
 
-
+    @property
+    @override
     def url(self) -> str:
         """Constructs a URL for a portfolio .zip on the Ken French library."""
         base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
@@ -523,7 +488,6 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         else:
             suffix = "_CSV.zip"
 
-        # Univariate sorts
         if not self.is_multivariate:
             mapping = {
                 'size': 'Portfolios_Formed_on_ME',
@@ -544,10 +508,8 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             }
             return f"{base}/{mapping[self.formed_on[0]]}{suffix}"
 
-        # Multivariate sorts
         factors = frozenset(self.formed_on)
 
-        # 3-way sorts  # NOTE REGIONAL AVAIL.
         if len(factors) == 3:
             three_way = {
                 frozenset(['size', 'bm', 'op']): "32_Portfolios_ME_BEME_OP_2x4x4",
@@ -560,7 +522,6 @@ class _FamaFrenchSorts(_FFPortfolioBase):
 
             return f"{base}/{slug}{suffix}"
 
-        # Bivariate sorts
         bivariate_map = {
             frozenset(['size', 'bm']): "",
             frozenset(['size', 'op']): "ME_OP",
@@ -595,9 +556,9 @@ class _FamaFrenchSorts(_FFPortfolioBase):
             )
         prefix, grid = grid_map.get(self.n_portfolios, ("25_Portfolios", "5x5"))
 
-        if not slug_part: # bivariate
+        if not slug_part:
             return f"{base}/{prefix}_{grid}{suffix}"
-        if "Prior" in slug_part: # bivariate sorts on prior returns
+        if "Prior" in slug_part:
             return f"{base}/{prefix}_{slug_part}{suffix}"
 
         return f"{base}/{prefix}_{slug_part}_{grid}{suffix}"
@@ -608,6 +569,7 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
     _SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
 
     @property
+    @override
     def frequencies(self) -> list[str]: 
         return ['d', 'm', 'y']
 
@@ -625,7 +587,8 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
 
         return f"Average {w_str} Returns -- {freq_map.get(self.frequency, 'Monthly')}"
 
-
+    @property
+    @override
     def url(self) -> str:
         base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
@@ -636,6 +599,7 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
 
         return f"{base}/{self.n_portfolios}_Industry_Portfolios_{suffix}"
 
+
 def _get_ff_portfolios(
     sort: str | list[str] = 'size',
     grid: str | None = None,
@@ -643,7 +607,6 @@ def _get_ff_portfolios(
     industry: int | None = None,
     weights: str = 'vw',
     frequency: str = 'm',
-    #dividends: bool = True,
     **kwargs,
 ):
     """Internal helper: factory for Fama-French portfolios and industries."""
@@ -652,7 +615,6 @@ def _get_ff_portfolios(
             frequency=frequency, 
             weights=weights, 
             count=industry, 
-            #dividends=dividends,
             **kwargs,
         )
 
@@ -662,31 +624,5 @@ def _get_ff_portfolios(
         sort=sort, 
         grid=grid, 
         count=count, 
-        #dividends=dividends,
         **kwargs,
     )
-"""
-def _get_ff_portfolios(
-    formed_on: str | list[str] = 'size', #on=, sorted_on=, might rename
-    sort: str | int | None = None, #2x3, decile, 25
-    industry: int | None = None, 
-    weights: str = 'vw',
-    frequency: str = 'm',
-    **kwargs) -> pa.Table:
-    Internal helper: factory to return.
-
-    Factory for Fama French portfolios. Either `industry` or 
-    `formed_on` required.
-    
-    # we industry?
-    if industry is not None:
-        return _FamaFrenchIndustryPortfolios(
-            frequency=frequency, weights=weights, n_portfolios=industry, **kwargs,
-        )
-
-    # keep formed_on None, let class handle it.
-    return _FamaFrenchSorts(
-        frequency=frequency, weights=weights, formed_on=formed_on, sort=sort, **kwargs,
-    )
-"""
-# TODO: setters/getters, regions, tests, aggregates for q? prob not. 

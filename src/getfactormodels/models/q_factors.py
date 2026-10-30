@@ -125,7 +125,7 @@ class QFactors(FactorModel):
         investment approach, Review of Financial Studies 28 (3), 650-705.
     """
     @property
-    def _frequencies(self) -> list[str]:
+    def frequencies(self) -> list[str]:
         return ["d", "w", "w2w", "m", "q", "y"]
 
     def __init__(self, *, classic: bool = False, **kwargs) -> None:
@@ -163,8 +163,9 @@ class QFactors(FactorModel):
 
         return pa.schema(time_cols + factors)
 
-
-    def _get_url(self) -> str:
+    
+    @property
+    def url(self) -> str:
         freq = self.frequency or 'm'
         file_str = _GLOBAL_Q_FREQ_MAP.get(freq, "monthly")
         base_url = 'https://global-q.org/uploads/1/2/2/6/122679606'
@@ -262,8 +263,8 @@ class _QPortfolios(PortfolioBase):
         ]
         return pa.schema(fields)
 
-
-    def _get_url(self) -> str:
+    @property
+    def url(self) -> str:
         base_url = 'https://global-q.org/uploads/1/2/2/6/122679606'
         freq_key = self.frequency if self.frequency is not None else 'm'
         f_str = _GLOBAL_Q_FREQ_MAP.get(freq_key, 'monthly')
@@ -443,8 +444,9 @@ class _QAnomalies(PortfolioBase):
         prefix = "me_" if self.sort_type == '3x5' else ""
         last_year = datetime.now(tz=timezone.utc).year - 1
         return f"{base}/{prefix}{cat_slug}_{freq}_{last_year}.zip"
-
-    def _get_url(self) -> str:
+    
+    @property
+    def url(self) -> str:
         # URL only gets first category
         # FIXME: TODO:
         first_cat = self._get_category(self.anomalies[0])

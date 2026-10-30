@@ -32,6 +32,7 @@ from getfactormodels._metadata import (
 )
 from getfactormodels.utils.registry import _MODEL_REGISTRY
 from getfactormodels.utils.utils import _generate_filename
+from getfactormodels.utils.arrow_utils import  print_table_preview
 
 log = logging.getLogger("getfactormodels")
 
@@ -315,7 +316,11 @@ def _cli():
         pv.write_csv(model_obj.data, sys.stdout.buffer)
     else:
         if not args.quiet and not args.no_prev:
-            sys.stderr.write(f"{str(model_obj)}\n")
+            region_label = f" ({model_obj.region})" if hasattr(model_obj, "region") and model_obj.region else ""
+            header = f"{model_obj.name}{region_label}\n"
+            preview_str = print_table_preview(model_obj.data, n_rows=args.height, n_cols=args.width)
+            if preview_str:
+                sys.stderr.write(f"{header}{preview_str}\n")
 
 
 if __name__ == '__main__':
