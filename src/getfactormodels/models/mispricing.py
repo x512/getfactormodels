@@ -24,7 +24,7 @@ class MispricingFactors(FactorModel):
 
     """
     @property
-    def _frequencies(self) -> list[str]: return ["d", "m"]
+    def frequencies(self) -> list[str]: return ["d", "m"]
     
     @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
     def _precision(self) -> int: return 10
@@ -42,7 +42,8 @@ class MispricingFactors(FactorModel):
             ('RF', pa.float64()),
         ])
 
-    def _get_url(self) -> str:
+    @property
+    def url(self) -> str:
         base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11"
         file_name = "M4d" if self.frequency == "d" else "M4"
         return f"{base_url}/{file_name}.csv"

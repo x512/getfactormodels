@@ -18,7 +18,7 @@ import logging
 import warnings
 from typing import Literal
 from getfactormodels import models as factor_models
-from getfactormodels.models.base import FactorModel, RegionMixin
+from getfactormodels.models.base import BaseModel, Collection, RegionMixin
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
 
@@ -37,17 +37,17 @@ def clear_global_cache() -> int:
 
 def portfolio(
     frequency: str = 'm',
-    grid: str | None = None,                # e.g., '2x3', '2x3x3', '5x5'
-    count: int | None = None,               # e.g., 10 for deciles
-    sort: str | list[str] = 'size',         # sorting variables
+    grid: str | None = None,
+    count: int | None = None,
+    sort: str | list[str] = 'size',
     weights: Literal['vw', 'ew'] | None = None,
     industry: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
+    *,
     #output_dir: str | Path | None = None,
     #filename: str | None = None,
     #file_format: Literal['feather', 'ipc', 'parquet', 'csv', 'md', 'txt'] = 'csv'
-    *,
     source: str = 'ff',                     # 'q', 'ff', or 'aqr'
     dividends: bool = True,                 # False for ex-div (retx_vw)
     **kwargs,
@@ -71,13 +71,13 @@ def portfolio(
     if kwargs.get('region') is not None:
         raise NotImplementedError(
             "Regional data is not yet supported for portfolios (US only). "
-                "Please omit the region parameter."
+            "Please omit the region parameter."
         )
 
     if 'formed_on' in kwargs:
         warnings.warn(
             "The 'formed_on' parameter is deprecated and will be removed in a future release. "
-                "Please use 'sort' instead.",
+            "Please use 'sort' instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -101,24 +101,22 @@ def portfolio(
         return _get_q_portfolios(**params)
 
     if source in ['ff', 'famafrench']:
-        # Quick check
         if frequency == 'w':
             is_weekly = (
-                isinstance(sort, (list, tuple)) and 
+                isinstance(sort, (list, tuple)) and
                 frozenset(str(x).lower() for x in sort) == frozenset(['size', 'bm']) and
                 (grid in (None, '2x3', '6'))
             )
             if not is_weekly:
                 raise ValueError(
                     "Fama-French weekly portfolio data is only available for the size "
-                        "and book-to-market (2x3) portfolio. "
-                        "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
+                    "and book-to-market (2x3) portfolio. "
+                    "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
                 )
         from getfactormodels.models.fama_french import _get_ff_portfolios
         return _get_ff_portfolios(**params)
 
     raise ValueError(f"Portfolio source '{source}' not recognized.")
-
 
 def anomaly(
     name: str | list[str] = 'abr_1',
@@ -178,7 +176,7 @@ def model(
     #force: bool = False,  #not implemented properly yet
     clear_cache: bool = False, # ye
     **kwargs,
-) -> FactorModel:
+) -> BaseModel | Collection:
     """Download factor model data.
 
     Args:
@@ -196,15 +194,13 @@ def model(
         model_input = model
 
     if isinstance(model_input, list):
-        from getfactormodels.models.base import ModelCollection
         model_keys = [get_model_key(m) for m in model_input]
-        collection = ModelCollection(
+        collection = Collection(
             model_keys=model_keys,
             region=region,
             frequency=frequency,
             start_date=start_date,
             end_date=end_date,
-            #force=force,
             **kwargs,
         )
         if clear_cache:
@@ -246,7 +242,7 @@ def get_factors(*args, **kwargs):  # noqa
     """DEPRECATED: Use `model()` instead."""
     warnings.warn(
         "get_factors() is deprecated and will be removed in a future version. "
-            "Please use model() for factor data or portfolio() for return data.",
+        "Please use model() for factor data or portfolio() for return data.",
         FutureWarning,
         stacklevel=2,
     )

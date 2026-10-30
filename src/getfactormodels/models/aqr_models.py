@@ -44,7 +44,7 @@ class _AQRModel(FactorModel, RegionMixin):
     and the download is rate limited.
     """
     @property
-    def _frequencies(self) -> list[str]: return ["d", "m"]
+    def frequencies(self) -> list[str]: return ["d", "m"]
     
     @property
     def _precision(self) -> int: return 8
@@ -75,7 +75,7 @@ class _AQRModel(FactorModel, RegionMixin):
 
     @override
     def _download(self, client: _HttpClient | None = None) -> bytes:
-        url = self._get_url()
+        url = self.url
         
         if client is not None:
             return client.stream(url, self.cache_ttl, model_name=self.__class__.__name__)
@@ -183,7 +183,8 @@ class HMLDevilFactors(_AQRModel):
                 'UMD': 'UMD',
                 'RF': 'RF'}
 
-    def _get_url(self):
+    @property
+    def url(self):
         f = 'daily' if self.frequency == 'd' else 'monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/The-Devil-in-HMLs-Details-Factors-{f}.xlsx'
 
@@ -229,7 +230,8 @@ class QMJFactors(_AQRModel):
                 'UMD': 'UMD',
                 'RF': 'RF'}
 
-    def _get_url(self):
+    @property
+    def url(self):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Quality-Minus-Junk-Factors-{f}.xlsx'
 
@@ -262,7 +264,7 @@ class BABFactors(_AQRModel):
                 'HML FF': 'HML',
                 'RF': 'RF_AQR'} 
 
-    def _get_url(self):
+    def url(self):
         f = 'Daily' if self.frequency == 'd' else 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Betting-Against-Beta-Equity-Factors-{f}.xlsx'
 
@@ -293,7 +295,7 @@ class AQR6Factors(CompositeModel, RegionMixin):
     def _regions(self) -> list[str]: return _AQR_REGIONS
 
     @property
-    def _frequencies(self) -> list[str]: return ['m', 'd']
+    def frequencies(self) -> list[str]: return ['m', 'd']
 
     def _construct(self, client: _HttpClient) -> pa.Table:
         bab_inst, qmj_inst = self.components
@@ -333,7 +335,7 @@ class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
     @property
     @override     # only AQR model not avail in daily.
-    def _frequencies(self) -> list[str]: return ["m"]
+    def frequencies(self) -> list[str]: return ["m"]
 
     @property
     @override     # different regions to other models.
@@ -385,7 +387,8 @@ class VMEFactors(_AQRModel):
     @property
     def _sheet_map(self) -> dict: return {'VME Factors': 'VME'}
 
-    def _get_url(self) -> str:
+    @property
+    def url(self) -> str:
         f = 'Monthly'
         return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/Value-and-Momentum-Everywhere-Factors-{f}.xlsx'
 

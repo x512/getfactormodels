@@ -53,7 +53,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
     # TODO: NaNs in FamaFrench models! check
     #Note: "-0.9999" should be NaNs! [TODO: FIXME]
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
+    def frequencies(self) -> list[str]: return ['d', 'w', 'm', 'y']
     
     @property 
     def _precision(self) -> int: return 6
@@ -150,8 +150,8 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
         if self.frequency == 'w' and self.model != "3":
             raise ValueError("Weekly Fama-French data is only available for the 3-factor model.")
  
-
-    def _get_url(self) -> dict[str, str]:
+    @property
+    def url(self) -> dict[str, str]:
         """Constructs the URLs for downloading Fama-French data."""
         base_url = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
         url_list = {}
@@ -405,7 +405,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         self._validate_params()
    
     @property
-    def _frequencies(self) -> list[str]: return ['d', 'm', 'y']
+    def frequencies(self) -> list[str]: return ['d', 'm', 'y']
 
     def _find_table_start(self) -> str:
         """Identify the table section based on weights."""
@@ -512,7 +512,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         return table
 
 
-    def _get_url(self) -> str:
+    def url(self) -> str:
         """Constructs a URL for a portfolio .zip on the Ken French library."""
         base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
@@ -608,7 +608,7 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
     _SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
 
     @property
-    def _frequencies(self) -> list[str]: 
+    def frequencies(self) -> list[str]: 
         return ['d', 'm', 'y']
 
     def __init__(self, count: int | str = 5, dividends: bool = True, **kwargs):
@@ -626,7 +626,7 @@ class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
         return f"Average {w_str} Returns -- {freq_map.get(self.frequency, 'Monthly')}"
 
 
-    def _get_url(self) -> str:
+    def url(self) -> str:
         base = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 
         if self.frequency == 'd':

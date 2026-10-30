@@ -8,7 +8,7 @@
 import io
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from getfactormodels.models.base import BaseModel
+from getfactormodels.models.base import FactorModel
 from getfactormodels.models.fama_french import FamaFrenchFactors
 from getfactormodels.utils.arrow_utils import (
     scale_to_decimal,
@@ -17,7 +17,7 @@ from getfactormodels.utils.arrow_utils import (
 from getfactormodels.utils.date_utils import offset_period_eom
 
 
-class DHSFactors(BaseModel):
+class DHSFactors(FactorModel):
     """The Behavioural Factors of Daniel, Hirshleifer and Sun (2020).
     
     FIN and PEAD factors. Data from July 1972 - December, 2023. Adds 

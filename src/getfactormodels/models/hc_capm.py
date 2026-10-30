@@ -32,7 +32,7 @@ class HighIncomeCCAPM(FactorModel):
 
     """
     @property
-    def _frequencies(self) -> list[str]:
+    def frequencies(self) -> list[str]:
         return ['y'] 
     
     def __init__(self, frequency='y', **kwargs):
@@ -49,7 +49,8 @@ class HighIncomeCCAPM(FactorModel):
             ('p99', pa.float64()),
         ])
 
-    def _get_url(self):
+    @property
+    def url(self):
         return "https://eml.berkeley.edu/~saez/TabFig2022.xlsx"
 
     def _read(self, data: bytes) -> pa.Table:
@@ -72,7 +73,8 @@ class HighIncomeCCAPM(FactorModel):
         hcapm_table = offset_period_eom(hcapm_table, self.frequency)
 
         # Join
-        _ff = FamaFrenchFactors(model='3', frequency=self.frequency).load()
+        _freq = self.frequency or 'm'
+        _ff = FamaFrenchFactors(model='3', frequency=_freq).load()
         mkt_rf = select_table_columns(_ff.data, ['Mkt-RF', 'RF'])
 
         return hcapm_table.join(mkt_rf, keys="date", join_type="inner").combine_chunks()

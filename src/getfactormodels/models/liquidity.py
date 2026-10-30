@@ -27,7 +27,7 @@ class LiquidityFactors(FactorModel):
         - The leading 65 values of 'TRADED_LIQ' are NaNs.
     """
     @property
-    def _frequencies(self) -> list[str]: return ["m"]
+    def frequencies(self) -> list[str]: return ["m"]
 
     @property
     def _precision(self) -> int: return 8
@@ -42,8 +42,8 @@ class LiquidityFactors(FactorModel):
             ('Traded Liq (LIQ_V)', pa.float64()),
         ])
 
-
-    def _get_url(self) -> str:
+    @property
+    def url(self) -> str:
         last_year = datetime.now(tz=timezone.utc).year - 1 # noqa: UP017    keep this until strictly >=3.11 (datetime.UTC)
         base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/liq_data_1962_"
 

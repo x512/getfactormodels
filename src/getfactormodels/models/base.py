@@ -423,7 +423,7 @@ class Base(ABC):
         return table.combine_chunks().__dataframe__(nan_as_null=nan_as_null, allow_copy=True)
 
 
-class BaseModel(Base):
+class FactorModel(Base):
     """Standard factor model base class."""
     def __init__(self, model: str, **kwargs):
         """Initialize a model instance.

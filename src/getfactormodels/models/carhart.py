@@ -17,7 +17,7 @@ class CarhartFactors(FamaFrenchFactors):
         Journal of Finance, vol. 52, no. 1, pp. 57–82.
     """
     @property
-    def _frequencies(self) -> list[str]: return ["d", "m", "y"]
+    def frequencies(self) -> list[str]: return ["d", "m", "y"]
 
     def __init__(self, frequency='m', region=None, **kwargs):
         """Initialize the Carhart 4 Factor model."""

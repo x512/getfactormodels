@@ -43,7 +43,7 @@ class ICRFactors(FactorModel):
     #_dataset_title = "Intermediary Capital Ratio and Risk Factors"
     #_dataset_repository = "Zhiguo He Academic Repository"
     @property
-    def _frequencies(self) -> list[str]: return ["d", "m", "q"]
+    def frequencies(self) -> list[str]: return ["d", "m", "q"]
 
     @property
     def _precision(self) -> int: return 8 if self.frequency == 'd' else 4 
@@ -62,7 +62,8 @@ class ICRFactors(FactorModel):
             ('intermediary_leverage_ratio_squared', pa.float64()),
         ])
 
-    def _get_url(self) -> str:
+    @property
+    def url(self) -> str:
         freq = self.frequency or 'm'
         _file = {"d": "daily", "m": "monthly", 
             "q": "quarterly"}.get(freq, "monthly")
