@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import logging
+from getfactormodels.utils.cache import clear_cache
 from ._metadata import __author__, __copyright__, __license_text__, __version__
 from .main import anomaly, model, portfolio
 from .models import (
@@ -69,5 +70,6 @@ __all__ = [
     "portfolio",
     "anomaly",
     "CHFactors",
+    "clear_cache",
 ]
 

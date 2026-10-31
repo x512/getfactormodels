@@ -246,3 +246,12 @@ class _HttpClient:
         except httpx.HTTPError as e:
             log.debug(f"Connection check failed for {url}: {e}")
             return False
+
+    # new
+    def download_any(self, target, *, tag, model_name, cache_ttl, force):
+        if isinstance(target, str):
+            return self.download(target, tag=tag, model_name=model_name, cache_ttl=cache_ttl, force=force)
+        return {
+            k: self.download(v, tag=tag, model_name=model_name, cache_ttl=cache_ttl, force=force)
+            for k, v in target.items()
+        }

@@ -7,7 +7,7 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, ClassVar, Literal, Self
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
@@ -18,6 +18,7 @@ from getfactormodels.utils.arrow_utils import (
     scale_to_percent,
     select_table_columns,
 )
+from getfactormodels.utils.cache import evict_model_cache
 from getfactormodels.utils.date_utils import (
     _validate_input_date,
     validate_date_range,
@@ -185,48 +186,24 @@ class Base(ABC):
         self._data = self._process_table(raw_table)
         return self
 
+
     def _get_data(self, client: _HttpClient | None = None) -> pa.Table:
         """Route table construction or standard download."""
-        if hasattr(self, "_construct"):
-            # safer access. hasattr passed; type ignore because Base lacks _construct
-            construct_fn = self._construct  # type: ignore[attr-defined]
-            if client is None:
-                with _HttpClient() as shared_client:
-                    return construct_fn(shared_client)
-            return construct_fn(client)
+        return self._get_raw(client=client)
 
+    def _get_raw(self, client: _HttpClient | None = None) -> pa.Table:
         raw_data = self._download(client=client)
         return self._read(raw_data)
 
-    def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
-        target_urls = self.url
-        self.log.info("Downloading from: %s", target_urls)
-
-        def _fetch(http_client: _HttpClient, urls: str | dict):
-            if isinstance(urls, str):
-                return http_client.download(
-                    urls,
-                    tag=getattr(self, "model", self.__class__.__name__),
-                    model_name=self.__class__.__name__,
-                    cache_ttl=self.cache_ttl,
-                    force=self.no_cache,
-                )
-            return {
-                k: http_client.download(
-                    v,
-                    tag=getattr(self, "model", self.__class__.__name__),
-                    model_name=self.__class__.__name__,
-                    cache_ttl=self.cache_ttl,
-                    force=self.no_cache,
-                )
-                for k, v in urls.items()
-            }
-
+    def _download(self, client=None):
+        tag = getattr(self, "model", self.__class__.__name__)
         try:
             if client:
-                return _fetch(client, target_urls)
-            with _HttpClient() as new_client:
-                return _fetch(new_client, target_urls)
+                return client.download_any(self.url, tag=tag, model_name=self.__class__.__name__,
+                                           cache_ttl=self.cache_ttl, force=self.no_cache)
+            with _HttpClient() as c:
+                return c.download_any(self.url, tag=tag, model_name=self.__class__.__name__,
+                                      cache_ttl=self.cache_ttl, force=self.no_cache)
         except Exception as e:
             self.log.error("Download failed: %s", e)
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
@@ -270,40 +247,10 @@ class Base(ABC):
         self._selected_factors = selection
         return self
 
-    @classmethod
-    def clear_cache(cls, key: str | list[str] | None = None) -> int:
-        """Evict cached files for a model or instance.
-
-        Can be called as a class method or on an instance.
-
-        Args:
-            key (str | list[str], opt): Specific model key or list of keys to evict.
-                If omitted on a class, defaults to the class's model attribute or name.
-
-        Returns:
-            int: Number of evicted cache entries.
-        """
-        if not isinstance(cls, type):
-            # instance (self)
-            keys_to_evict = getattr(cls, "model_keys", getattr(cls, "model", cls.__class__.__name__))
-            count = cls._evict_cache_keys(keys_to_evict)
-            if hasattr(cls, "log"):
-                cls.log.info("Removed %s cached entry/entries for %s.", count, keys_to_evict)
-            cls._data = None
-            return count
-
-        # classmethod
-        target_keys = key if key is not None else getattr(cls, "model", cls.__name__)
-        return cls._evict_cache_keys(target_keys)
-
-    @staticmethod
-    def _evict_cache_keys(keys: str | list[str]) -> int:
-        from platformdirs import user_cache_path
-        from getfactormodels.utils.cache import _Cache
-
-        cache_dir = user_cache_path(appname="getfactormodels", appauthor="x512", ensure_exists=True)
-        with _Cache(cache_dir) as cache:
-            return cache.evict_model(keys)
+    def clear_cache(self) -> int:
+        """Evict cached files for this specific instance's model key."""
+        keys = getattr(self, "model_keys", getattr(self, "model", self.__class__.__name__))
+        return evict_model_cache(keys)
 
     def to_file(self, filepath: str | Path | None = None) -> None:
         """Save data to a file.
@@ -547,6 +494,12 @@ class Composite(Base):
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         raise NotImplementedError("Composites/collections should use `_construct`.")
 
+    def _get_raw(self, client: _HttpClient | None = None) -> pa.Table:
+        if client is None:
+            with _HttpClient() as shared_client:
+                return self._construct(shared_client)
+        return self._construct(client)
+
 
 class Collection(Composite):
     """Container holding multiple joined models or portfolios of the same frequency."""
@@ -674,7 +627,7 @@ class Collection(Composite):
 
 class RegionMixin(ABC):
     """Mixin for models that support international regions/countries."""
-    _aliases = {
+    _aliases: ClassVar[dict[str, str]] = {
         'uk': 'gbr', 'ger': 'deu', 'sg': 'sgp',
         'hk': 'hkg', 'nl': 'nld', 'fr': 'fra',
         'usa': 'us', 'us': 'usa',
