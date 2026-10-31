@@ -49,7 +49,7 @@ class MispricingFactors(FactorModel):
         return f"{base_url}/{file_name}.csv"
 
 
-    def _read(self, data: bytes) -> pa.Table:
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         """Reads the Mispricing factors CSV."""
         try:
             reader = pv.open_csv(

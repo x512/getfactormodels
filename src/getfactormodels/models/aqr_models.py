@@ -16,7 +16,6 @@ import io
 from abc import ABC, abstractmethod
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
-from typing_extensions import override
 from getfactormodels.models.base import Composite, FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import (
     round_to_precision,
@@ -62,6 +61,7 @@ class _AQRModel(FactorModel, RegionMixin):
                 excluding RF.
             output_file (str, optional): The filepath to save the output data.
             cache_ttl (str): cache time-to-live in seconds.
+            **kwargs: additional keywords.
         """
         self.cache_ttl = cache_ttl
         super().__init__(frequency=frequency, cache_ttl=cache_ttl, **kwargs)
@@ -81,7 +81,6 @@ class _AQRModel(FactorModel, RegionMixin):
                 return i
         raise ValueError(f"Header row 'DATE' not found in {self.__class__.__name__}")
 
-    @override
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         if isinstance(data, dict):
             raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")
@@ -126,7 +125,7 @@ class _AQRModel(FactorModel, RegionMixin):
     def schema(self) -> pa.Schema:
         """Dynamically build schema from date + sheet map values."""
         fields = [('date', pa.string())]
-        for sheet_name, factor_name in self._sheet_map.items():
+        for _sheet_name, factor_name in self._sheet_map.items():
             col_key = 'RF_AQR' if factor_name == 'RF' else factor_name
             fields.append((col_key, pa.float64()))
         return pa.schema(fields)
@@ -206,7 +205,6 @@ class AQR6Factors(Composite, RegionMixin):
     def frequencies(self) -> list[str]:
         return ['m', 'd']
 
-    @override
     def _construct(self, client: _HttpClient) -> pa.Table:
         bab_inst, qmj_inst = self.components
 
@@ -266,7 +264,6 @@ class VMEFactors(_AQRModel):
             ('MOM', pa.float64()),
         ])
 
-    @override
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         if isinstance(data, dict):
             raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")

@@ -171,6 +171,7 @@ class QFactors(FactorModel):
         return f'{base_url}/q5_factors_{file_str}_{last_year}.csv'
 
     def _read(self, data: bytes) -> pa.Table:
+
         try:
             read_opts = pv.ReadOptions(
                 column_names=self.schema.names, 

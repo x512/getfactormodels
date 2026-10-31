@@ -1,3 +1,8 @@
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 from io import BytesIO
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -11,10 +16,10 @@ from getfactormodels.utils.date_utils import offset_period_eom
 class HighIncomeCCAPM(FactorModel):
     """Human Capital CAPM (HCAPM), Campbell & Korniotis (2007).
 
-    An implementation of the Human Capital CCAPM (HCAPM), "using the income 
+    An implementation of the Human Capital CCAPM (HCAPM), "using the income
     growth of high income households, rather than aggregate income growth."
 
-    This model replicates the methodlogy of Campbell & Korniotis (2007), 
+    This model replicates the methodology of Campbell & Korniotis (2007),
     using the same dataset from E. Saez website (updated to 2022).
 
     Only available as annual.
@@ -23,63 +28,69 @@ class HighIncomeCCAPM(FactorModel):
         HCRT1, HCRT5, HCRT10
 
     References:
-        [1] Campbell, S.D. & Korniotis, G.M. 2008. The human capital 
+        [1] Campbell, S.D. & Korniotis, G.M. 2008. The human capital
         that matters: expected returns and the income of affluent
-        households. Federal Reserve Board, Finance and Economics 
-        Discussion Series. 
-        [2] E. Saez & T. Piketty, "Income Inequality in the United States, 
+        households. Federal Reserve Board, Finance and Economics
+        Discussion Series.
+        [2] E. Saez & T. Piketty, "Income Inequality in the United States,
         1913-1998" Quarterly Journal of Economics, 118(1), 2003, 1-39.
 
     """
+
     @property
     def frequencies(self) -> list[str]:
-        return ['y'] 
-    
-    def __init__(self, frequency='y', **kwargs):
-        if frequency != 'y':
-            raise ValueError("Affluent Household/High Income CCAPM only supports annual data ('y').")
-        super().__init__(frequency='y', **kwargs)
-    
+        return ["y"]
+
+    def __init__(self, frequency="y", **kwargs):
+        if frequency != "y":
+            raise ValueError(
+                "Affluent Household/High Income CCAPM only supports annual data ('y')."
+            )
+        super().__init__(frequency="y", **kwargs)
+
     @property
     def schema(self) -> pa.Schema:
         return pa.schema([
-            ('date', pa.int32()),
-            ('p90', pa.float64()),
-            ('p95', pa.float64()),
-            ('p99', pa.float64()),
+            ("date", pa.int32()),
+            ("p90", pa.float64()),
+            ("p95", pa.float64()),
+            ("p99", pa.float64()),
         ])
 
     @property
-    def url(self):
+    def url(self) -> str:
         return "https://eml.berkeley.edu/~saez/TabFig2022.xlsx"
 
-    def _read(self, data: bytes) -> pa.Table:
-        workbook = CalamineWorkbook.from_filelike(BytesIO(data))
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
+        raw_bytes = data["default"] if isinstance(data, dict) else data
+
+        workbook = CalamineWorkbook.from_filelike(BytesIO(raw_bytes))
         rows = workbook.get_sheet_by_index(10).to_python()
 
         clean_rows = [
-            r for r in rows[5:] 
+            r
+            for r in rows[5:]
             if len(r) >= 4 and all(isinstance(r[i], (int, float)) for i in range(4))
         ]
 
         raw_table = pa.Table.from_pydict({
-            "date": [int(r[0]) for r in clean_rows],
-            "p90": [float(r[1]) for r in clean_rows],
-            "p95": [float(r[2]) for r in clean_rows],
-            "p99": [float(r[3]) for r in clean_rows],
+            "date": [int(str(r[0])) for r in clean_rows],
+            "p90": [float(str(r[1])) for r in clean_rows],
+            "p95": [float(str(r[2])) for r in clean_rows],
+            "p99": [float(str(r[3])) for r in clean_rows],
         })
 
         hcapm_table = self._calc_log_growth(raw_table)
-        hcapm_table = offset_period_eom(hcapm_table, self.frequency)
+
+        freq = self.frequency or "y"
+        hcapm_table = offset_period_eom(hcapm_table, freq)
 
         # Join
-        _freq = self.frequency or 'm'
-        _ff = FamaFrenchFactors(model='3', frequency=_freq).load()
-        mkt_rf = select_table_columns(_ff.data, ['Mkt-RF', 'RF'])
+        _ff = FamaFrenchFactors(model="3", frequency=freq).load()
+        mkt_rf = select_table_columns(_ff.data, ["Mkt-RF", "RF"])
 
         return hcapm_table.join(mkt_rf, keys="date", join_type="inner").combine_chunks()
 
-    
     def _calc_log_growth(self, table: pa.Table) -> pa.Table:
         n = table.num_rows
         mapping = {"HCRT10": "p90", "HCRT5": "p95", "HCRT1": "p99"}
@@ -88,13 +99,14 @@ class HighIncomeCCAPM(FactorModel):
         for src_col in mapping.values():
             log_income = pc.ln(table.column(src_col))
             # growth: ln(y_t) - ln(y_{t-1})
-            growth = pc.subtract(log_income.slice(1, n-1), log_income.slice(0, n-1))
+            growth = pc.subtract(
+                log_income.slice(1, n - 1), log_income.slice(0, n - 1)
+            )
             factor_cols.append(growth)
 
-        years = table.column("date").slice(1, n-1)
+        years = table.column("date").slice(1, n - 1)
 
         return pa.Table.from_arrays(
-            [years] + factor_cols, 
+            [years] + factor_cols,
             names=["date", "HCRT10", "HCRT5", "HCRT1"],
         )
-

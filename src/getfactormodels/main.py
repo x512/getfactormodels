@@ -203,8 +203,10 @@ def model(
             end_date=end_date,
             **kwargs,
         )
+        
         if clear_cache:
             collection.clear_cache()
+        
         return collection
 
     model_key = get_model_key(model_input)

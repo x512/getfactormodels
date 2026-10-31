@@ -50,7 +50,7 @@ class LiquidityFactors(FactorModel):
         return f"{base_url}{last_year}.txt" # TODO: check the URL with check_connection, fallback to year before.
 
 
-    def _read(self, data: bytes) -> pa.Table:
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         try:
             _text = data.decode('utf-8')
             _lines = [

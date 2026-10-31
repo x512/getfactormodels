@@ -23,7 +23,6 @@ from getfactormodels.utils.date_utils import (
     validate_date_range,
 )
 from getfactormodels.utils.http_client import _HttpClient
-from getfactormodels.utils.registry import get_model_key
 from getfactormodels.utils.utils import _save_to_file
 
 logger = logging.getLogger(__name__)
@@ -33,9 +32,9 @@ class Base(ABC):
     def __init__(
         self,
         frequency: str = 'm',
-        *,
         start_date: str | None = None,
         end_date: str | None = None,
+        *,
         as_percentage: bool = False,
         drop_nulls: bool = False,
         cache_ttl: int = 86400,
@@ -153,7 +152,7 @@ class Base(ABC):
 
         if val != self._frequency:
             if self._frequency is not None:
-                self.log.info(f"Frequency changed from {self._frequency} to {val}.")
+                self.log.info("Frequency changed from %s to %s.", self._frequency, val)
             self._frequency = val
             self._data = None
 
@@ -201,7 +200,7 @@ class Base(ABC):
 
     def _download(self, client: _HttpClient | None = None) -> bytes | dict[str, bytes]:
         target_urls = self.url
-        self.log.info(f"Downloading from: {target_urls}")
+        self.log.info("Downloading from: %s", target_urls)
 
         def _fetch(http_client: _HttpClient, urls: str | dict):
             if isinstance(urls, str):
@@ -229,7 +228,7 @@ class Base(ABC):
             with _HttpClient() as new_client:
                 return _fetch(new_client, target_urls)
         except Exception as e:
-            self.log.error(f"Download failed: {e}")
+            self.log.error("Download failed: %s", e)
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
 
     def _process_table(self, table: pa.Table) -> pa.Table:
@@ -289,7 +288,7 @@ class Base(ABC):
             keys_to_evict = getattr(cls, "model_keys", getattr(cls, "model", cls.__class__.__name__))
             count = cls._evict_cache_keys(keys_to_evict)
             if hasattr(cls, "log"):
-                cls.log.info(f"Removed {count} cached entry/entries for {keys_to_evict}.")
+                cls.log.info("Removed %s cached entry/entries for %s.", count, keys_to_evict)
             cls._data = None
             return count
 

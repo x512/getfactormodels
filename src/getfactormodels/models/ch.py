@@ -91,7 +91,7 @@ class CHFactors(FactorModel, RegionMixin):
     def _download(self, client=None) -> bytes:
         """Download using httpx with SSL bypass."""
         url = self.url
-        self.log.info(f"Downloading CHFactors from {url}")
+        self.log.info("Downloading CHFactors from %s", url)
 
         with httpx.Client(verify=False, follow_redirects=True) as http_client:
             resp = http_client.get(url, headers={"User-Agent": "Mozilla/5.0"})

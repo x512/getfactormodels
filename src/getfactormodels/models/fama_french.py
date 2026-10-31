@@ -107,16 +107,18 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
 
     @property
     def model(self) -> str:
+        """Return Fama/French model identifier."""
         return self._model
 
     @model.setter
-    def model(self, value: int | str):
-        val = str(value).lower().replace('ff', '').strip()
+    def model(self, value: int | str) -> None:
+        """Set and normalize the Fama-French model identifier."""
+        val = str(value).lower().replace("ff", "").strip()
         if val not in ["3", "4", "5", "6"]:
             raise ValueError(f"Invalid Fama-French model '{value}'. Options: 3, 4, 5, 6")
 
-        if hasattr(self, '_model') and val != self._model:
-            self.log.info(f"Model changed from {self._model} to {val}")
+        if hasattr(self, "_model") and val != self._model:
+            self.log.info("Model changed from %s to %s", self._model, val)
             self._data = None
         self._model = val
 
@@ -349,11 +351,9 @@ class _FFPortfolioBase(PortfolioBase, ABC):
         return "\n".join(cleaned)
 
     def _read(self, data: bytes) -> pa.Table:
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            with z.open(z.namelist()[0]) as f:
-                lines = f.read().decode('utf-8').splitlines()
-
-        clean_csv = self._get_ff_table(lines)
+        with zipfile.ZipFile(io.BytesIO(data)) as z, z.open(z.namelist()[0]) as f:
+            lines = f.read().decode('utf-8').splitlines()        
+            clean_csv = self._get_ff_table(lines)
         table = pv.read_csv(
             io.BytesIO(clean_csv.encode('utf-8')),
             convert_options=pv.ConvertOptions(
@@ -396,6 +396,7 @@ class _FamaFrenchSorts(_FFPortfolioBase):
         sort: str | list[str] = 'size',
         grid: str | None = None,
         count: int | None = None,
+        *,
         dividends: bool = True,
         **kwargs: Any,
     ):
@@ -495,13 +496,14 @@ class _FamaFrenchSorts(_FFPortfolioBase):
 
 
 class _FamaFrenchIndustryPortfolios(_FFPortfolioBase):
+    """Fama/French Industry portfolio sorts."""
     _SIZES = {5, 10, 12, 17, 30, 38, 48, 49}
 
     @property
     def frequencies(self) -> list[str]:
         return ['d', 'm', 'y']
 
-    def __init__(self, count: int | str = 5, dividends: bool = True, **kwargs: Any):
+    def __init__(self, count: int | str = 5, *, dividends: bool = True, **kwargs: Any):
         count = int(count)
         if count not in self._SIZES:
             raise ValueError(f"Industry count must be one of {sorted(self._SIZES)}")
