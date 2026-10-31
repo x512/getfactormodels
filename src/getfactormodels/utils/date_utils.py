@@ -204,20 +204,14 @@ def _validate_input_date(date_input: Any, *, is_end: bool = False) -> str | None
             #DTZ007 fix
             dt = datetime.strptime(clean_str, "%Y%m%d").replace(tzinfo=timezone.utc)
         else:
-            try:
-                dt = datetime.fromisoformat(raw_str.replace('/', '-'))
-            except ValueError:
-                # DTZ007 
-                dt = datetime.strptime(raw_str, "%Y-%m").replace(tzinfo=timezone.utc)
-                if is_end:
-                    dt = dt.replace(day=calendar.monthrange(dt.year, dt.month)[1])
+            dt = datetime.fromisoformat(raw_str.replace('/', '-')).replace(tzinfo=timezone.utc)
+            
         return dt.strftime("%Y-%m-%d")
 
     except (ValueError, TypeError, calendar.IllegalMonthError) as e:
         raise ValueError(
             f"Invalid date: '{date_input}'. Use YYYY, YYYY-MM, or YYYY-MM-DD.",
         ) from e
-
 # test:
 # yyyy, yyyy-mm, yyyymm, yyyymmdd end dates 
 # That they return as intended, and yyyy-mm isn't filling in today's day.
