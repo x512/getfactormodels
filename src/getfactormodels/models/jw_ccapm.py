@@ -5,11 +5,11 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import pyarrow as pa
 import pyarrow.compute as pc
-from getfactormodels.models.base import Composite, RegionMixin
+from getfactormodels.models.base import Composite
 from getfactormodels.utils.utils import read_from_fred
 
 
-class ConditionalCAPM(Composite, RegionMixin):
+class ConditionalCAPM(Composite):
     """Conditional CAPM (CCAPM) of Jaganathan & Wang (1996).
 
     An implementation of the 'Premium-Labour', or 'Human Capital'
@@ -24,13 +24,13 @@ class ConditionalCAPM(Composite, RegionMixin):
         Finance 51: 3–53.
 
     """
-    @property 
-    def _regions(self) -> list[str]: return ['usa']
+    #@property 
+    #def regions(self) -> list[str]: return ['usa']
     
     def __init__(self, frequency='m', **kwargs):
         super().__init__(**kwargs)
         self.frequency = frequency.lower()
-        self.region = kwargs.get('region', 'usa')
+   #     self.region = kwargs.get('region', 'usa')
 
     @property
     def _precision(self) -> int: return 8
