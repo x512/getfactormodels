@@ -113,7 +113,6 @@ class Base(ABC):
     def name(self) -> str:
         """Name of the model or dataset."""
         from getfactormodels.utils.registry import get_model_name
-
         model_key = getattr(self, "model", None)
         
         if isinstance(model_key, str):
@@ -121,9 +120,7 @@ class Base(ABC):
             if name:
                 return name
                 
-        # Fallback to class name
         return self.__class__.__name__
-
 
     @property
     def start_date(self) -> str | None:
@@ -467,7 +464,6 @@ class Composite(Base):
     @property
     def components(self) -> list[Base]:
         """List of child model instances."""
-        # By default, checks for 'instances' (used by Collection)
         return getattr(self, "instances", [])
 
     @property
@@ -538,6 +534,13 @@ class Collection(Composite):
             from getfactormodels.utils.registry import get_model_class, get_model_key
 
             resolved_instances = []
+            # FIX: scaling to percentage happens twice 
+            # TEMP: strip formatting flags. Children need to return 
+            #     raw decimals. 
+            child_kwargs = {
+                k: v for k, v in kwargs.items() 
+                if k not in ("as_percentage", "drop_nulls")
+            }
             for m in model_keys:
                 key = get_model_key(m)
                 class_name = get_model_class(key)
@@ -547,7 +550,7 @@ class Collection(Composite):
                     "frequency": frequency,
                     "start_date": start_date,
                     "end_date": end_date,
-                    **kwargs,
+                    **child_kwargs,  #TEMP:FIX:
                 }
 
                 if issubclass(model_class, RegionMixin):
@@ -609,7 +612,6 @@ class RegionMixin(ABC):
         'global_stocks': 'all_equities',
         'australia': 'aus', 'au': 'aus',
     }
-
     
     @property
     def region(self) -> str:
@@ -652,4 +654,3 @@ class RegionMixin(ABC):
     def list_regions(cls) -> list[str]:
         """List available regions without instantiation."""
         return cls.regions
-

@@ -24,17 +24,6 @@ from getfactormodels.utils.registry import get_model_class, get_model_key
 
 log = logging.getLogger("getfactormodels")
 
-
-def clear_global_cache() -> int:
-    """Clear all cached data files across all models globally."""
-    from platformdirs import user_cache_path
-    from getfactormodels.utils.cache import _Cache
-
-    cache_dir = user_cache_path(appname="getfactormodels", appauthor="x512", ensure_exists=True)
-    with _Cache(cache_dir) as cache:
-        return cache.clear_all()
-
-
 def portfolio(
     frequency: str = 'm',
     grid: str | None = None,
@@ -45,12 +34,12 @@ def portfolio(
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    #output_dir: str | Path | None = None,
-    #filename: str | None = None,
-    #file_format: Literal['feather', 'ipc', 'parquet', 'csv', 'md', 'txt'] = 'csv'
     source: str = 'ff',                     # 'q', 'ff', or 'aqr'
     dividends: bool = True,                 # False for ex-div (retx_vw)
     **kwargs,
+    #output_dir: str | Path | None = None,
+    #filename: str | None = None,
+    #file_format: Literal['feather', 'ipc', 'parquet', 'csv', 'md', 'txt'] = 'csv'
 ):
     """Download portfolio return data.
 
@@ -168,34 +157,29 @@ def anomaly(
 
 def model(
     model: str | int | list[str | int] = "3",
-    region: str = 'usa',
+    region: str | None = None,
     frequency: str = 'm',
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    #force: bool = False,  #not implemented properly yet
-    clear_cache: bool = False, # ye
+    #force: bool = False,  #not implemented
+    clear_cache: bool = False,
     **kwargs,
 ) -> FactorModel | Collection:
     """Download factor model data.
 
     Args:
         model (str | list[str]): Model identifier.
-        region: Geographical region (e.g., 'usa', 'developed').
+        region: Geographical region (e.g., 'usa', 'developed'). Defaults to model's default.
         frequency: Data frequency ('d', 'w', 'm', 'y').
         start_date: Optional start date (YYYY-MM-DD).
         end_date: Optional end date (YYYY-MM-DD).
-        force: Bypass local cache and force fresh redownload.
         clear_cache: Clear local cache entries for this model before returning.
     """
+    # Collection
     if isinstance(model, list):
-        model_input = model[0] if len(model) == 1 else model
-    else:
-        model_input = model
-
-    if isinstance(model_input, list):
-        model_keys = [get_model_key(m) for m in model_input]
-        collection = Collection(
+        model_keys = [get_model_key(m) for m in model]
+        instance = Collection(
             model_keys=model_keys,
             region=region,
             frequency=frequency,
@@ -204,45 +188,38 @@ def model(
             **kwargs,
         )
         
-        if clear_cache:
-            collection.clear_cache()
-        
-        return collection
-
-    model_key = get_model_key(model_input)
-    class_name = get_model_class(model_key)
-
-    model_class = getattr(factor_models, class_name, None)
-    if model_class is None:
-        raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
-
-    is_regional = issubclass(model_class, RegionMixin)
-    if not is_regional:
-        if region is not None and region.lower() not in ['usa', 'us']:
-            raise ValueError(f"Model '{class_name}' does not support region: {region}")
-        kwargs.pop('region', None)
+    # single FactorModel request
     else:
-        kwargs['region'] = region
+        model_key = get_model_key(model)
+        class_name = get_model_class(model_key)
+        model_class = getattr(factor_models, class_name, None)
+        
+        if model_class is None:
+            raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
 
-    kwargs.pop('model', None)
+        # region validation
+        if issubclass(model_class, RegionMixin):
+            if region is not None:
+                kwargs['region'] = region
+        elif region is not None and str(region).lower() not in ('usa', 'us'):
+            raise ValueError(f"Model '{class_name}' does not support region: {region}")
 
-    model_kwargs = {
-            "frequency": frequency,
-            "start_date": start_date,
-            "end_date": end_date,
+        # kwargs
+        kwargs.pop('model', None) # Prevent duplicate 'model' kwarg
+        if not issubclass(model_class, Composite):
+            kwargs["model"] = model_key
+
+        instance = model_class(
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
             **kwargs,
-        }
-
-    if not issubclass(model_class, Composite):
-        model_kwargs["model"] = model_key
-
-    instance = model_class(**model_kwargs)
+        )
 
     if clear_cache:
         instance.clear_cache()
 
     return instance
-
 
 def get_factors(*args, **kwargs):  # noqa
     """DEPRECATED: Use `model()` instead."""
@@ -257,7 +234,6 @@ def get_factors(*args, **kwargs):  # noqa
 
 def main():
     _cli()
-
 
 if __name__ == "__main__":
     main()

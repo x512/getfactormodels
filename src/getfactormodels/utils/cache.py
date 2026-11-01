@@ -7,7 +7,6 @@ from __future__ import annotations  # safe to delete — see note below
 
 import logging
 from pathlib import Path
-
 from diskcache import Cache
 from platformdirs import user_cache_path
 
@@ -115,7 +114,7 @@ def evict_model_cache(keys: str | list[str] | set[str]) -> int:
 
 def clear_cache(key: str | list[str] | None = None) -> int:
     """Evict cached entries for specific model key(s), or the entire cache.
-    
+
     Args:
         key: Model key(s) to clear. If None, wipes the entire disk cache.
     """
@@ -123,3 +122,4 @@ def clear_cache(key: str | list[str] | None = None) -> int:
         with _Cache(default_cache_dir()) as cache:
             return cache.clear_all()
     return evict_model_cache(key)
+

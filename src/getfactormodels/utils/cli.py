@@ -79,9 +79,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--url', '--urls', action='store_true', 
                         help="List target URLs and exit.")
     
-    parser.add_argument("--delete-global-cache", action="store_true", 
+    parser.add_argument("--delete-global-cache", "--clear-global-cache", action="store_true", 
                         help="Delete all cached dataset files from disk and exit.")
-
+    parser.add_argument(
+        '--clear-cache', action='store_true', help="Clear local cache for the requested model(s) before loading."
+    )
     # MODEL OPTIONS
     parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
                         help="Model(s) requested ('icr', 'ff3'). Also " 
@@ -199,8 +201,8 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
-    from getfactormodels.main import clear_global_cache
+def _quick_exits(args: argparse.Namespace) -> None:
+    from getfactormodels.utils.cache import clear_cache
 
     if args.list_regions:
         _cli_list_regions()
@@ -212,9 +214,9 @@ def _quick_exits(args: argparse.Namespace, model_obj=None) -> None:
         _cli_list_anomalies()
         sys.exit(0)
     if args.delete_global_cache:
-        clear_global_cache()
+        count = clear_cache() # No args = wipe global
         if not args.quiet:
-            print("Global cache deleted.", file=sys.stderr)
+            print(f"Global cache cleared ({count} items removed).", file=sys.stderr)
         sys.exit(0)
     
 
@@ -283,7 +285,10 @@ def _cli():
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(1)
 
-    _quick_exits(args, model_obj=model_obj)
+    if args.clear_cache:
+        count = model_obj.clear_cache()
+        if not args.quiet:
+            print(f"{count} cache entries cleared.", file=sys.stderr)
 
     try:
         model_obj.load()
@@ -378,8 +383,6 @@ def _cli_list_models():
 
 # TODO:
 #   -F/--force 
-#   --clear-cache per model.
-#   --as-percent 
 #   --decimals
 #   data source citation, reference paper citation
 #   --output to --output-dir, --format, --output, --fname or something
