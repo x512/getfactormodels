@@ -170,7 +170,7 @@ def _format_for_preview(val, col_name, precision=6):
 
 
 
-def print_table_preview(table, n_rows=6, n_cols=5) -> str | None:
+def print_table_preview(table, n_rows=6, n_cols=5) -> str:
     """Formats a str preview of a PyArrow table like a Pandas DataFrame.
 
     - If rows or columns exceed (n*2 + 2) then table is truncated.
@@ -269,3 +269,29 @@ def print_table_preview(table, n_rows=6, n_cols=5) -> str | None:
     output.append(f"\n[{total_rows} rows x {total_cols} columns, {buf_size / 1024:.1f} kb]")
     
     return "\n".join(output)
+
+# Moved out of base:
+def cast_and_sort_dates(table: pa.Table) -> pa.Table:
+    """Ensures 'date' is date32 and the table is sorted chronologically."""
+    if "date" in table.column_names:
+        if table.column("date").type != pa.date32():
+            idx = table.column_names.index("date")
+            table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
+        table = table.sort_by([("date", "ascending")])
+    return table
+
+def join_on_date(base_table: pa.Table, next_table: pa.Table, join_type: str) -> pa.Table:
+    """Join two tables on 'date' column, drops overlaps."""
+    overlaps = set(base_table.column_names) & set(next_table.column_names)
+    overlaps.discard('date')
+
+    uniq_cols = [c for c in next_table.column_names if c not in overlaps]
+    if "date" not in uniq_cols:
+        uniq_cols.insert(0, "date")
+
+    table_to_join = next_table.select(uniq_cols)
+    return base_table.join(
+        table_to_join,
+        keys="date",
+        join_type=join_type,
+    ).combine_chunks()

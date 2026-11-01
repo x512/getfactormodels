@@ -154,8 +154,19 @@ def get_model_class(key: str) -> str:
         key = get_model_key(key)
     return _MODEL_REGISTRY[key]["model_class"]
 
+def get_model_name(key: str) -> str | None:
+    """Retrieve the display name for a given model key.
+    
+    Returns None if the key is not found.
+    """
+    data = _MODEL_REGISTRY.get(key)
+    if data:
+        return data["name"]
+    return None 
+
 
 def list_models() -> dict:
     """Return a copy of the model registry."""
     return dict(_MODEL_REGISTRY)
+
 

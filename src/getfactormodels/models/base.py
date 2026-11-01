@@ -7,11 +7,13 @@
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar, Literal, Self
+from typing import Any, ClassVar, Literal, Self, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
+    cast_and_sort_dates,
     filter_table_by_date,
+    join_on_date,
     print_table_preview,
     rearrange_columns,
     round_to_precision,
@@ -110,11 +112,15 @@ class Base(ABC):
     @property
     def name(self) -> str:
         """Name of the model or dataset."""
-        from getfactormodels.utils.registry import _MODEL_REGISTRY
+        from getfactormodels.utils.registry import get_model_name
 
         model_key = getattr(self, "model", None)
-        if model_key in _MODEL_REGISTRY:
-            return _MODEL_REGISTRY[model_key]["name"]
+        
+        if isinstance(model_key, str):
+            name = get_model_name(model_key)
+            if name:
+                return name
+                
         # Fallback to class name
         return self.__class__.__name__
 
@@ -178,20 +184,15 @@ class Base(ABC):
         """Download or load data from cache and run processing pipeline."""
         if self._data is not None and not self.no_cache:
             return self
-
         if self.show_url:
             print(f"URL: {self.url}")
-
-        raw_table = self._get_data(client=client)
+        
+        raw_table = self._get_raw(client=client)   # direct call
         self._data = self._process_table(raw_table)
         return self
 
-
-    def _get_data(self, client: _HttpClient | None = None) -> pa.Table:
-        """Route table construction or standard download."""
-        return self._get_raw(client=client)
-
     def _get_raw(self, client: _HttpClient | None = None) -> pa.Table:
+        """Download raw data."""
         raw_data = self._download(client=client)
         return self._read(raw_data)
 
@@ -209,27 +210,19 @@ class Base(ABC):
             raise RuntimeError(f"Could not retrieve data for {self.__class__.__name__}") from e
 
     def _process_table(self, table: pa.Table) -> pa.Table:
-        if "date" in table.column_names:
-            if table.column("date").type != pa.date32():
-                idx = table.column_names.index("date")
-                table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
-            table = table.sort_by([("date", "ascending")])
-
+        table = cast_and_sort_dates(table)
         if self.as_percentage:
             table = scale_to_percent(table)
-
         table = round_to_precision(table, self._precision)
-
         if self.drop_nulls:
             table = table.drop_null()
-
         table.validate(full=True)
         return rearrange_columns(table=table).combine_chunks()
 
-    @abstractmethod 
+    #@abstractmethod  -- UNabstracted
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         """Parse raw downloaded bytes into a Table. Subclasses must impl."""
-        pass
+        raise NotImplementedError("`_read` not implemented.")
 
     def extract(self, factor: str | list[str]) -> Self:
         """Select specific factors from the model."""
@@ -315,7 +308,8 @@ class Base(ABC):
         if self._data is None:
             return self.__repr__()
 
-        region_label = f" ({self.region})" if hasattr(self, "region") and self.region else ""
+        region = getattr(self, "region", None)
+        region_label = f" ({region})" if region else ""
         header = f"{self.name}{region_label}\n"
         return header + print_table_preview(self.data)
 
@@ -348,9 +342,6 @@ class Base(ABC):
 
         Casts date32 to ns.
 
-        Args:
-            nan_as_null: converts NaN to null
-
         Examples:
             model = FamaFrenchFactors(model='3')
             df = model.to_pandas()
@@ -367,7 +358,7 @@ class Base(ABC):
         if table.column_names and table.column_names[0] == "date":
             col_type = table.schema.field(0).type
 
-        if pa.types.is_date(col_type):
+        if col_type is not None and pa.types.is_date(col_type):
             date_ns = table.column(0).cast(pa.timestamp("ns")).combine_chunks()
             table = table.set_column(0, "date", date_ns)
 
@@ -464,42 +455,57 @@ class Anomalies(Base):
         return 6
 
     @property
-    def _frequencies(self) -> list[str]:
+    def frequencies(self) -> list[str]:
         return ["m", "y", "w", "d", "q"]
 
 
 class Composite(Base):
-    """Base class for models constructed from others."""
-    def __init__(self, drop_nulls: bool = True, **kwargs):
+    """Base class for models constructed from other models."""
+    def __init__(self, *, drop_nulls: bool = True, **kwargs):
         super().__init__(drop_nulls=drop_nulls, **kwargs)
 
     @property
     def components(self) -> list[Base]:
+        """List of child model instances."""
+        # By default, checks for 'instances' (used by Collection)
         return getattr(self, "instances", [])
 
     @property
     def url(self) -> dict[str, str | dict]:
-        """URLs."""
-        if self.components:
-            return {
-                getattr(inst, 'model', inst.__class__.__name__): inst.url 
-                for inst in self.components
-            }
-        return {}
+        """URLs of all components."""
+        return {
+            getattr(inst, 'model', inst.__class__.__name__): inst.url 
+            for inst in self.components
+        }
+
+    @property
+    def frequencies(self) -> list[str]:
+        """Common frequencies across all components."""
+        if not self.components:
+            return []
+        freqs = set(self.components[0].frequencies)
+        for inst in self.components[1:]:
+            freqs &= set(inst.frequencies)
+        return list(freqs)
+
+    @property
+    def schema(self) -> pa.Schema:
+        """Expected pa.Schema of the composite model."""
+        if not self.components:
+            return pa.schema([])
+        return _merge_schemas([inst.schema for inst in self.components])
 
     @abstractmethod
     def _construct(self, client) -> pa.Table:
+        """Subclasses must implement how to build the table from components."""
         pass
 
-    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
-        raise NotImplementedError("Composites/collections should use `_construct`.")
-
+    @override
     def _get_raw(self, client: _HttpClient | None = None) -> pa.Table:
         if client is None:
             with _HttpClient() as shared_client:
                 return self._construct(shared_client)
         return self._construct(client)
-
 
 class Collection(Composite):
     """Container holding multiple joined models or portfolios of the same frequency."""
@@ -529,10 +535,7 @@ class Collection(Composite):
 
         if model_keys:
             import getfactormodels.models as factor_models
-            from getfactormodels.utils.registry import (
-                get_model_class,
-                get_model_key,
-            )
+            from getfactormodels.utils.registry import get_model_class, get_model_key
 
             resolved_instances = []
             for m in model_keys:
@@ -547,13 +550,12 @@ class Collection(Composite):
                     **kwargs,
                 }
 
-                # Handle regional validation & parameters
                 if issubclass(model_class, RegionMixin):
                     model_kwargs["region"] = region
                 elif region is not None and str(region).strip().lower() not in ['usa', 'us']:
                     raise ValueError(
                         f"Model '{class_name}' in collection does not support regional data (US only). "
-                        f"Region '{region}' was requested."
+                        f"Region '{region}' was requested.",
                     )
 
                 resolved_instances.append(model_class(**model_kwargs))
@@ -565,23 +567,13 @@ class Collection(Composite):
 
         self.instances = instances
         self.model_keys = [getattr(i, 'model', i.__class__.__name__) for i in instances]
-        super().__init__(frequency=frequency, start_date=start_date, end_date=end_date, **kwargs)
-
-
-    @property
-    def frequencies(self) -> list[str]:
-        """Common frequencies."""
-        if not self.instances:
-            return []
-        freqs = set(self.instances[0].frequencies)
-        for inst in self.instances[1:]:
-            freqs &= set(inst.frequencies)
-        return list(freqs)
-
-    @property
-    def schema(self) -> pa.Schema:
-        """Expected pa.Schema of the Collection."""
-        return _merge_schemas([inst.schema for inst in self.instances])
+        
+        super().__init__(
+            frequency=frequency, 
+            start_date=start_date, 
+            end_date=end_date, 
+            **kwargs
+        )
 
     def _construct(self, client) -> pa.Table:
         if not self.instances:
@@ -590,43 +582,23 @@ class Collection(Composite):
         for inst in self.instances:
             inst.load(client=client)
 
-        final_table = self._cast_dates(self.instances[0].data)
+        final_table = self.instances[0].data
+        
         portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
         join_type = "inner" if portfolio_join else "left outer"
 
         for inst in self.instances[1:]:
-            next_table = self._cast_dates(inst.data)
-            final_table = self._join_method(final_table, next_table, join_type=join_type)
+            final_table = join_on_date(final_table, inst.data, join_type=join_type)
 
-        return final_table.sort_by([("date", "ascending")])
-
-    # temp 
-    @staticmethod
-    def _cast_dates(table: pa.Table) -> pa.Table:
-        if "date" in table.column_names and table.column("date").type != pa.date32():
-            idx = table.column_names.index("date")
-            table = table.set_column(idx, "date", table.column("date").cast(pa.date32()))
-        return table
-
-    @staticmethod
-    def _join_method(base_table: pa.Table, next_table: pa.Table, join_type: str) -> pa.Table:
-        overlaps = set(base_table.column_names) & set(next_table.column_names)
-        overlaps.discard('date')
-
-        uniq_cols = [c for c in next_table.column_names if c not in overlaps]
-        if "date" not in uniq_cols:
-            uniq_cols.insert(0, "date")
-
-        table_to_join = next_table.select(uniq_cols)
-        return base_table.join(
-            table_to_join,
-            keys="date",
-            join_type=join_type,
-        ).combine_chunks()
-
+        return final_table
 
 class RegionMixin(ABC):
     """Mixin for models that support international regions/countries."""
+    _region: str | None = None
+    
+    # ClassVar instead of abstract @property
+    regions: ClassVar[list[str]] 
+
     _aliases: ClassVar[dict[str, str]] = {
         'uk': 'gbr', 'ger': 'deu', 'sg': 'sgp',
         'hk': 'hkg', 'nl': 'nld', 'fr': 'fra',
@@ -638,16 +610,11 @@ class RegionMixin(ABC):
         'australia': 'aus', 'au': 'aus',
     }
 
-    @property
-    @abstractmethod
-    def regions(self) -> list[str]:
-        """List of supported region codes for the model."""
-        pass
-
+    
     @property
     def region(self) -> str:
-        if hasattr(self, "_region") and self._region is not None:
-            return self._region
+        if self._region is not None:
+            return self._region        
         if not self.regions:
             return ""
 
@@ -669,22 +636,20 @@ class RegionMixin(ABC):
         if resolved not in self.regions:
             raise ValueError(
                 f"Region '{value}' not supported for {self.__class__.__name__}. "
-                    f"Available: {self.regions}"
+                    f"Available: {self.regions}",
             )
 
         current = getattr(self, "_region", None)
         if current is not None and current != resolved:
             self._data = None
-            if hasattr(self, "log"):
-                self.log.info(f"Region changed to {resolved}. Cache reset.")
-
+            
+            log = getattr(self, "log", None)
+            if log is not None:
+                log.info(f"Region changed to {resolved}. Cache reset.")
         self._region = resolved
 
     @classmethod
     def list_regions(cls) -> list[str]:
         """List available regions without instantiation."""
-        regions_attr = getattr(cls, 'regions', None)
-        if isinstance(regions_attr, property):
-            return regions_attr.fget(cls)
-        return regions_attr or []
+        return cls.regions
 
