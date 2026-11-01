@@ -19,15 +19,19 @@ class MispricingFactors(FactorModel):
     (2016). Data from 1963 to 2016. The SMB factor is returned as SMB_SY.
 
     References:
-        R. F. Stambaugh and Y. Yuan (2016). Mispricing Factors. The Review 
+        R. F. Stambaugh and Y. Yuan (2016). Mispricing Factors. The Review
         of Financial Studies, vol. 30, no. 4, pp. 1270–1315.
 
     """
+
     @property
-    def frequencies(self) -> list[str]: return ["d", "m"]
-    
-    @property   # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
-    def _precision(self) -> int: return 10
+    def frequencies(self) -> list[str]:
+        """Available frequencies for Mispricing factors."""
+        return ["d", "m"]
+
+    @property  # decimal. d/m: MKTRF=6,[FACTORS]=10, RF=5.
+    def _precision(self) -> int:
+        return 10
 
     @property
     def schema(self) -> pa.Schema:
@@ -35,40 +39,46 @@ class MispricingFactors(FactorModel):
         date_col = "DATE" if self.frequency == "d" else "YYYYMM"
         return pa.schema([
             (date_col, pa.string()),
-            ('MKTRF', pa.float64()),
-            ('SMB', pa.float64()),
-            ('MGMT', pa.float64()),
-            ('PERF', pa.float64()),
-            ('RF', pa.float64()),
+            ("MKTRF", pa.float64()),
+            ("SMB", pa.float64()),
+            ("MGMT", pa.float64()),
+            ("PERF", pa.float64()),
+            ("RF", pa.float64()),
         ])
 
     @property
     def url(self) -> str:
-        base_url = "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11"
+        """Source URL for Mispricing factors."""
+        base_url = (
+            "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11"
+        )
         file_name = "M4d" if self.frequency == "d" else "M4"
         return f"{base_url}/{file_name}.csv"
 
-
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         """Reads the Mispricing factors CSV."""
+        if isinstance(data, dict):
+            raise TypeError(f"{self.__class__.__name__} expects a single "
+                f"file, but received a dict.")
+
         try:
-            reader = pv.open_csv(
+            table = pv.read_csv(
                 io.BytesIO(data),
-                read_options=pv.ReadOptions(block_size=1024*1024*2),
-                parse_options=pv.ParseOptions(delimiter=','),
+                parse_options=pv.ParseOptions(delimiter=","),
                 convert_options=pv.ConvertOptions(
                     column_types=self.schema,
                     include_columns=self.schema.names,
                 ),
             )
-            table = pa.Table.from_batches(reader)
 
             rename_map = {
-                self.schema.names[0]: 'date', 
-                'MKTRF': 'Mkt-RF', 
-                'SMB': 'SMB_SY',
+                self.schema.names[0]: "date",
+                "MKTRF": "Mkt-RF",
+                "SMB": "SMB_SY",
             }
-            renames = [rename_map.get(name, name) for name in table.column_names]
+            renames = [
+                rename_map.get(name, name) for name in table.column_names
+            ]
 
             table = table.rename_columns(renames)
             table = offset_period_eom(table, self.frequency)
@@ -76,6 +86,6 @@ class MispricingFactors(FactorModel):
             return table.combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
-            msg = f"{self.__class__.__name__}: reading failed: {e}"
+            msg = f"{self.__class__.__name__}: parsing failed: {e}"
             self.log.error(msg)
-            raise ValueError(msg) from e
+            raise RuntimeError(msg) from e

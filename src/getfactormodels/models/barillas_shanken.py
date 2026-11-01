@@ -18,34 +18,36 @@ from .q_factors import QFactors
 class BarillasShankenFactors(Composite):
     """Barillas-Shanken 6-Factor Model (2018).
 
-    Constructs a factor model combining Mkt-RF, SMB (Fama-French 
-    3 Factor model); IA, ROE (Hou-Xue-Zhang q-factor model) and UMD, 
+    Constructs a factor model combining Mkt-RF, SMB (Fama-French
+    3 Factor model); IA, ROE (Hou-Xue-Zhang q-factor model) and UMD,
     HML_Devil, RF_AQR (AQR data).
 
     References:
-        F. Barillas and J. Shanken, 2018. Comparing Asset Pricing Models. 
+        F. Barillas and J. Shanken, 2018. Comparing Asset Pricing Models.
         Journal of Finance, vol. 73, no. 2, pp. 715–754.
     """
+
     @property
     def frequencies(self) -> list[str]:
+        """Available frequencies."""
         return ["d", "m"]
 
     @property
     def _precision(self) -> int:
         return 8
-    
+
     @property
     def schema(self) -> pa.Schema:
         """Barillas-Shanken schema."""
         return pa.schema([
-            ('date', pa.string()),
-            ('Mkt-RF', pa.float64()),
-            ('SMB', pa.float64()),
-            ('HML_Devil', pa.float64()),
-            ('IA', pa.float64()),
-            ('ROE', pa.float64()),
-            ('UMD', pa.float64()),
-            ('RF_AQR', pa.float64()),
+            ("date", pa.string()),
+            ("Mkt-RF", pa.float64()),
+            ("SMB", pa.float64()),
+            ("HML_Devil", pa.float64()),
+            ("IA", pa.float64()),
+            ("ROE", pa.float64()),
+            ("UMD", pa.float64()),
+            ("RF_AQR", pa.float64()),
         ])
 
     def _construct(self, client: _HttpClient) -> pa.Table:
@@ -57,7 +59,9 @@ class BarillasShankenFactors(Composite):
 
         mkt_smb = select_table_columns(ff.data, ["Mkt-RF", "SMB"])
         ia_roe = select_table_columns(q.data, ["IA", "ROE"])
-        umd_hml = select_table_columns(aqr.data, ["UMD", "HML_Devil", "RF_AQR"])
+        umd_hml = select_table_columns(
+            aqr.data, ["UMD", "HML_Devil", "RF_AQR"]
+        )
 
         table = mkt_smb.join(ia_roe, keys="date").join(umd_hml, keys="date")
         table = offset_period_eom(table, freq)

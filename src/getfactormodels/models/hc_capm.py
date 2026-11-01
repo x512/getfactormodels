@@ -70,7 +70,8 @@ class HighIncomeCCAPM(FactorModel):
         clean_rows = [
             r
             for r in rows[5:]
-            if len(r) >= 4 and all(isinstance(r[i], (int, float)) for i in range(4))
+            if len(r) >= 4
+            and all(isinstance(r[i], (int, float)) for i in range(4))
         ]
 
         raw_table = pa.Table.from_pydict({
@@ -89,7 +90,9 @@ class HighIncomeCCAPM(FactorModel):
         _ff = FamaFrenchFactors(model="3", frequency=freq).load()
         mkt_rf = select_table_columns(_ff.data, ["Mkt-RF", "RF"])
 
-        return hcapm_table.join(mkt_rf, keys="date", join_type="inner").combine_chunks()
+        return hcapm_table.join(
+            mkt_rf, keys="date", join_type="inner"
+        ).combine_chunks()
 
     def _calc_log_growth(self, table: pa.Table) -> pa.Table:
         n = table.num_rows

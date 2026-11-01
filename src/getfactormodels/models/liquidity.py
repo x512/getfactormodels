@@ -8,10 +8,8 @@
 import io
 import re
 from datetime import datetime, timezone
-
 import pyarrow as pa
 import pyarrow.csv as pv
-
 from getfactormodels.models.base import FactorModel
 from getfactormodels.utils.date_utils import offset_period_eom
 
@@ -50,7 +48,6 @@ class LiquidityFactors(FactorModel):
 
     # Testing: models whose URLs update sometime at the start of the year. Possibly 
     #          a temp fix, download a list of this year, last year URLs.
-    #
     @property
     def url(self) -> list[str]:
         """Return a list of potential URLs (current year, then previous year)."""

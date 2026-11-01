@@ -24,39 +24,42 @@ class ConditionalCAPM(Composite):
         Finance 51: 3–53.
 
     """
-    #@property 
-    #def regions(self) -> list[str]: return ['usa']
-    
-    def __init__(self, frequency='m', **kwargs):
+
+    # @property
+    # def regions(self) -> list[str]: return ['usa']
+
+    def __init__(self, frequency="m", **kwargs):
         super().__init__(**kwargs)
         self.frequency = frequency.lower()
-   #     self.region = kwargs.get('region', 'usa')
+
+    #     self.region = kwargs.get('region', 'usa')
 
     @property
-    def _precision(self) -> int: return 8
+    def _precision(self) -> int:
+        return 8
 
     @property
-    def frequencies(self) -> list[str]: return ['m', 'q', 'y']
+    def frequencies(self) -> list[str]:
+        return ["m", "q", "y"]
 
     @property
     def schema(self) -> pa.Schema:
         return pa.Schema([
-            ('date', pa.date32()),
-            ('LBR', pa.float64()),
-            ('PREM', pa.float64()),
+            ("date", pa.date32()),
+            ("LBR", pa.float64()),
+            ("PREM", pa.float64()),
         ])
-
 
     def _construct(self, client) -> pa.Table:
         m_series = {
-            "POPTHM": "pop",        # Total Population
+            "POPTHM": "pop",  # Total Population
             "BAA": "baa",
             "AAA": "aaa",
-            "A576RC1": "income",    # Compensation of Employees (Monthly), (table 2.2A here)
+            "A576RC1": "income",  # Compensation of Employees (Monthly), (table 2.2A here)
         }
 
         # read_from_fred returns offset dates. ('m', not self.frequency)
-        t = read_from_fred(m_series, frequency='m', client=client)
+        t = read_from_fred(m_series, frequency="m", client=client)
 
         table = self._jw_calc(t)
 
@@ -64,23 +67,21 @@ class ConditionalCAPM(Composite):
 
         return table.combine_chunks()
 
-
     def _resample(self, table: pa.Table) -> pa.Table:
         """Downsample monthly data to Q or Y using the EOP values."""
-        if self.frequency == 'm':
+        if self.frequency == "m":
             return table
 
         months = pc.month(table.column("date"))
 
-        if self.frequency == 'q':
+        if self.frequency == "q":
             mask = pc.is_in(months, value_set=pa.array([3, 6, 9, 12]))
-        elif self.frequency == 'y':
+        elif self.frequency == "y":
             mask = pc.equal(months, 12)
         else:
             return table
 
         return table.filter(mask).combine_chunks()
-
 
     def _jw_calc(self, table: pa.Table) -> pa.Table:
         """Calculate JW factors.
@@ -91,9 +92,11 @@ class ConditionalCAPM(Composite):
         # Per Capita Labor Income (L)
         l_pc = pc.divide(table.column("income"), table.column("pop"))
         l_pc = pc.multiply(l_pc, 1000.0)
-        
+
         # Credit spread/default risk (Baa - Aaa), pct to decimal here
-        spread = pc.divide(pc.subtract(table.column("baa"), table.column("aaa")), 100.0)
+        spread = pc.divide(
+            pc.subtract(table.column("baa"), table.column("aaa")), 100.0
+        )
 
         n_total = table.num_rows
         # 3 lags for LBR calculation (t-1, t-2, t-3). Result starts at index 3.
@@ -107,7 +110,9 @@ class ConditionalCAPM(Composite):
         l_tm3 = l_pc.slice(0, n_final)
 
         # (l_tm1 + l_tm2) / (l_tm2 + l_tm3) - 1
-        r_lbr = pc.subtract(pc.divide(pc.add(l_tm1, l_tm2), pc.add(l_tm2, l_tm3)), 1.0)
+        r_lbr = pc.subtract(
+            pc.divide(pc.add(l_tm1, l_tm2), pc.add(l_tm2, l_tm3)), 1.0
+        )
 
         # PREM is the spread at t-1. Return period t at index 3, t-1 is index 2
         prem_lagged = spread.slice(2, n_final)
@@ -119,9 +124,10 @@ class ConditionalCAPM(Composite):
             names=["date", "LBR", "PREM"],
         )
 
+
 ### TESTS:
-# The calc. Assert to known answer(s) 
-# JW freqs: m, q, y last m q4 == 12 == q4 value == yearly value 
-# Test not enough data, error  (not enough data returned and range too small, same err) 
-# Err: FRED 429 
-# docstr test the actual calc 
+# The calc. Assert to known answer(s)
+# JW freqs: m, q, y last m q4 == 12 == q4 value == yearly value
+# Test not enough data, error  (not enough data returned and range too small, same err)
+# Err: FRED 429
+# docstr test the actual calc

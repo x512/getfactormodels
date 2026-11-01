@@ -4,6 +4,7 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 """Size and Value in China (Liu, Stambaugh & Yuan, 2019)."""
+
 import io
 from typing import ClassVar, override
 import httpx
@@ -16,14 +17,15 @@ from getfactormodels.utils.date_utils import offset_period_eom
 class CHFactors(FactorModel, RegionMixin):
     """Size and Value in China of Liu, Stambaugh & Yuan (2019).
 
-    Monthly and daily data for the CH-3 (SMB, VMG) and CH-4 
+    Monthly and daily data for the CH-3 (SMB, VMG) and CH-4
     (SMB, VMG, PMO) models, with market excess returns and risk-free rate
     for China.
 
     References:
-        - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in 
+        - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in
           China. Journal of Financial Economics, 134(1), 48–69.
     """
+
     regions: ClassVar[list[str]] = ["china", "ch", "cn"]
 
     def __init__(
@@ -98,7 +100,7 @@ class CHFactors(FactorModel, RegionMixin):
             return resp.content
 
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
-        if isinstance(data, dict): # only for pyright
+        if isinstance(data, dict):  # only for pyright
             raise TypeError("bytes expected. Received a dict.")
 
         workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
@@ -108,7 +110,10 @@ class CHFactors(FactorModel, RegionMixin):
 
         # parse headers (preserve index alignment even if None)
         raw_headers = rows[0]
-        headers = [str(h).strip() if h is not None else f"col_{i}" for i, h in enumerate(raw_headers)]
+        headers = [
+            str(h).strip() if h is not None else f"col_{i}"
+            for i, h in enumerate(raw_headers)
+        ]
         data_rows = rows[1:]
 
         table_data = {}
@@ -131,7 +136,9 @@ class CHFactors(FactorModel, RegionMixin):
             "rf_dly": "RF_CH",
             "rf": "RF_CH",
         }
-        new_names = [rename_map.get(name.lower(), name) for name in table.column_names]
+        new_names = [
+            rename_map.get(name.lower(), name) for name in table.column_names
+        ]
         table = table.rename_columns(new_names)
 
         if "RF_CH" in table.column_names:
