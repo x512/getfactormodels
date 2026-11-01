@@ -16,9 +16,15 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
+from getfactormodels.exceptions import GetFactorModelsDeprecationWarning
 from typing import Literal
 from getfactormodels import models as factor_models
-from getfactormodels.models.base import FactorModel, Collection, RegionMixin, Composite
+from getfactormodels.models.base import (
+    Collection,
+    Composite,
+    FactorModel,
+    RegionMixin,
+)
 from getfactormodels.utils.cli import _cli
 from getfactormodels.utils.registry import get_model_class, get_model_key
 
@@ -67,7 +73,7 @@ def portfolio(
         warnings.warn(
             "The 'formed_on' parameter is deprecated and will be removed in a future release. "
             "Please use 'sort' instead.",
-            DeprecationWarning,
+            category=GetFactorModelsDeprecationWarning,
             stacklevel=2,
         )
         sort = kwargs.pop('formed_on')
@@ -230,7 +236,7 @@ def get_factors(*args, **kwargs):  # noqa
     warnings.warn(
         "get_factors() is deprecated and will be removed in a future version. "
         "Please use model() for factor data or portfolio() for return data.",
-        FutureWarning,
+        category=GetFactorModelsDeprecationWarning,
         stacklevel=2,
     )
     return model(*args, **kwargs)

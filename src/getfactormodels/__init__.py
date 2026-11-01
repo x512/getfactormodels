@@ -18,6 +18,15 @@ import logging
 from getfactormodels.utils.cache import clear_cache
 from ._metadata import __author__, __copyright__, __license_text__, __version__
 from .main import anomaly, model, portfolio
+
+from .exceptions import (
+    GetFactorModelsError,
+    ModelNotFoundError,
+    DownloadError,
+    GetFactorModelsWarning,
+    GetFactorModelsDeprecationWarning,
+)
+
 from .models import (
     AQR6Factors,
     BABFactors,
@@ -71,5 +80,10 @@ __all__ = [
     "anomaly",
     "CHFactors",
     "clear_cache",
+    "GetFactorModelsError",
+    "ModelNotFoundError",
+    "DownloadError",
+    "GetFactorModelsWarning",
+    "GetFactorModelsDeprecationWarning",
 ]
 

@@ -29,9 +29,9 @@ from getfactormodels._metadata import (
     __title__,
     __version__,
 )
+from getfactormodels.utils.arrow_utils import print_table_preview
 from getfactormodels.utils.registry import _MODEL_REGISTRY
 from getfactormodels.utils.utils import _generate_filename
-from getfactormodels.utils.arrow_utils import  print_table_preview
 
 log = logging.getLogger("getfactormodels")
 
