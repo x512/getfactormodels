@@ -4,8 +4,8 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 """Size and Value in China (Liu, Stambaugh & Yuan, 2019)."""
-
 import io
+from typing import ClassVar, override
 import httpx
 import pyarrow as pa
 from python_calamine import CalamineWorkbook
@@ -20,17 +20,15 @@ class CHFactors(FactorModel, RegionMixin):
     (SMB, VMG, PMO) models, with market excess returns and risk-free rate
     for China.
 
-    Attributes:
-        model (str): Active model version ("3" or "4").
-        region (str): Region code (defaults to "ch").
-
     References:
         - Liu, J., Stambaugh, R. F., & Yuan, Y. (2019). Size and value in 
           China. Journal of Financial Economics, 134(1), 48–69.
     """
+    regions: ClassVar[list[str]] = ["china", "ch", "cn"]
+
     def __init__(
         self,
-        model: int | str = "3",
+        model: int | str = "4",
         frequency: str = "m",
         *,
         region: str | None = "cn",
@@ -39,12 +37,12 @@ class CHFactors(FactorModel, RegionMixin):
         """Initialize a Size and Value in China model.
 
         Args:
-            model (int | str): Model variant, either '3' or '4'. Default: '3'.
+            model (int | str): Model variant, either '3' or '4'. Default: '4'.
             frequency (str): Data frequency, 'm' (monthly) or 'd' (daily). Default: 'm'.
-            region (str, optional): Region code, restricted to China ('cn', 'ch', 'china').
-            **kwargs: Additional operational parameters passed to base model.
+            region (str, optional): Region code, restricted to China.
+            **kwargs: Additional parameters passed to base model.
         """
-        model_str = str(model).lower().replace("ch", "").strip()
+        model_str = "".join(c for c in str(model).lower() if c.isdigit())
         if model_str not in ["3", "4"]:
             raise ValueError(f"Invalid model ('{model}'), must be 3 or 4.")
 
@@ -53,6 +51,7 @@ class CHFactors(FactorModel, RegionMixin):
 
     @property
     def frequencies(self) -> list[str]:
+        """Available frequencies for Size & Value in China."""
         return ["d", "m"]
 
     @property
@@ -60,36 +59,36 @@ class CHFactors(FactorModel, RegionMixin):
         return 4
 
     @property
-    def regions(self) -> list[str]:
-        return ["china", "ch", "cn"]
-
-    @property
     def schema(self) -> pa.Schema:
         """Schema for Size and Value in China model."""
-        if self.frequency == "d":
-            date_col = [("date", pa.string())]
-            rf_col = [("rf_dly", pa.float64())]
-        else:
-            date_col = [("mnthdt", pa.string())]
-            rf_col = [("rf_mon", pa.float64())]
+        is_daily = self.frequency == "d"
 
-        mktrf_col = [("mktrf", pa.float64())]
-        factors = [("SMB", pa.float64()), ("VMG", pa.float64())]
+        fields = [
+            ("date" if is_daily else "mnthdt", pa.string()),
+            ("mktrf", pa.float64()),
+            ("rf_dly" if is_daily else "rf_mon", pa.float64()),
+            ("SMB", pa.float64()),
+            ("VMG", pa.float64()),
+        ]
 
         if self.model == "4":
-            factors.append(("PMO", pa.float64()))
+            fields.append(("PMO", pa.float64()))
 
-        return pa.schema(date_col + mktrf_col + rf_col + factors)
+        return pa.schema(fields)
 
     @property
     def url(self) -> str:
+        """Size and Value in China source URL."""
         base_url = "https://en.mingshiim.com/static/"
         _freq = "monthly" if self.frequency == "m" else "daily"
         return f"{base_url}CH{self.model}_factors_{_freq}_202608.xlsx"
 
     # FIXME: SSL bypass temporarily required for Mingshi site
+    @override
     def _download(self, client=None) -> bytes:
         """Download using httpx with SSL bypass."""
+        self.log.warning("CHFactors requires SSL bypass.")
+
         url = self.url
         self.log.info("Downloading CHFactors from %s", url)
 
@@ -98,19 +97,28 @@ class CHFactors(FactorModel, RegionMixin):
             resp.raise_for_status()
             return resp.content
 
-    def _read(self, data: bytes) -> pa.Table:
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
+        if isinstance(data, dict): # only for pyright
+            raise TypeError("bytes expected. Received a dict.")
+
         workbook = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = workbook.get_sheet_by_index(0).to_python()
         if not rows:
             raise ValueError("Excel sheet is empty.")
 
-        headers = [str(h).strip() for h in rows[0] if h is not None]
+        # parse headers (preserve index alignment even if None)
+        raw_headers = rows[0]
+        headers = [str(h).strip() if h is not None else f"col_{i}" for i, h in enumerate(raw_headers)]
         data_rows = rows[1:]
 
-        table_data = {
-            name: [None if row[i] in ("", "None", None) else row[i] for row in data_rows]
-            for i, name in enumerate(headers)
-        }
+        table_data = {}
+        for i, name in enumerate(headers):
+            col_values = []
+            for row in data_rows:
+                val = row[i] if i < len(row) else None
+                # Normalize empty values to None
+                col_values.append(None if val in ("", "None", None) else val)
+            table_data[name] = col_values
 
         table = pa.Table.from_pydict(table_data)
         table = table.select(self.schema.names).cast(self.schema)
@@ -123,8 +131,8 @@ class CHFactors(FactorModel, RegionMixin):
             "rf_dly": "RF_CH",
             "rf": "RF_CH",
         }
-        final_names = [rename_map.get(name.lower(), name) for name in table.column_names]
-        table = table.rename_columns(final_names)
+        new_names = [rename_map.get(name.lower(), name) for name in table.column_names]
+        table = table.rename_columns(new_names)
 
         if "RF_CH" in table.column_names:
             cols = [c for c in table.column_names if c != "RF_CH"] + ["RF_CH"]

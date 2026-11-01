@@ -19,7 +19,7 @@ from getfactormodels.utils.date_utils import offset_period_eom
 
 class DHSFactors(FactorModel):
     """The Behavioural Factors of Daniel, Hirshleifer and Sun (2020).
-    
+
     FIN and PEAD factors. Data from July 1972 - December, 2023. Adds 
     market excess and risk-free rate from Fama/French.
 
@@ -28,13 +28,16 @@ class DHSFactors(FactorModel):
         Behavioral Factors. Review of Financial Studies, 33 (4): 1673-1736.
     """
     @property
-    def frequencies(self) -> list[str]: return ['d', 'm']
-    
+    def frequencies(self) -> list[str]: 
+        """Available frequencies."""
+        return ['d', 'm']
+
     @property
     def _precision(self) -> int: return 12
 
     @property
     def url(self) -> str:
+        """DHS Behavior Factors source URL."""
         base_url = 'https://docs.google.com/spreadsheets/d/'
 
         if self.frequency == 'd':
@@ -52,14 +55,17 @@ class DHSFactors(FactorModel):
         date = [('Date', pa.string())]   # 197202
         fin = [('FIN', pa.float64())]
         pead = [('PEAD', pa.float64())]
-        
+
         # FIN and PEAD, swap cols between frequencies.
         if self.frequency == 'd':
             return pa.schema(date + fin + pead)
         return pa.schema(date + pead + fin)
 
     # Precision fix: export as .xlsx, then read with Calamine. 
-    def _read(self, data: bytes) -> pa.Table:
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
+        if isinstance(data, dict): # only for pyright
+            raise TypeError("bytes expected. Received a dict.")
+
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
 
         rows = wb.get_sheet_by_name(wb.sheet_names[0]).to_python()
@@ -72,10 +78,10 @@ class DHSFactors(FactorModel):
 
         # Enforce schema here
         table = table.select(self.schema.names).cast(self.schema)
-        
+
         table = scale_to_decimal(table)
         table = offset_period_eom(table, self.frequency)
-        
+
         if "Date" in table.column_names:
             table = table.rename_columns(["date"] + table.column_names[1:])
 
@@ -83,7 +89,7 @@ class DHSFactors(FactorModel):
         ff_frequency = self.frequency or "m"
         ff_model = FamaFrenchFactors(model="3", frequency=ff_frequency)
         ff_model.load()
-        
+
         if ff_model.data is None:
             raise ValueError("Failed to load FamaFrenchFactors for DHS model.")
 

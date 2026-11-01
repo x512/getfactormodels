@@ -107,6 +107,7 @@ def portfolio(
 
     raise ValueError(f"Portfolio source '{source}' not recognized.")
 
+
 def anomaly(
     name: str | list[str] = 'abr_1',
     frequency: str = 'm',
@@ -176,6 +177,10 @@ def model(
         end_date: Optional end date (YYYY-MM-DD).
         clear_cache: Clear local cache entries for this model before returning.
     """
+    #normalize single-item list to str
+    if isinstance(model, list) and len(model) == 1:
+        model = model[0]
+    
     # Collection
     if isinstance(model, list):
         model_keys = [get_model_key(m) for m in model]
@@ -197,7 +202,6 @@ def model(
         if model_class is None:
             raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
 
-        # region validation
         if issubclass(model_class, RegionMixin):
             if region is not None:
                 kwargs['region'] = region

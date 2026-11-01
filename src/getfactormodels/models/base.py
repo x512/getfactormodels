@@ -4,6 +4,7 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 """Abstract base classes, mixins, and containers for factor data."""
+
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -238,9 +239,9 @@ class Base(ABC):
         return self
 
     def clear_cache(self) -> int:
-        """Evict cached files for this specific instance's model key."""
-        keys = getattr(self, "model_keys", getattr(self, "model", self.__class__.__name__))
-        return evict_model_cache(keys)
+        """Evict cached files for this specific instance."""
+        tag = getattr(self, "model", self.__class__.__name__)
+        return evict_model_cache(tag)
 
     def to_file(self, filepath: str | Path | None = None) -> None:
         """Save data to a file.
@@ -340,9 +341,6 @@ class Base(ABC):
         Casts date32 to ns.
 
         Examples:
-            model = FamaFrenchFactors(model='3')
-            df = model.to_pandas()
-
             import polars as pl
             df = pl.from_arrow(model.data)
 
@@ -503,6 +501,15 @@ class Composite(Base):
                 return self._construct(shared_client)
         return self._construct(client)
 
+    @override
+    def clear_cache(self) -> int:
+        """Clear the cache for all child components."""
+        total = 0
+        for inst in self.components:
+            total += inst.clear_cache()
+        return total
+
+
 class Collection(Composite):
     """Container holding multiple joined models or portfolios of the same frequency."""
     def __init__(
@@ -531,7 +538,10 @@ class Collection(Composite):
 
         if model_keys:
             import getfactormodels.models as factor_models
-            from getfactormodels.utils.registry import get_model_class, get_model_key
+            from getfactormodels.utils.registry import (
+                get_model_class,
+                get_model_key,
+            )
 
             resolved_instances = []
             # FIX: scaling to percentage happens twice 
@@ -594,6 +604,7 @@ class Collection(Composite):
             final_table = join_on_date(final_table, inst.data, join_type=join_type)
 
         return final_table
+
 
 class RegionMixin(ABC):
     """Mixin for models that support international regions/countries."""

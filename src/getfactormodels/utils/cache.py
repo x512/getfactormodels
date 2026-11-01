@@ -3,8 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
-from __future__ import annotations  # safe to delete — see note below
-
+from __future__ import annotations  # can't delete yet 
 import logging
 from pathlib import Path
 from diskcache import Cache
