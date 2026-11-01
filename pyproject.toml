@@ -93,9 +93,9 @@ exclude = ["*.ipynb", ".git", ".git-rewrite", "build", "dist"]
 ignore = ["I", "E501", "ANN", "F401", "W293"]
 unfixable = ["B", "FIX001", "FIX002", "UP", "I"]
 select = [ "ANN201", "D",
-    "E", "F", "B", "G", "N", "A", "S", "SIM", "C901", "COM", 
+    "E", "F", "B", "G", "N", "A", "S", "SIM", "C901", 
     "UP", "C4", "PT", "LOG", "DTZ", "RET", "ICN", "TID", 
-    "FBT", "BLE", "ISC"
+    "FBT", "BLE", "ISC", #"COM",
 ]
 extend-ignore = ["D105"]
 

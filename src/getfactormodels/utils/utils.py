@@ -122,7 +122,7 @@ def _stream_table_to_md(table: pa.Table, precision: int = 4):
         yield "| " + " | ".join(["----"] * len(table.column_names)) + " |"
 
         str_columns = []
-        rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR'} 
+        rfs = {'RF', 'R_F', 'AQR_RF', 'RF_AQR', 'RF_CH', 'CH_RF', 'Q_RF', 'RF_Q'} #Check 
 
         # clean floats, col presentation
         for name in table.column_names:

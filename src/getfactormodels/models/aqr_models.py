@@ -38,26 +38,31 @@ class _AQRModel(FactorModel, RegionMixin):
     - These models are slow to download. Daily datasets are 20-30 MB each,
     and the download is rate limited.
     """
-    @property
-    def frequencies(self) -> list[str]: return ["d", "m"]
 
     @property
-    def _precision(self) -> int: return 8
+    def frequencies(self) -> list[str]:
+        return ["d", "m"]
 
     @property
-    def regions(self) -> list[str]:
-        """List of supported AQR countries/regions."""
-        return _AQR_REGIONS
+    def _precision(self) -> int:
+        return 8
 
-    def __init__(self, frequency: str = 'm', cache_ttl: int = 14400, 
-                 region: str = 'usa', **kwargs):
+    regions = _AQR_REGIONS
+
+    def __init__(
+        self,
+        frequency: str = "m",
+        cache_ttl: int = 14400,
+        region: str = "usa",
+        **kwargs,
+    ):
         """Initialize a AQR FactorModel.
 
         Args:
             frequency (str): The frequency of the data. M, D (default: M)
             start_date (str, optional): The start date of the data, YYYY-MM-DD.
             end_date (str, optional): The end date of the data, YYYY-MM-DD.
-            region (str, optional): region or country to return data for 
+            region (str, optional): region or country to return data for
                 excluding RF.
             output_file (str, optional): The filepath to save the output data.
             cache_ttl (str): cache time-to-live in seconds.
@@ -68,22 +73,26 @@ class _AQRModel(FactorModel, RegionMixin):
         self.region = region
 
     def _aqr_dt_fix(self, d) -> str:
-        if hasattr(d, 'strftime'):
+        if hasattr(d, "strftime"):
             return d.strftime("%Y%m%d")
-        if isinstance(d, str) and '/' in d:
-            m, day, y = d.split('/')
+        if isinstance(d, str) and "/" in d:
+            m, day, y = d.split("/")
             return f"{y}{m.zfill(2)}{day.zfill(2)}"
         return str(d)
 
     def _get_header(self, rows: list[list]) -> int:
         for i, row in enumerate(rows):
-            if row and str(row[0]).strip().upper() == 'DATE':
+            if row and str(row[0]).strip().upper() == "DATE":
                 return i
-        raise ValueError(f"Header row 'DATE' not found in {self.__class__.__name__}")
+        raise ValueError(
+            f"Header row 'DATE' not found in {self.__class__.__name__}"
+        )
 
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         if isinstance(data, dict):
-            raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")
+            raise TypeError(
+                f"{self.__class__.__name__} expects bytes, received dict."
+            )
 
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         tables = []
@@ -93,11 +102,13 @@ class _AQRModel(FactorModel, RegionMixin):
             header_row = self._get_header(rows)
             headers = [str(h).strip().upper() for h in rows[header_row]]
 
-            col_idx = 1 if sheet_name == "RF" else headers.index(self.region.upper())
+            col_idx = (
+                1 if sheet_name == "RF" else headers.index(self.region.upper())
+            )
 
             dates, values = [], []
-            for r in rows[header_row + 1:]:
-                if not r or r[0] is None or r[col_idx] == '':
+            for r in rows[header_row + 1 :]:
+                if not r or r[0] is None or r[col_idx] == "":
                     continue
                 try:
                     dates.append(self._aqr_dt_fix(r[0]))
@@ -105,88 +116,92 @@ class _AQRModel(FactorModel, RegionMixin):
                 except (ValueError, TypeError):
                     continue
 
-            col_key = 'RF_AQR' if factor_name == 'RF' else factor_name
+            col_key = "RF_AQR" if factor_name == "RF" else factor_name
             t = pa.Table.from_pydict({"date": dates, col_key: values})
             tables.append(offset_period_eom(t, self.frequency))
 
         result = tables[0]
         for next_t in tables[1:]:
-            result = result.join(next_t, keys='date', join_type='left outer')
+            result = result.join(next_t, keys="date", join_type="left outer")
 
         return round_to_precision(result, self._precision).combine_chunks()
 
-
     @property
     def url(self) -> str:
-        f = 'daily' if self.frequency == 'd' else 'Monthly'
-        return f'https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/{self._file_slug}-{f}.xlsx'
+        f = "daily" if self.frequency == "d" else "Monthly"
+        return f"https://www.aqr.com/-/media/AQR/Documents/Insights/Data-Sets/{self._file_slug}-{f}.xlsx"
 
     @property
     def schema(self) -> pa.Schema:
         """Dynamically build schema from date + sheet map values."""
-        fields = [('date', pa.string())]
+        fields = [("date", pa.string())]
         for _sheet_name, factor_name in self._sheet_map.items():
-            col_key = 'RF_AQR' if factor_name == 'RF' else factor_name
+            col_key = "RF_AQR" if factor_name == "RF" else factor_name
             fields.append((col_key, pa.float64()))
         return pa.schema(fields)
 
     @property
     @abstractmethod
-    def _sheet_map(self) -> dict[str, str]: pass
+    def _sheet_map(self) -> dict[str, str]:
+        pass
 
     _file_slug: str = ""
 
 
 class HMLDevilFactors(_AQRModel):
     """HML Devil factors, Asness and Frazzini (2013)."""
-    _file_slug = 'The-Devil-in-HMLs-Details-Factors'
+
+    _file_slug = "The-Devil-in-HMLs-Details-Factors"
 
     @property
     def _sheet_map(self) -> dict[str, str]:
         return {
-            'HML Devil': 'HML_Devil',
-            'MKT': 'Mkt-RF',
-            'SMB': 'SMB',
-            'UMD': 'UMD',
-            'RF': 'RF',
+            "HML Devil": "HML_Devil",
+            "MKT": "Mkt-RF",
+            "SMB": "SMB",
+            "UMD": "UMD",
+            "RF": "RF",
         }
 
 
 class QMJFactors(_AQRModel):
     """Quality Minus Junk (QMJ), Asness, Frazzini & Pedersen (2019)."""
-    _file_slug = 'Quality-Minus-Junk-Factors'
+
+    _file_slug = "Quality-Minus-Junk-Factors"
 
     @property
     def _sheet_map(self) -> dict[str, str]:
         return {
-            'QMJ Factors': 'QMJ',
-            'MKT': 'Mkt-RF',
-            'SMB': 'SMB',
-            'HML FF': 'HML',
-            'UMD': 'UMD',
-            'RF': 'RF',
+            "QMJ Factors": "QMJ",
+            "MKT": "Mkt-RF",
+            "SMB": "SMB",
+            "HML FF": "HML",
+            "UMD": "UMD",
+            "RF": "RF",
         }
 
 
 class BABFactors(_AQRModel):
     """Betting Against Beta (BAB) factors, Frazzini and Pedersen (2014)."""
-    _file_slug = 'Betting-Against-Beta-Equity-Factors'
+
+    _file_slug = "Betting-Against-Beta-Equity-Factors"
 
     @property
     def _sheet_map(self) -> dict[str, str]:
         return {
-            'BAB Factors': 'BAB',
-            'MKT': 'Mkt-RF',
-            'SMB': 'SMB',
-            'UMD': 'UMD',
-            'HML FF': 'HML',
-            'RF': 'RF_AQR',
+            "BAB Factors": "BAB",
+            "MKT": "Mkt-RF",
+            "SMB": "SMB",
+            "UMD": "UMD",
+            "HML FF": "HML",
+            "RF": "RF_AQR",
         }
 
 
 class AQR6Factors(Composite, RegionMixin):
     """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018)."""
-    def __init__(self, frequency: str = 'm', region: str = 'usa', **kwargs):
+
+    def __init__(self, frequency: str = "m", region: str = "usa", **kwargs):
         super().__init__(frequency=frequency, **kwargs)
         self.region = region
 
@@ -203,7 +218,7 @@ class AQR6Factors(Composite, RegionMixin):
 
     @property
     def frequencies(self) -> list[str]:
-        return ['m', 'd']
+        return ["m", "d"]
 
     def _construct(self, client: _HttpClient) -> pa.Table:
         bab_inst, qmj_inst = self.components
@@ -211,37 +226,44 @@ class AQR6Factors(Composite, RegionMixin):
         bab_inst.load(client=client)
         qmj_inst.load(client=client)
 
-        bab = select_table_columns(bab_inst.data, ['BAB', 'Mkt-RF', 'SMB'])
-        qmj = select_table_columns(qmj_inst.data, ['QMJ', 'HML', 'UMD', 'RF_AQR'])
+        bab = select_table_columns(bab_inst.data, ["BAB", "Mkt-RF", "SMB"])
+        qmj = select_table_columns(
+            qmj_inst.data, ["QMJ", "HML", "UMD", "RF_AQR"]
+        )
 
         qmj = qmj.rename_columns([
-            "HML_FF" if col == "HML" else col
-            for col in qmj.column_names
+            "HML_FF" if col == "HML" else col for col in qmj.column_names
         ])
 
-        table = bab.join(qmj, keys='date').combine_chunks()
+        table = bab.join(qmj, keys="date").combine_chunks()
         return table.select(self.schema.names).cast(self.schema)
 
     @property
     def schema(self) -> pa.Schema:
         return pa.schema([
-            ('date', pa.string()),
-            ('Mkt-RF', pa.float64()),
-            ('SMB', pa.float64()),
-            ('HML_FF', pa.float64()),
-            ('UMD', pa.float64()),
-            ('BAB', pa.float64()),
-            ('QMJ', pa.float64()),
-            ('RF_AQR', pa.float64()),
+            ("date", pa.string()),
+            ("Mkt-RF", pa.float64()),
+            ("SMB", pa.float64()),
+            ("HML_FF", pa.float64()),
+            ("UMD", pa.float64()),
+            ("BAB", pa.float64()),
+            ("QMJ", pa.float64()),
+            ("RF_AQR", pa.float64()),
         ])
 
 
 class VMEFactors(_AQRModel):
     """Value and Momentum Everywhere: Asness, Moskowitz, and Pedersen (2013)."""
-    _file_slug = 'Value-and-Momentum-Everywhere-Factors'
+
+    _file_slug = "Value-and-Momentum-Everywhere-Factors"
     _VME_COL_MAP = {
-        'everywhere': 1, 'all_equities': 3, 'all_other': 5,
-        'usa': 7, 'uk': 9, 'europe': 11, 'japan': 13,
+        "everywhere": 1,
+        "all_equities": 3,
+        "all_other": 5,
+        "usa": 7,
+        "uk": 9,
+        "europe": 11,
+        "japan": 13,
     }
 
     @property
@@ -254,19 +276,21 @@ class VMEFactors(_AQRModel):
 
     @property
     def _sheet_map(self) -> dict[str, str]:
-        return {'VME Factors': 'VME'}
+        return {"VME Factors": "VME"}
 
     @property
     def schema(self) -> pa.Schema:
         return pa.schema([
-            ('date', pa.string()),
-            ('VAL', pa.float64()),
-            ('MOM', pa.float64()),
+            ("date", pa.string()),
+            ("VAL", pa.float64()),
+            ("MOM", pa.float64()),
         ])
 
     def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         if isinstance(data, dict):
-            raise TypeError(f"{self.__class__.__name__} expects bytes, received dict.")
+            raise TypeError(
+                f"{self.__class__.__name__} expects bytes, received dict."
+            )
 
         wb = CalamineWorkbook.from_filelike(io.BytesIO(data))
         rows = wb.get_sheet_by_name("VME Factors").to_python()
@@ -274,8 +298,8 @@ class VMEFactors(_AQRModel):
         start_idx = self._VME_COL_MAP.get(self.region.lower(), 7)
 
         dates, val, mom = [], [], []
-        for r in rows[header_idx + 1:]:
-            if not r or r[0] is None or r[start_idx] == '':
+        for r in rows[header_idx + 1 :]:
+            if not r or r[0] is None or r[start_idx] == "":
                 continue
             dates.append(self._aqr_dt_fix(r[0]))
             val.append(float(r[start_idx]))
@@ -285,6 +309,7 @@ class VMEFactors(_AQRModel):
         table = offset_period_eom(table, "m")
 
         return table.cast(self.schema).combine_chunks()
+
 
 """
 class _AQRPortfolios(_AQRModel):

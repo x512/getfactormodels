@@ -5,8 +5,6 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 """Custom exceptions and warnings for getfactormodels."""
 
-# Exceptions 
-
 class GetFactorModelsError(Exception):
     """Base exception for all getfactormodels errors."""
 
@@ -15,9 +13,6 @@ class ModelNotFoundError(GetFactorModelsError, ValueError):
 
 class DownloadError(GetFactorModelsError, RuntimeError):
     """Raised when a remote dataset cannot be downloaded."""
-
-
-# Warnings
 
 class GetFactorModelsWarning(UserWarning):
     """Base warning for all getfactormodels warnings."""

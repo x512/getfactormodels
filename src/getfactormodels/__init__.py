@@ -17,16 +17,14 @@
 import logging
 from getfactormodels.utils.cache import clear_cache
 from ._metadata import __author__, __copyright__, __license_text__, __version__
-from .main import anomaly, model, portfolio
-
 from .exceptions import (
-    GetFactorModelsError,
-    ModelNotFoundError,
     DownloadError,
-    GetFactorModelsWarning,
     GetFactorModelsDeprecationWarning,
+    GetFactorModelsError,
+    GetFactorModelsWarning,
+    ModelNotFoundError,
 )
-
+from .main import anomaly, model, portfolio
 from .models import (
     AQR6Factors,
     BABFactors,
@@ -50,7 +48,7 @@ from .models import (
 logger = logging.getLogger("getfactormodels")
 logger.addHandler(logging.NullHandler())
 
-# TODO: setup logging 
+# TODO: setup logging
 # see: https://docs.python.org/3/howto/logging-cookbook.html#logging-to-multiple-destinations
 # or use warnings??
 
@@ -86,4 +84,3 @@ __all__ = [
     "GetFactorModelsWarning",
     "GetFactorModelsDeprecationWarning",
 ]
-

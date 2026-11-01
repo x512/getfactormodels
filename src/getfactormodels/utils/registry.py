@@ -5,6 +5,7 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 from types import MappingProxyType
 from typing import Final
+from getfactormodels.exceptions import ModelNotFoundError
 
 _MODEL_REGISTRY: Final = MappingProxyType({
     "ff3": {
@@ -107,13 +108,12 @@ _MODEL_REGISTRY: Final = MappingProxyType({
         "name": "CH-4: Size and Value in China",
         "aliases": ["ch4", "ch-4", "cn4"],
     },
-
 })
 
 
 _LOOKUP: Final[MappingProxyType[str, str]] = MappingProxyType({
-    alias.lower().replace("-", "").replace("_", ""): key 
-    for key, data in _MODEL_REGISTRY.items() 
+    alias.lower().replace("-", "").replace("_", ""): key
+    for key, data in _MODEL_REGISTRY.items()
     for alias in data.get("aliases", []) + [key]
 })
 
@@ -124,7 +124,7 @@ def get_model_key(user_input: str | int) -> str:
     Args:
         user_input: The model name, ID, or alias provided by the user.
 
-    Returns (str): 
+    Returns (str):
         The model's registry key.
 
     Raises:
@@ -138,7 +138,7 @@ def get_model_key(user_input: str | int) -> str:
     if val in _LOOKUP:
         return _LOOKUP[val]
 
-    raise ValueError(f"Unknown model or portfolio: '{user_input}'")
+    raise ModelNotFoundError(f"Unknown model or portfolio: '{user_input}'")
 
 
 def get_model_class(key: str) -> str:
@@ -154,19 +154,18 @@ def get_model_class(key: str) -> str:
         key = get_model_key(key)
     return _MODEL_REGISTRY[key]["model_class"]
 
+
 def get_model_name(key: str) -> str | None:
     """Retrieve the display name for a given model key.
-    
+
     Returns None if the key is not found.
     """
     data = _MODEL_REGISTRY.get(key)
     if data:
         return data["name"]
-    return None 
+    return None
 
 
 def list_models() -> dict:
     """Return a copy of the model registry."""
     return dict(_MODEL_REGISTRY)
-
-

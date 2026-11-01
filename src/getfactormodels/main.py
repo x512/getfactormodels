@@ -16,13 +16,14 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
-from getfactormodels.exceptions import GetFactorModelsDeprecationWarning
 from typing import Literal
 from getfactormodels import models as factor_models
+from getfactormodels.exceptions import GetFactorModelsDeprecationWarning
 from getfactormodels.models.base import (
     Collection,
     Composite,
     FactorModel,
+    PortfolioBase,
     RegionMixin,
 )
 from getfactormodels.utils.cli import _cli
@@ -30,23 +31,21 @@ from getfactormodels.utils.registry import get_model_class, get_model_key
 
 log = logging.getLogger("getfactormodels")
 
+
 def portfolio(
-    frequency: str = 'm',
+    frequency: str = "m",
     grid: str | None = None,
     count: int | None = None,
-    sort: str | list[str] = 'size',
-    weights: Literal['vw', 'ew'] | None = None,
+    sort: str | list[str] = "size",
+    weights: Literal["vw", "ew"] | None = None,
     industry: int | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    source: str = 'ff',                     # 'q', 'ff', or 'aqr'
-    dividends: bool = True,                 # False for ex-div (retx_vw)
+    source: str = "ff",      # 'q', 'ff', or 'aqr'
+    dividends: bool = True,  # False for ex-div (retx_vw)
     **kwargs,
-    #output_dir: str | Path | None = None,
-    #filename: str | None = None,
-    #file_format: Literal['feather', 'ipc', 'parquet', 'csv', 'md', 'txt'] = 'csv'
-):
+) -> PortfolioBase | Collection:
     """Download portfolio return data.
 
     Args:
@@ -63,26 +62,26 @@ def portfolio(
     """
     source = source.lower()
 
-    if kwargs.get('region') is not None:
+    if kwargs.get("region") is not None:  # TODO: FIXME: Removing this when AQR is ready, after FF refactor.
         raise NotImplementedError(
             "Regional data is not yet supported for portfolios (US only). "
-            "Please omit the region parameter."
+                "Please omit the region parameter."
         )
 
-    if 'formed_on' in kwargs:
+    if "formed_on" in kwargs:
         warnings.warn(
             "The 'formed_on' parameter is deprecated and will be removed in a future release. "
-            "Please use 'sort' instead.",
+                "Please use 'sort' instead.",
             category=GetFactorModelsDeprecationWarning,
             stacklevel=2,
         )
-        sort = kwargs.pop('formed_on')
+        sort = kwargs.pop("formed_on")
 
     params = {
         "grid": grid,
         "count": count,
         "sort": sort,
-        "weights": weights if weights is not None else 'vw',
+        "weights": weights if weights is not None else "vw",
         "industry": industry,
         "frequency": frequency,
         "start_date": start_date,
@@ -91,40 +90,40 @@ def portfolio(
         **kwargs,
     }
 
-    if source == 'q':
+    if source == "q":
         from getfactormodels.models.q_factors import _get_q_portfolios
+
         return _get_q_portfolios(**params)
 
-    if source in ['ff', 'famafrench']:
-        if frequency == 'w':
+    if source in ["ff", "famafrench"]:
+        if frequency == "w":
             is_weekly = (
-                isinstance(sort, (list, tuple)) and
-                frozenset(str(x).lower() for x in sort) == frozenset(['size', 'bm']) and
-                (grid in (None, '2x3', '6'))
+                isinstance(sort, (list, tuple))
+                and frozenset(str(x).lower() for x in sort)
+                == frozenset(["size", "bm"])
+                and (grid in (None, "2x3", "6"))
             )
             if not is_weekly:
                 raise ValueError(
                     "Fama-French weekly portfolio data is only available for the size "
-                    "and book-to-market (2x3) portfolio. "
-                    "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
+                        "and book-to-market (2x3) portfolio. "
+                        "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
                 )
         from getfactormodels.models.fama_french import _get_ff_portfolios
+
         return _get_ff_portfolios(**params)
 
     raise ValueError(f"Portfolio source '{source}' not recognized.")
 
-
+# Pluralise? hmm
 def anomaly(
-    name: str | list[str] = 'abr_1',
-    frequency: str = 'm',
-    sort: str | int = 'decile',
+    name: str | list[str] = "abr_1",
+    frequency: str = "m",
+    sort: str | int = "decile",
     start_date: str | None = None,
     end_date: str | None = None,
-    #output_dir: str | Path | None = None,
-    #filename: str | None = None,
-    #file_format: Literal['feather', 'parquet', 'csv'] = 'feather',
     *,
-    provider: str = 'q',
+    provider: str = "q",
     cache_ttl: int | None = None,
     **kwargs,
 ):
@@ -140,9 +139,6 @@ def anomaly(
         cache_ttl: Optional cache Time-To-Live in seconds.
     """
     src = provider.lower().strip()
-    #TODO:
-    #output to...
-    #output_opts = {"output_dir": output_dir, "filename": filename, "file_format": file_format}
 
     params = {
         "name": name,
@@ -151,25 +147,25 @@ def anomaly(
         "start_date": start_date,
         "end_date": end_date,
         "cache_ttl": cache_ttl,
-        #   **output_opts,
         **kwargs,
     }
 
     if src in ["q", "global-q"]:
         from getfactormodels.models.q_factors import _get_q_anomalies
+
         return _get_q_anomalies(**params)
-    
+
     raise NotImplementedError(f"Anomalies not supported for source: '{src}'")
 
 
 def model(
     model: str | int | list[str | int] = "3",
     region: str | None = None,
-    frequency: str = 'm',
+    frequency: str = "m",
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    #force: bool = False,  #not implemented
+    # force: bool = False,  #not implemented
     clear_cache: bool = False,
     **kwargs,
 ) -> FactorModel | Collection:
@@ -183,10 +179,10 @@ def model(
         end_date: Optional end date (YYYY-MM-DD).
         clear_cache: Clear local cache entries for this model before returning.
     """
-    #normalize single-item list to str
+    # normalize single-item list to str
     if isinstance(model, list) and len(model) == 1:
         model = model[0]
-    
+
     # Collection
     if isinstance(model, list):
         model_keys = [get_model_key(m) for m in model]
@@ -198,24 +194,28 @@ def model(
             end_date=end_date,
             **kwargs,
         )
-        
+
     # single FactorModel request
     else:
         model_key = get_model_key(model)
         class_name = get_model_class(model_key)
         model_class = getattr(factor_models, class_name, None)
-        
+
         if model_class is None:
-            raise ImportError(f"Class '{class_name}' not found in getfactormodels.models")
+            raise ImportError(
+                f"Class '{class_name}' not found in getfactormodels.models"
+            )
 
         if issubclass(model_class, RegionMixin):
             if region is not None:
-                kwargs['region'] = region
-        elif region is not None and str(region).lower() not in ('usa', 'us'):
-            raise ValueError(f"Model '{class_name}' does not support region: {region}")
+                kwargs["region"] = region
+        elif region is not None and str(region).lower() not in ("usa", "us"):
+            raise ValueError(
+                f"Model '{class_name}' does not support region: {region}"
+            )
 
         # kwargs
-        kwargs.pop('model', None) # Prevent duplicate 'model' kwarg
+        kwargs.pop("model", None)  # Prevent duplicate 'model' kwarg
         if not issubclass(model_class, Composite):
             kwargs["model"] = model_key
 
@@ -231,11 +231,12 @@ def model(
 
     return instance
 
+
 def get_factors(*args, **kwargs):  # noqa
     """DEPRECATED: Use `model()` instead."""
     warnings.warn(
         "get_factors() is deprecated and will be removed in a future version. "
-        "Please use model() for factor data or portfolio() for return data.",
+            "Please use model() for factor data or portfolio() for return data.",
         category=GetFactorModelsDeprecationWarning,
         stacklevel=2,
     )
@@ -244,6 +245,7 @@ def get_factors(*args, **kwargs):  # noqa
 
 def main():
     _cli()
+
 
 if __name__ == "__main__":
     main()

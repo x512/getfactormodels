@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
-from __future__ import annotations  # can't delete yet 
+from __future__ import annotations  # can't delete yet
 import logging
 from pathlib import Path
 from diskcache import Cache
@@ -54,7 +54,12 @@ class _Cache:
         entry = {"data": data, "metadata": metadata}
         try:
             self.cache.set(key, entry, expire=timeout, tag=tag)
-            log.debug("CACHE WRITE: %s... (tag: %s, expiry: %ss)", key[:8], tag, timeout)
+            log.debug(
+                "CACHE WRITE: %s... (tag: %s, expiry: %ss)",
+                key[:8],
+                tag,
+                timeout,
+            )
         except Exception as e:
             log.error("Failed to write cache entry '%s': %s", key[:8], e)
 
@@ -111,6 +116,7 @@ def evict_model_cache(keys: str | list[str] | set[str]) -> int:
     with _Cache(default_cache_dir()) as cache:
         return cache.evict_model(keys)
 
+
 def clear_cache(key: str | list[str] | None = None) -> int:
     """Evict cached entries for specific model key(s), or the entire cache.
 
@@ -121,4 +127,3 @@ def clear_cache(key: str | list[str] | None = None) -> int:
         with _Cache(default_cache_dir()) as cache:
             return cache.clear_all()
     return evict_model_cache(key)
-
