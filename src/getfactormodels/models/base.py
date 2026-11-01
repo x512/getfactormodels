@@ -35,7 +35,7 @@ class Base(ABC):
     """Abstract Base Class used by all implementations."""
     def __init__(
         self,
-        frequency: str = 'm',
+        frequency: Literal['d', 'w', 'w2w', 'm', 'q', 'y', 'a'] = 'm',
         start_date: str | None = None,
         end_date: str | None = None,
         *,
@@ -51,14 +51,14 @@ class Base(ABC):
 
         Args:
             frequency (str): Data frequency. m, d, w, q, y, w2w. Default: m.
-            start_date (str, opt): Start date, YYYY[-MM-DD]
-            end_date (str, opt): End date, YYYY[-MM-DD]
-            as_percentage (bool, opt): Scale to percentage values. Default: False.
-            drop_nulls (bool, opt): Drop rows containing null values. Default: False.
+            start_date (str, opt): Start date filter: YYYY[-MM-DD]
+            end_date (str, opt): End date filter: YYYY[-MM-DD]
+            as_percentage (bool, opt): Scale to percentages.
+            drop_nulls (bool, opt): Drop rows with null values. Default: False.
             cache_ttl (int, opt): Cache time-to-live in seconds. Default: 86400.
             force (bool, opt): Bypass local disk/memory cache. Default: False.
             output_file (str, opt): output file or path.
-            show_url (bool, opt): Print target download URL(s) to stdout on load. Default: False.
+            show_url (bool, opt): Print target download URL(s) to stdout on load.
             **kwargs: additional keyword args.
         """
         super().__init__()
@@ -89,8 +89,8 @@ class Base(ABC):
 
     @property
     @abstractmethod
-    def url(self) -> str | dict[str, Any]:
-        """Endpoint URL of the dataset."""
+    def url(self) -> str | list[str] | dict[str, Any]:
+        """Endpoint URL(s) of the dataset."""
         pass
 
     @property
@@ -152,6 +152,11 @@ class Base(ABC):
             return
 
         val = value.lower()
+
+        # Normalize: 'a' (annual) to 'y' (yearly)
+        if val == 'a':
+            val = 'y'
+
         if val not in self.frequencies:
             raise ValueError(f"Invalid frequency '{val}'. Options: {self.frequencies}")
 
@@ -163,7 +168,7 @@ class Base(ABC):
 
     @property
     def data(self) -> pa.Table:
-        """Return the processed and date-filtered pa.Table."""
+        """Return the processed and date-filtered table."""
         if self._data is None:
             self.load()
 
@@ -239,38 +244,64 @@ class Base(ABC):
         return self
 
     def clear_cache(self) -> int:
-        """Evict cached files for this specific instance."""
+        """Evict cached files for this instance.
+
+        Returns:
+            Number of cache entries evicted.
+        """
         tag = getattr(self, "model", self.__class__.__name__)
         return evict_model_cache(tag)
 
     def to_file(self, filepath: str | Path | None = None) -> None:
-        """Save data to a file.
+        """Save the processed data to a file.
 
-        Supports .parquet, .ipc, .feather, .csv, .txt, .pkl, .md
+        `filepath` can be a directory, a filename, or a full path. The file format 
+        is inferred from the extension. If no extension is provided, it defaults 
+        to CSV. If a directory is passed, a default filename is generated.
+
+        Note: NaNs are preserved in the output unless `drop_nulls=True` 
+        was passed during initialization.
+
+        Supported extensions:
+            .parquet, .ipc, .feather, .csv, .txt, .pkl, .md
 
         Args:
-            filepath (str | Path, optional): filepath to save data to.
+            filepath: Destination path. If None, falls back to the `output_file` 
+                parameter provided during initialization.
+
+        Raises:
+            ValueError: If the file extension is not supported.
         """
         target = filepath if filepath else self.output_file
+        
         if not target:
             self.log.error("No filepath provided and no default output_file set.")
             return
+        
         table = self.data
+        
         if table.num_rows == 0:
             self.log.warning("No data available to save.")
             return
+
         _save_to_file(table, target, model_instance=self)
 
-    def to_pandas(self):
-        """Convert model to a pandas DataFrame.
+    def to_pandas(self) -> "pd.DataFrame":
+        """Convert the data to a pandas DataFrame.
 
-        Sets the 'date' column as the index.
+        Triggers a download if the data is not already loaded.
+        The 'date' column is automatically set as the DataFrame index.
 
         Returns:
-            pandas.DataFrame: indexed by date.
+            pandas.DataFrame indexed by date.
 
         Raises:
             ImportError: If the `pandas` package is not installed.
+
+        Example:
+            >>> model = getfactormodels.model("ff3")
+            >>> df = model.to_pandas()
+            >>> df.head()
         """
         try:
             import pandas as pd
@@ -282,16 +313,21 @@ class Base(ABC):
             raise ImportError("Requires Pandas. Try `pip install pandas`") from None
 
     def to_polars(self):
-        """Convert model to a polars DataFrame.
+        """Convert the data to a polars DataFrame.
 
-        A wrapper around Polars `from_arrow()`. Triggers
-        download if not already loaded.
+        Triggers a download if the data is not already loaded.
+        Wrapper around Polars `pl.from_arrow()`.
 
         Returns:
             polars.DataFrame
 
         Raises:
             ImportError: If the `polars` package is not installed.
+
+        Example:
+            >>> model = getfactormodels.model("ff3")
+            >>> df = model.to_polars()
+            >>> df.head()
         """
         try:
             import polars as pl
@@ -455,18 +491,18 @@ class Anomalies(Base):
 
 
 class Composite(Base):
-    """Base class for models constructed from other models."""
+    """Base class for models constructed by combining other models."""
     def __init__(self, *, drop_nulls: bool = True, **kwargs):
         super().__init__(drop_nulls=drop_nulls, **kwargs)
 
     @property
     def components(self) -> list[Base]:
-        """List of child model instances."""
+        """Return the list of child model instances."""
         return getattr(self, "instances", [])
 
     @property
     def url(self) -> dict[str, str | dict]:
-        """URLs of all components."""
+        """Return a mapping of component names to URLs."""
         return {
             getattr(inst, 'model', inst.__class__.__name__): inst.url 
             for inst in self.components
@@ -474,7 +510,7 @@ class Composite(Base):
 
     @property
     def frequencies(self) -> list[str]:
-        """Common frequencies across all components."""
+        """Return the intersection of frequencies across all components."""
         if not self.components:
             return []
         freqs = set(self.components[0].frequencies)
@@ -484,14 +520,14 @@ class Composite(Base):
 
     @property
     def schema(self) -> pa.Schema:
-        """Expected pa.Schema of the composite model."""
+        """Return the merged schema of all components."""
         if not self.components:
             return pa.schema([])
         return _merge_schemas([inst.schema for inst in self.components])
 
     @abstractmethod
     def _construct(self, client) -> pa.Table:
-        """Subclasses must implement how to build the table from components."""
+        """Combine component tables into a single table."""
         pass
 
     @override
@@ -511,7 +547,7 @@ class Composite(Base):
 
 
 class Collection(Composite):
-    """Container holding multiple joined models or portfolios of the same frequency."""
+    """Container holding multiple models or portfolios joined horizontally."""
     def __init__(
         self,
         instances: list[Base] | None = None,
@@ -522,16 +558,15 @@ class Collection(Composite):
         end_date: str | None = None,
         **kwargs,
     ):
-        """Initialize collection of models or portfolios.
+        """Initialize a collection.
 
         Args:
-            instances (list[Base], optional): Pre-instantiated model/portfolio objects.
-            model_keys (list[str], optional): List of model keys to instantiate automatically.
-            frequency (str): Data frequency.
-            region (str, optional): Geographic region.
-            start_date (str, optional): Start date.
-            end_date (str, optional): End date.
-            **kwargs: Additional operational parameters passed to instantiated models.
+            instances: Pre-instantiated models.
+            model_keys: Registry keys to instantiate automatically.
+            frequency: Data frequency passed to uninstantiated models.
+            region: Region passed to uninstantiated models.
+            start_date: Start date filter.
+            end_date: End date filter.
         """
         if instances and model_keys:
             raise ValueError("Provide either 'instances' or 'model_keys', not both.")

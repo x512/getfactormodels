@@ -90,7 +90,7 @@ def parse_args() -> argparse.Namespace:
                         "accepts 3 4 5 6 for Fama-French models.")
     
     parser.add_argument('-f', '--frequency', type=str, default='m',
-                        choices=['d', 'w', 'w2w', 'm', 'q', 'y'], metavar="FREQ",
+                        choices=['d', 'w', 'w2w', 'm', 'q', 'y', 'a'], metavar="FREQ",
                         help="Data frequency 'd' 'w' 'm' (default) 'q' 'y' 'w2w'.")
 
     parser.add_argument('-r', '--region', '--location', '-l', dest='region', metavar='REGION',
@@ -276,7 +276,7 @@ def _build_model(args: argparse.Namespace):
 
 def _cli():
     args = parse_args()
-
+    _setup_logging(verbose=args.verbose, quiet=args.quiet)
     _quick_exits(args)
 
     try:
@@ -332,6 +332,30 @@ if __name__ == '__main__':
     _cli()
 
 
+
+def _setup_logging(verbose: bool, quiet: bool) -> None:
+    """Configure the root getfactormodels logger based on CLI flags."""
+    logger = logging.getLogger("getfactormodels")
+    
+    # Clear the NullHandler added in __init__.py so we can see output
+    logger.handlers.clear()
+    
+    # Determine the log level
+    if quiet:
+        logger.setLevel(logging.ERROR)
+    elif verbose:
+        logger.setLevel(logging.DEBUG)
+    else:
+        logger.setLevel(logging.WARNING)  # Default for standard runs
+
+    # Create a console handler that writes to stderr
+    handler = logging.StreamHandler(sys.stderr)
+    
+    # Format: DEBUG: message (or ERROR: message)
+    formatter = logging.Formatter("%(levelname)s: %(message)s")
+    handler.setFormatter(formatter)
+    
+    logger.addHandler(handler)
 def _cli_list_anomalies():
     """Lists all available q-factor anomalies categorized by group."""
     from getfactormodels.models.q_factors import _QAnomalies

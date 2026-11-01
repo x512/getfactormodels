@@ -5,6 +5,7 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 # getfactormodels/utils/http_client.py
 """HTTP client."""
+
 import hashlib
 import logging
 import ssl
@@ -27,9 +28,10 @@ class ClientNotOpenError(Exception):
 class _HttpClient:
     """Internal HTTP client with caching.
 
-    Wrapper around httpx.Client with SSL context creation and 
+    Wrapper around httpx.Client with SSL context creation and
     XDG-compliant caching.
     """
+
     APP_NAME = "getfactormodels"
     APP_AUTHOR = "x512"
 
@@ -45,8 +47,8 @@ class _HttpClient:
 
         if cache_dir is None:
             _cache_path = user_cache_path(
-                appname=self.APP_NAME, 
-                appauthor=self.APP_AUTHOR, 
+                appname=self.APP_NAME,
+                appauthor=self.APP_AUTHOR,
                 ensure_exists=True,
             )
             self.cache_dir = str(_cache_path.resolve())
@@ -64,7 +66,10 @@ class _HttpClient:
                 follow_redirects=True,
                 max_redirects=3,
             )
-            log.debug("http_client ENTER: (client: %s)", self._client.__class__.__name__)
+            log.debug(
+                "http_client ENTER: (client: %s)",
+                self._client.__class__.__name__,
+            )
         return self
 
     def close(self) -> None:
@@ -78,7 +83,7 @@ class _HttpClient:
 
     def _generate_cache_key(self, url: str) -> str:
         """Generate a cache key for the URL."""
-        return hashlib.sha256(url.encode('utf-8')).hexdigest()
+        return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
     def download(
         self,
@@ -99,12 +104,16 @@ class _HttpClient:
 
         # Check client is open
         if self._client is None:
-            raise ClientNotOpenError("HttpClient is not open. Use within a 'with' block.")
+            raise ClientNotOpenError(
+                "HttpClient is not open. Use within a 'with' block."
+            )
 
         # Download
         with self._client.stream("GET", url) as resp:
             resp.raise_for_status()
-            new_data = self._read_with_progress(resp, model_name, force=force_progress)
+            new_data = self._read_with_progress(
+                resp, model_name, force=force_progress,
+            )
 
         # Cache
         ttl = cache_ttl or self.default_cache_ttl
@@ -134,27 +143,38 @@ class _HttpClient:
     ) -> bytes:
         """Wrapper to force streaming with a progress bar."""
         return self.download(
-            url, 
-            tag=tag, 
-            model_name=model_name, 
-            cache_ttl=cache_ttl, 
-            force=force, 
+            url,
+            tag=tag,
+            model_name=model_name,
+            cache_ttl=cache_ttl,
+            force=force,
             force_progress=True,
         )
 
     def download_any(
         self, 
-        target: str | dict[str, str], 
+        target: str | list[str] | dict[str, str], 
         tag: str, 
         model_name: str, 
         cache_ttl: int | None,
         *,
         force: bool,
     ) -> bytes | dict[str, bytes]:
-        """Download a single URL or a dictionary of URLs."""
+        """Download a single URL, a list of fallback URLs, or a dictionary of URLs."""
+        
         if isinstance(target, str):
             return self.download(target, tag=tag, model_name=model_name, cache_ttl=cache_ttl, force=force)
-        
+            
+        if isinstance(target, list):
+            last_exc = None
+            for url in target:
+                try:
+                    return self.download(url, tag=tag, model_name=model_name, cache_ttl=cache_ttl, force=force)
+                except Exception as e:
+                    last_exc = e
+                    log.warning("Failed to download %s, trying fallback URL...", url)
+            raise DownloadError(f"Failed to download {model_name} from any fallback URL.") from last_exc
+            
         return {
             k: self.download(v, tag=tag, model_name=model_name, cache_ttl=cache_ttl, force=force)
             for k, v in target.items()
@@ -181,15 +201,15 @@ class _HttpClient:
         return f"{bytes_per_sec:.0f} B/s"
 
     def _read_with_progress(
-        self, 
-        response: httpx.Response, 
+        self,
+        response: httpx.Response,
         model_name: str = "Model",
         *,
         force: bool = False,
     ) -> bytes:
         """Read response bytes, displaying a progress bar if in an interactive TTY."""
         total = int(response.headers.get("Content-Length", 0))
-        
+
         is_tty = sys.stderr.isatty()
         if not is_tty or (0 < total < 100_000 and not force):
             return response.read()
@@ -207,7 +227,7 @@ class _HttpClient:
             if total > 0:
                 percent = (downloaded / total) * 100
                 elapsed = time.time() - start_time
-                bar = ('#' * int(percent // 5)).ljust(20, '.')
+                bar = ("#" * int(percent // 5)).ljust(20, ".")
 
                 if elapsed > 0.3:
                     speed_bps = downloaded / elapsed
@@ -215,7 +235,9 @@ class _HttpClient:
                 else:
                     speed_str = "---"
 
-                sys.stderr.write(f"\r{label}: [{bar}] {percent:3.0f}% ({speed_str}) ")
+                sys.stderr.write(
+                    f"\r{label}: [{bar}] {percent:3.0f}% ({speed_str}) "
+                )
                 sys.stderr.flush()
 
         sys.stderr.write("\n")
@@ -225,7 +247,7 @@ class _HttpClient:
         """Returns cached data if valid, otherwise refreshes TTL or returns None."""
         cache_key = self._generate_cache_key(url)
         cached_data, cached_meta = self.cache.get(cache_key)
-        
+
         if not cached_data or not cached_meta:
             return None
 
@@ -235,11 +257,15 @@ class _HttpClient:
 
         remote_meta = self._get_metadata(url)
 
-        if remote_meta.get("etag") and remote_meta.get("etag") == cached_meta.get("etag"):
+        if remote_meta.get("etag") and remote_meta.get(
+            "etag"
+        ) == cached_meta.get("etag"):
             self._refresh_ttl(cache_key, cached_data, cached_meta, tag=tag)
             return cached_data
 
-        if remote_meta.get("last_modified") and remote_meta.get("last_modified") == cached_meta.get("last_modified"):
+        if remote_meta.get("last_modified") and remote_meta.get(
+            "last_modified"
+        ) == cached_meta.get("last_modified"):
             self._refresh_ttl(cache_key, cached_data, cached_meta, tag=tag)
             return cached_data
 
@@ -259,7 +285,9 @@ class _HttpClient:
         except httpx.HTTPError:
             return {}
 
-    def _refresh_ttl(self, key: str, data: bytes, meta: dict, tag: str = "Data") -> None:
+    def _refresh_ttl(
+        self, key: str, data: bytes, meta: dict, tag: str = "Data"
+    ) -> None:
         """Update cache TTL without re-downloading."""
         meta["expires_at"] = time.time() + self.default_cache_ttl
         self.cache.set(key, data, tag=tag, metadata=meta)
