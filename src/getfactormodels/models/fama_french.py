@@ -59,9 +59,7 @@ class FamaFrenchFactors(FactorModel, RegionMixin):
     def _precision(self) -> int:
         return 6
 
-    @property
-    def regions(self) -> list[str]:
-        return [
+    regions = [
             'us', 'emerging', 'developed', 'ex-us', 'europe',
             'japan', 'asia-pacific-ex-japan', 'north-america',
         ]

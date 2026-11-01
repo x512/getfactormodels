@@ -173,7 +173,6 @@ a = anomaly(name="abr_1", frequency="m", sort="3x5").load()
 
 # Export to CSV
 a.to_file("abr_1_data.parquet")
-
 ```
 
 #### Model classes
@@ -181,18 +180,19 @@ a.to_file("abr_1_data.parquet")
 from getfactormodels import FamaFrenchFactors
 
 # Initialize model instance
-m = FamaFrenchFactors(model='3', frequency='m', 
-			region='developed', start_date='2020-01-01')
-m.end_date = '2020'
+m = FamaFrenchFactors(
+    model="3", frequency="m", region="developed", start_date="2020-01-01"
+)
+m.end_date = "2020"
 
-# Download the data 
+# Download the data
 m = m.load()
 
 # Access/download the Arrow Table:
 table = m.data
 
 # As a dataframe:
-df = m.to_polars() # Helper method, see also `.to_pandas()`
+df = m.to_polars()  # Helper method, see also `.to_pandas()`
 ```
 
 ```python
@@ -264,18 +264,21 @@ date
 Create a model instance:
 ```py
 from getfactormodels import QFactors
-m = getfactormodels.QFactors(frequency='m')
+
+m = getfactormodels.QFactors(frequency="m")
 ```
 
 - DuckDB can query a table without conversion
 ```py
 import duckdb
-duckdb.sql("SELECT date, ROE, IA FROM m.data LIMIT 7").show() 
+
+duckdb.sql("SELECT date, ROE, IA FROM m.data LIMIT 7").show()
 ```
 
 - Polars has first-class support for Arrow:
 ```py
 import polars as pl
+
 df = pl.from_arrow(m.data)
 ```
 
