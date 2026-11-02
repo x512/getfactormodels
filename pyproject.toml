@@ -31,10 +31,10 @@ classifiers = [
 requires-python = ">=3.11,<4"
 
 dependencies = [
-    "pyarrow>=23.0.1,<=25.0.1",
+    "pyarrow>=23.0.1,<=27.0.0",
     "diskcache>=5.6.3",                     # see: dependabot/4, https://github.com/EthanKim88/ethan-cve-disclosures/blob/main/CVE-2025-69872-DiskCache-Pickle-Deserialization.md
     "httpx>=0.28.1,<0.29.0",
-    "certifi>=2026.10.19,<2027.0.0",
+    "certifi>=2026.10.23,<2027.0.0",
     "python-calamine>=0.6.1,<=0.8.2",       # 0.6.1, 0.8.2 verified
     "platformdirs>=4.0.0,<5.0.0",           # 4.12 verified
     "python-dateutil>=2.9.0.post0,<3.0.0",
@@ -51,7 +51,7 @@ pytest-cov = ">=7.0.0"
 pytest = ">=9.0.3"               # 9.0.3 fixes vulnerable tmpdir handling in <9.0.2
 pytest-randomly = ">=4.0.1"
 tox = ">=4.32.0,<=4.64.9"
-isort = "^7.0"
+isort = ">=9.0.2"
 pyarrow-stubs = ">=20.0.0.20260819,<21.0.0.0"
 pyright = "^1.1.414"
 
