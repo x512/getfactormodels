@@ -7,7 +7,9 @@
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, ClassVar, Literal, Self, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
@@ -43,33 +45,13 @@ class Base(ABC):
         drop_nulls: bool = False,
         cache_ttl: int = 86400,
         force: bool = False,
-        output_file: str | None = None,
+        output_file: str | Path | None = None,
         show_url: bool = False,
-        **kwargs,
-    ):
-        """Initialize base.
-
-        Args:
-            frequency (str): Data frequency. m, d, w, q, y, w2w. Default: m.
-            start_date (str, opt): Start date filter: YYYY[-MM-DD]
-            end_date (str, opt): End date filter: YYYY[-MM-DD]
-            as_percentage (bool, opt): Scale to percentages.
-            drop_nulls (bool, opt): Drop rows with null values. Default: False.
-            cache_ttl (int, opt): Cache time-to-live in seconds. Default: 86400.
-            force (bool, opt): Bypass local disk/memory cache. Default: False.
-            output_file (str, opt): output file or path.
-            show_url (bool, opt): Print target download URL(s) to stdout on load.
-            **kwargs: additional keyword args.
-        """
+    ) -> None:
+        """Initialize base."""
         super().__init__()
 
         self.log = logger
-
-        if kwargs:
-            raise TypeError(
-                f"Unexpected keyword argument(s) passed to "
-                    f"{self.__class__.__name__}: {list(kwargs.keys())}",
-            )
 
         self._data: pa.Table | None = None
         self._start_date: str | None = None
@@ -128,7 +110,7 @@ class Base(ABC):
         return self._start_date
 
     @start_date.setter
-    def start_date(self, value):
+    def start_date(self, value: str | None) -> None:
         valid = _validate_input_date(value, is_end=False)
         self._start_date, self._end_date = validate_date_range(valid, self._end_date)
 
@@ -137,7 +119,7 @@ class Base(ABC):
         return self._end_date
 
     @end_date.setter
-    def end_date(self, value):
+    def end_date(self, value: str | None) -> None:
         valid = _validate_input_date(value, is_end=True)
         self._start_date, self._end_date = validate_date_range(self._start_date, valid)
 
@@ -146,14 +128,13 @@ class Base(ABC):
         return self._frequency
 
     @frequency.setter
-    def frequency(self, value: str | None):
+    def frequency(self, value: str | None) -> None:
         if value is None:
             self._frequency = None
             return
 
         val = value.lower()
 
-        # Normalize: 'a' (annual) to 'y' (yearly)
         if val == 'a':
             val = 'y'
 
@@ -199,7 +180,7 @@ class Base(ABC):
         raw_data = self._download(client=client)
         return self._read(raw_data)
 
-    def _download(self, client=None):
+    def _download(self, client=None) -> bytes | dict[str, bytes]:
         tag = getattr(self, "model", self.__class__.__name__)
         try:
             if client:
@@ -227,13 +208,14 @@ class Base(ABC):
         """Parse raw downloaded bytes into a Table. Subclasses must impl."""
         raise NotImplementedError("`_read` not implemented.")
 
-    def extract(self, factor: str | list[str]) -> Self:
+    def extract(self, factor: str | Sequence[str]) -> Self:
         """Select specific factors from the model."""
-        table = select_table_columns(self.data, factor)
+        factors = [factor] if isinstance(factor, str) else list(factor)
+        table = select_table_columns(self.data, factors)
         self._selected_factors = [f for f in table.column_names if f != 'date']
         return self
 
-    def drop(self, factor: str | list[str]) -> Self:
+    def drop(self, factor: str | Sequence[str]) -> Self:
         """Remove specific factors from the model."""
         t_cols = self.data.column_names
         to_drop = {f.lower() for f in ([factor] if isinstance(factor, str) else factor)}
@@ -312,7 +294,7 @@ class Base(ABC):
         except ImportError:
             raise ImportError("Requires Pandas. Try `pip install pandas`") from None
 
-    def to_polars(self):
+    def to_polars(self) -> "pl.DataFrame":
         """Convert the data to a polars DataFrame.
 
         Triggers a download if the data is not already loaded.
@@ -347,8 +329,9 @@ class Base(ABC):
         header = f"{self.name}{region_label}\n"
         return header + print_table_preview(self.data)
 
-    def __getitem__(self, key: str | list[str]) -> pa.Table:
-        return select_table_columns(self.data, key)
+    def __getitem__(self, key: str | Sequence[str]) -> pa.Table:
+        keys = [key] if isinstance(key, str) else list(key)
+        return select_table_columns(self.data, keys)
 
     def __repr__(self) -> str:
         params = []
@@ -371,7 +354,7 @@ class Base(ABC):
         )
         return f'<pre style="{style}">{str(self)}</pre>'
 
-    def __dataframe__(self, *, nan_as_null: bool = False):
+    def __dataframe__(self, *, nan_as_null: bool = False) -> object:
         """Dataframe interchange protocol support.
 
         Casts date32 to ns.
@@ -398,7 +381,7 @@ class Base(ABC):
 
 class FactorModel(Base):
     """Standard factor model base class."""
-    def __init__(self, model: str | None = None, **kwargs):
+    def __init__(self, model: str | None = None, **kwargs) -> None:
         """Initialize a model instance.
 
         Args:
@@ -417,31 +400,34 @@ class FactorModel(Base):
 
 
 class PortfolioBase(Base):
-    """Base class for portfolio sorts."""
+    """Base class for multi-bucket cross-sectional portfolio sorts."""
     def __init__(
         self,
-        sort: str | list[str] | None = None,  # op, inv, bm, etc.
-        count: int | None = None,  # n portfolios (e.g., 10 for deciles)
-        grid: str | None = None,   # e.g., '2x3', '3x5', '5x5', '2x3x3'
+        sort: str | list[str] | None = None,  # Sorting variables or anomaly IDs (e.g., 'size', 'inv')
+        count: int | None = None,            # Number of portfolios (e.g., 10 for deciles)
+        grid: str | None = None,             # Explicit grid spec (e.g., '3x5', '5x5')
         *,
-        weights: Literal['vw', 'ew'] = 'vw',
-        dividends: bool = True,
+        bivariate: bool = False,             # Global-Q style convenience flag: True for 3x5, False for decile
+        weights: Literal['vw', 'ew'] = 'vw', # Value-weighted ('vw') or equal-weighted ('ew')
+        dividends: bool = True,              # Include dividends in total return calculation
         **kwargs,
-    ):
+    ) -> None:
         """Initialize the portfolio model instance.
 
         Args:
-            sort (str | list[str]): Sorting variables ('size', 'op', 'bm', etc.).
-            weights (Literal['vw', 'ew']): Weights, value ('vw') or equal ('ew') weighted.
-            count (int, opt): Number of portfolios to return.
-            grid (str, opt): 2x3 etc. grid sorts.
-            dividends (bool): False for ex-div, true for total return (default).
-            **kwargs: extra args.
+            sort: Sorting variables or anomaly identifiers.
+            count: Number of portfolio buckets.
+            grid: Grid sort dimensions.
+            bivariate: Enables 2-way sort structure (e.g., Global-Q 3x5 size-bivariate sort).
+            weights: Weighting scheme ('vw' or 'ew').
+            dividends: Total return flag.
+            **kwargs: Additional parameters passed to Base.
         """
         self.sort = sort
         self.weights = (weights or 'vw').lower()
         self.count = count
         self.grid = grid.lower().strip() if grid else None
+        self.bivariate = bivariate
         self.dividends = dividends
 
         if self.weights not in ('vw', 'ew'):
@@ -451,48 +437,24 @@ class PortfolioBase(Base):
 
     @property
     def _precision(self) -> int:
+        """Portfolio returns require 6 decimal places of precision."""
         return 6
 
     @property
     def frequencies(self) -> list[str]:
-        return ["m"]
-
-
-class Anomalies(Base):
-    """Base class for anomaly data from global-q."""
-    def __init__(
-            self,
-            anomaly: str | list[str],
-            *,
-            bivariate: bool = False,  # False for deciles, True for 3x5
-            **kwargs,
-    ):
-        """Base for anomalies.
-
-        Args:
-            anomaly (str, list[str]): anomaly id.
-            bivariate (bool): 3x5, 2-way sort (on size) when true (default).
-            **kwargs: extra args.
-        """
-        self.anomalies: list[str] = [anomaly] if isinstance(anomaly, str) else anomaly
-        self.bivariate: bool = bivariate
-
-        self.sort_type: Literal['decile', '3x5'] = '3x5' if bivariate else 'decile'
-
-        super().__init__(**kwargs)
-
-    @property
-    def _precision(self) -> int:
-        return 6
-
-    @property
-    def frequencies(self) -> list[str]:
+        """Supported frequencies for cross-sectional portfolio sorts."""
         return ["m", "y", "w", "d", "q"]
+
+
+### Q GLOBAL ANOMALIES INTO PORTFOLIO 
+### ANOMALIES WILL BE A JKP EXPL.
+  #  - Still need to remove current anomaly factory, anomaly in the cli, unify all portfolios 
+  # to one interface. Anomaly registry for q, for jkp...
 
 
 class Composite(Base):
     """Base class for models constructed by combining other models."""
-    def __init__(self, *, drop_nulls: bool = True, **kwargs):
+    def __init__(self, *, drop_nulls: bool = True, **kwargs) -> None:
         super().__init__(drop_nulls=drop_nulls, **kwargs)
 
     @property
@@ -501,7 +463,7 @@ class Composite(Base):
         return getattr(self, "instances", [])
 
     @property
-    def url(self) -> dict[str, str | dict]:
+    def url(self) -> dict[str, str | list[str] | dict[str, Any]]:
         """Return a mapping of component names to URLs."""
         return {
             getattr(inst, 'model', inst.__class__.__name__): inst.url 
@@ -557,7 +519,7 @@ class Collection(Composite):
         start_date: str | None = None,
         end_date: str | None = None,
         **kwargs,
-    ):
+    ) -> None:
         """Initialize a collection.
 
         Args:
@@ -567,6 +529,7 @@ class Collection(Composite):
             region: Region passed to uninstantiated models.
             start_date: Start date filter.
             end_date: End date filter.
+            **kwargs: Extra keyword arguments.
         """
         if instances and model_keys:
             raise ValueError("Provide either 'instances' or 'model_keys', not both.")
@@ -590,7 +553,7 @@ class Collection(Composite):
                 key = get_model_key(m)
                 class_name = get_model_class(key)
                 model_class = getattr(factor_models, class_name)
-                
+
                 model_kwargs = {
                     "frequency": frequency,
                     "start_date": start_date,
@@ -603,11 +566,11 @@ class Collection(Composite):
                 elif region is not None and str(region).strip().lower() not in ['usa', 'us']:
                     raise ValueError(
                         f"Model '{class_name}' in collection does not support regional data (US only). "
-                        f"Region '{region}' was requested.",
+                            f"Region '{region}' was requested.",
                     )
 
                 resolved_instances.append(model_class(**model_kwargs))
-            
+
             instances = resolved_instances
 
         if not instances:
@@ -615,7 +578,7 @@ class Collection(Composite):
 
         self.instances = instances
         self.model_keys = [getattr(i, 'model', i.__class__.__name__) for i in instances]
-        
+
         super().__init__(
             frequency=frequency, 
             start_date=start_date, 
@@ -631,7 +594,7 @@ class Collection(Composite):
             inst.load(client=client)
 
         final_table = self.instances[0].data
-        
+
         portfolio_join = any(isinstance(i, PortfolioBase) for i in self.instances)
         join_type = "inner" if portfolio_join else "left outer"
 
@@ -644,9 +607,8 @@ class Collection(Composite):
 class RegionMixin(ABC):
     """Mixin for models that support international regions/countries."""
     _region: str | None = None
-    
-    # ClassVar instead of abstract @property
-    regions: ClassVar[list[str]] 
+
+    regions: ClassVar[list[str]]
 
     _aliases: ClassVar[dict[str, str]] = {
         'uk': 'gbr', 'ger': 'deu', 'sg': 'sgp',
@@ -658,7 +620,12 @@ class RegionMixin(ABC):
         'global_stocks': 'all_equities',
         'australia': 'aus', 'au': 'aus',
     }
-    
+
+    def __init__(self, region: str | None = None, **kwargs: Any) -> None:
+        """Initialize the region mixin explicitly."""
+        super().__init__(**kwargs)
+        self.region = region
+
     @property
     def region(self) -> str:
         if self._region is not None:
@@ -673,7 +640,7 @@ class RegionMixin(ABC):
         return self.regions[0]
 
     @region.setter
-    def region(self, value: str | None):
+    def region(self, value: str | None) -> None:
         if value is None:
             self._region = None
             return
@@ -690,10 +657,10 @@ class RegionMixin(ABC):
         current = getattr(self, "_region", None)
         if current is not None and current != resolved:
             self._data = None
-            
+
             log = getattr(self, "log", None)
             if log is not None:
-                log.info(f"Region changed to {resolved}. Cache reset.")
+                log.info("Region changed to %s. Cache reset.", resolved)
         self._region = resolved
 
     @classmethod
