@@ -48,7 +48,7 @@ class JKPFactors(RegionMixin, FactorModel):
             raise ValueError("Must specify either 'factor' or a list of factors.")
 
         # Check registry
-        for f in self.factors
+        for f in self.factors:
             if f not in JKP_FACTORS:
                 raise ValueError(f"Unknown factor '{f}'.")
 

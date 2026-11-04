@@ -167,11 +167,8 @@ def parse_args() -> argparse.Namespace:
     if args.anomaly_names:
         args.anomaly_names = [item.strip().lower() for s in args.anomaly_names for item in s.split(',')]
 
-    if args.sort is None:
-        if args.is_anomaly and not args.is_portfolio:
-            args.sort = ['decile']
-        elif args.is_portfolio and not args.is_anomaly:
-            args.sort = ['2x3x3']
+    if args.sort is None and args.is_portfolio and not args.is_anomaly:
+        args.sort = ['2x3x3']
 
     if args.sort:
         args.sort = [item.strip().lower() for s in args.sort for item in s.split(',')]
@@ -257,15 +254,13 @@ def _build_model(args: argparse.Namespace):
 
     if args.is_anomaly:
         components.append(anomaly(
-            provider='q',
             name=args.anomaly_names,
             frequency=args.frequency,
-            sort='3x5' if args.bivariate else 'decile',
+            region=args.region,
             start_date=args.start,
             end_date=args.end,
             as_percentage=args.as_percent,
         ))
-
     if not components:
         log.error("No data returned.")
         print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
@@ -356,16 +351,15 @@ def _setup_logging(verbose: bool, quiet: bool) -> None:
     handler.setFormatter(formatter)
     
     logger.addHandler(handler)
-def _cli_list_anomalies():
-    """Lists all available q-factor anomalies categorized by group."""
-    from getfactormodels.models.q_factors import _QAnomalies
-    
-    sys.stderr.write("ANOMALIES: all available anomalies from global-q.\n")
-    for category, factors in sorted(_QAnomalies.Q_REGISTRY.items()):
-        factor_list = ", ".join(sorted(factors))
-        sys.stderr.write(f"\n{category.upper()}:\n    {textwrap.fill(factor_list, width=70, subsequent_indent='    ')}\n")
-    sys.stderr.write("\n  Note: You can pass individual anomaly tickers (-a abr_1) or categories (-a momentum).\n\n")
 
+def _cli_list_anomalies():
+    from getfactormodels.registries import JKP_FACTORS, JKP_THEMES
+
+    sys.stderr.write("ANOMALIES: JKP Global Factors.\n")
+    sys.stderr.write(f"\nFACTORS ({len(JKP_FACTORS)}):\n")
+    sys.stderr.write(textwrap.fill(", ".join(sorted(JKP_FACTORS)), 70, initial_indent="  ", subsequent_indent="  ") + "\n")
+    sys.stderr.write(f"\nTHEMES ({len(JKP_THEMES)}):\n")
+    sys.stderr.write(textwrap.fill(", ".join(sorted(JKP_THEMES)), 70, initial_indent="  ", subsequent_indent="  ") + "\n\n")
 
 def _cli_list_regions():
     """Helper to display regions and exit."""

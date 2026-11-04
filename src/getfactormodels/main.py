@@ -16,7 +16,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
-from typing import Literal
+from typing import Literal 
+from collections.abc import Sequence
 from getfactormodels import models as factor_models
 from getfactormodels.exceptions import GetFactorModelsDeprecationWarning
 from getfactormodels.models.base import (
@@ -117,45 +118,37 @@ def portfolio(
 
 # Pluralise? hmm
 def anomaly(
-    name: str | list[str] = "abr_1",
-    frequency: str = "m",
-    sort: str | int = "decile",
+    name: str | Sequence[str],
+    frequency: Literal["d", "m"] = "m",
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    provider: str = "q",
-    cache_ttl: int | None = None,
+    region: str = "usa",
+    weight: Literal["vw_cap", "vw", "ew"] = "vw_cap",
+    as_percentage: bool = False,
     **kwargs,
 ):
-    """Download anomaly datasets.
+    """Download JKP Global Factor data.
 
     Args:
-        name: Anomaly factor name(s) or category (e.g., 'abr_1', 'momentum', ['abr_1', 'sue_1']).
-        frequency: Data frequency. Currently supports monthly ('m') and annual ('y').
-        sort: Portfolio sort type ('decile', '2x3', or '3x5').
-        start_date: Optional start date (YYYY-[MM-DD]).
-        end_date: Optional end date (YYYY-[MM-DD]).
-        provider: Data provider identifier, only 'q' available.
-        cache_ttl: Optional cache Time-To-Live in seconds.
+        name: Factor or theme code(s) — e.g. 'bm', 'mom', 'quality'.
+        frequency: 'd' or 'm'.
+        region: JKP region code (default 'usa').
+        weight: 'vw_cap', 'vw', or 'ew'.
     """
-    src = provider.lower().strip()
+    from getfactormodels.models.jkp import JKPFactors
 
-    params = {
-        "name": name,
-        "frequency": frequency,
-        "sort": sort,
-        "start_date": start_date,
-        "end_date": end_date,
-        "cache_ttl": cache_ttl,
+    return JKPFactors(
+        factor=name,
+        frequency=frequency,
+        region=region,
+        weight=weight,
+        start_date=start_date,
+        end_date=end_date,
+        as_percentage=as_percentage,
         **kwargs,
-    }
+    )
 
-    if src in ["q", "global-q"]:
-        from getfactormodels.models.q_factors import _get_q_anomalies
-
-        return _get_q_anomalies(**params)
-
-    raise NotImplementedError(f"Anomalies not supported for source: '{src}'")
 
 
 def model(

@@ -108,6 +108,11 @@ _MODEL_REGISTRY: Final = MappingProxyType({
         "name": "CH-4: Size and Value in China",
         "aliases": ["ch4", "ch-4", "cn4"],
     },
+    "jkp": {
+        "model_class": "JKPFactors",
+        "name": "Jensen, Kelly & Pedersen Global Factors",
+        "aliases": ["jkp", "global", "jkpfactors"],
+    },
 })
 
 

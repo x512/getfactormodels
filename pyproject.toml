@@ -11,11 +11,12 @@ authors = [
 
 exclude = ["**/*.ipynb"]
 readme = "README.md"
-keywords = ['finance', 'asset pricing', 'multi-factor', 'price models', 'financial analysis']
+keywords = ['finance', 'financial-data', 'asset-pricing', 'factor-models', 
+    'fama-french', 'multi-factor', 'financial analysis']
 classifiers = [
     "Topic :: Office/Business :: Financial",
     "Topic :: Office/Business :: Financial :: Investment",
-    "Topic :: Scientific/Engineering :: Mathematics",
+        "Topic :: Scientific/Engineering :: Information Analysis",
     "Intended Audience :: Financial and Insurance Industry",
     "Environment :: Console",
     "Programming Language :: Python :: 3.14",
@@ -104,6 +105,7 @@ extend-ignore = ["D105"]
 "__main__.py" = ["F401"]
 "tests/**/*.py" = ["F401", "S101"]
 "src/getfactormodels/models/base.py" = ["F401", "F821", "F811"]
+"scripts/*" = ["D", "T201", "ANN"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -122,6 +124,7 @@ source = ["getfactormodels"]
 omit = [
     "*.ipynb",
     "tests/*",
+    "scripts/*",
     "*/__pycache__/*",
     "setup.py",
 ]
