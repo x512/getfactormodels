@@ -33,90 +33,34 @@ from getfactormodels.utils.registry import get_model_class, get_model_key
 log = logging.getLogger("getfactormodels")
 
 
+# In main.py
 def portfolio(
-    frequency: str = "m",
+    source: str = "ff",
+    industry: int | None = None,
+    sort: str | list[str] | None = None,
     grid: str | None = None,
     count: int | None = None,
-    sort: str | list[str] = "size",
-    weights: Literal["vw", "ew"] | None = None,
-    industry: int | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    *,
-    source: str = "ff",      # 'q', 'ff', or 'aqr'
-    dividends: bool = True,  # False for ex-div (retx_vw)
+    weights: str = "vw",
+    bivariate: bool = False,
     **kwargs,
-) -> PortfolioBase | Collection:
-    """Download portfolio return data.
+):
+    src = source.lower()
 
-    Args:
-        frequency: Data frequency ('d', 'm', 'y').
-        grid: Interaction grid layout for bivariate/multivariate sorts (e.g. '2x3').
-        count: Number of portfolios for univariate sorts (e.g. 10 for deciles).
-        sort: Factor(s) to sort on (e.g., 'size', ['size', 'bm']).
-        weights: Weighting scheme ('vw' or 'ew').
-        industry: Number of industry portfolios.
-        start_date: Optional start date YYYY-[MM-DD].
-        end_date: Optional end date YYYY[-MM-DD].
-        source: Data source identifier ('ff', 'q').
-        dividends: if false, ex-divs (q only)
-    """
-    source = source.lower()
-
-    if kwargs.get("region") is not None:  # TODO: FIXME: Removing this when AQR is ready, after FF refactor.
-        raise NotImplementedError(
-            "Regional data is not yet supported for portfolios (US only). "
-                "Please omit the region parameter."
-        )
-
-    if "formed_on" in kwargs:
-        warnings.warn(
-            "The 'formed_on' parameter is deprecated and will be removed in a future release. "
-                "Please use 'sort' instead.",
-            category=GetFactorModelsDeprecationWarning,
-            stacklevel=2,
-        )
-        sort = kwargs.pop("formed_on")
-
-    params = {
-        "grid": grid,
-        "count": count,
-        "sort": sort,
-        "weights": weights if weights is not None else "vw",
-        "industry": industry,
-        "frequency": frequency,
-        "start_date": start_date,
-        "end_date": end_date,
-        "dividends": dividends,
-        **kwargs,
-    }
-
-    if source == "q":
-        from getfactormodels.models.q_factors import _get_q_portfolios
-
-        return _get_q_portfolios(**params)
-
-    if source in ["ff", "famafrench"]:
-        if frequency == "w":
-            is_weekly = (
-                isinstance(sort, (list, tuple))
-                and frozenset(str(x).lower() for x in sort)
-                == frozenset(["size", "bm"])
-                and (grid in (None, "2x3", "6"))
-            )
-            if not is_weekly:
-                raise ValueError(
-                    "Fama-French weekly portfolio data is only available for the size "
-                        "and book-to-market (2x3) portfolio. "
-                        "\nUse 'd', 'm', or 'y' for other Fama-French portfolios."
-                )
+    if src == "ff":
         from getfactormodels.models.fama_french import _get_ff_portfolios
+        return _get_ff_portfolios(
+            industry=industry, sort=sort, grid=grid, count=count, weights=weights, **kwargs
+        )
 
-        return _get_ff_portfolios(**params)
+    elif src == "q":
+        from getfactormodels.models.q_factors import _get_q_portfolios
+        return _get_q_portfolios(
+            sort=sort, grid=grid, count=count, weights=weights, bivariate=bivariate, **kwargs
+        )
 
-    raise ValueError(f"Portfolio source '{source}' not recognized.")
+    raise ValueError(f"Unknown portfolio source: '{src}'")
 
-# Pluralise? hmm
+    # Pluralise? hmm
 def anomaly(
     name: str | Sequence[str],
     frequency: Literal["d", "m"] = "m",

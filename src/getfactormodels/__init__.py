@@ -43,6 +43,7 @@ from .models import (
     QMJFactors,
     VMEFactors,
     _QAnomalies,
+    JKPFactors,
 )
 
 logger = logging.getLogger("getfactormodels")
@@ -83,4 +84,5 @@ __all__ = [
     "DownloadError",
     "GetFactorModelsWarning",
     "GetFactorModelsDeprecationWarning",
+    "JKPFactors",
 ]

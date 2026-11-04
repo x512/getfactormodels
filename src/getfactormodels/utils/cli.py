@@ -137,17 +137,17 @@ def parse_args() -> argparse.Namespace:
     
     port_group.add_argument('--ex-div', '--exdiv', dest='dividends', action='store_false',
                             help="Exclude dividends (use ex-dividend returns retx_vw).")
-
+    port_group.add_argument('-b', '--bivariate',
+                        action='store_true',
+                            help="Q Factors only (for now): Use bivariate (2-way) sorts instead of default deciles.")
+    
     # ANOMALY OPTIONS
     anom_group = parser.add_argument_group('Anomaly Options')
     anom_group.add_argument('-a', '--anomaly', '--anom',
                         dest='anomaly_names', nargs='+', metavar='ANOM',
                         help="Anomaly or categories to retrieve (abr_1, momentum, rer).")
 
-    anom_group.add_argument('-b', '--bivariate', '--3x5',
-                        action='store_true',
-                        help="Use bivariate (2-way) sorts instead of default deciles.")
-    
+
     # PREVIEW / DISPLAY CONTROLS
     parser.add_argument('--no-prev', '--no-preview', action='store_true',
                             help="Suppress the terminal table preview output.")
@@ -177,7 +177,7 @@ def parse_args() -> argparse.Namespace:
             args.ind_count = int(args.sort[1]) if len(args.sort) > 1 else 12
             args.sort = None
         else:
-            q_cols = {'ia', 'roe', 'eg', 'q'}
+            q_cols = {'ia', 'roe', 'eg', 'q', 'me'}
             if any(k in args.sort for k in q_cols):
                 args.src = 'q'
                 if args.sort == ['q']:
@@ -218,12 +218,8 @@ def _quick_exits(args: argparse.Namespace) -> None:
     
 
 def _build_model(args: argparse.Namespace):
-    """Instantiates and combines requested models, portfolios, or anomalies."""
     from getfactormodels.main import anomaly, model, portfolio
     from getfactormodels.models.base import Collection
-
-    if args.is_portfolio and args.region:
-        raise NotImplementedError("Regional portfolio data not yet supported. Please omit the -r / --region flag.")
 
     components = []
 
@@ -245,6 +241,7 @@ def _build_model(args: argparse.Namespace):
             grid=args.grid,
             count=args.count,
             weights=args.weights,
+            bivariate=args.bivariate,
             frequency=args.frequency,
             start_date=args.start,
             end_date=args.end,
@@ -261,11 +258,11 @@ def _build_model(args: argparse.Namespace):
             end_date=args.end,
             as_percentage=args.as_percent,
         ))
-    if not components:
-        log.error("No data returned.")
-        print("'getfactormodels --list-models' to see available options.", file=sys.stderr)
-        sys.exit(1)
 
+    if not components:
+        raise ValueError("No data requested.")
+    
+    # Return Collection if more than one instance
     return components[0] if len(components) == 1 else Collection(instances=components)
 
 
@@ -335,7 +332,6 @@ def _setup_logging(verbose: bool, quiet: bool) -> None:
     # Clear the NullHandler added in __init__.py so we can see output
     logger.handlers.clear()
     
-    # Determine the log level
     if quiet:
         logger.setLevel(logging.ERROR)
     elif verbose:
@@ -343,10 +339,7 @@ def _setup_logging(verbose: bool, quiet: bool) -> None:
     else:
         logger.setLevel(logging.WARNING)  # Default for standard runs
 
-    # Create a console handler that writes to stderr
     handler = logging.StreamHandler(sys.stderr)
-    
-    # Format: DEBUG: message (or ERROR: message)
     formatter = logging.Formatter("%(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     

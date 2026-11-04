@@ -22,7 +22,7 @@ from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
 )
-
+from getfactormodels.registries import Q_THEME_FACTORS, Q_REGISTRY
 _GLOBAL_Q_RENAME_MAP = {
     "DATE": "date",
     "Year": "year",
@@ -301,7 +301,7 @@ class _QPortfolios(PortfolioBase):
         f_str = _GLOBAL_Q_FREQ_MAP.get(freq_key, "monthly")
         slug = "me_ia_roe" if self.sort_type == "2x3x3" else "me_eg"
         
-        curr_year = datetime.now(tz=timezone.utc).year
+        curr_year = datetime.now(tz=timezone.utc).year - 1 #last yr
         prev_year = curr_year - 1
         
         return [
@@ -331,24 +331,42 @@ class _QPortfolios(PortfolioBase):
 
 # Keeping private until ff/q/aqr portfolios have some kind of unified ux
 # and redone params. works.
+
+    # ROUGH: check if asking for anomalies, ('bm', 'mom' etc)
 def _get_q_portfolios(
     sort: str | list[str] | None = None,
-    grid: str | None = None,
-    count: int | None = None,
-    weights: str | None = "vw",
     **kwargs,
 ):
-    """Internal helper: factory for q-factor portfolios."""
-    if count == 18 or (grid and ("18" in grid or "2x3x3" in grid)):
+    if sort:
+        sort_items = [sort] if isinstance(sort, str) else sort
+        from getfactormodels.registries import Q_REGISTRY
+        
+        q_anomalies = [s.lower() for s in sort_items if s.lower() in Q_REGISTRY]
+        
+        if q_anomalies and len(q_anomalies) == len(sort_items):
+            # All items are Q anomalies
+            from getfactormodels.models.q_factors import _QAnomalies
+            bivariate = kwargs.pop("bivariate", False)
+            sort_type = "3x5" if bivariate else "decile"
+            return _QAnomalies(anomaly=q_anomalies, sort=sort_type, **kwargs)
+            
+        elif q_anomalies:
+            # Mixed Q anomalies and unknown/FF sorts
+            raise ValueError(
+                f"Cannot mix Q anomalies ({q_anomalies}) with other sorts. "
+                "Please request them separately or check your --src."
+            )
+
+    # Q Benchmark Portfolios (IA, ROE, EG)
+    if count == 18 or (grid and ("18" in str(grid) or "2x3x3" in str(grid))):
         final_sort = "2x3x3"
-    elif count == 6 or (grid and ("6" in grid or "2x3" in grid)):
+    elif count == 6 or (grid and ("6" in str(grid) or "2x3" in str(grid))):
         final_sort = "2x3"
     else:
-        # Default based on factors or fallback
         s_str = str(sort).lower() if sort else ""
         final_sort = "2x3x3" if "ia" in s_str or "roe" in s_str else "2x3"
 
-    return _QPortfolios(sort=final_sort, **kwargs)
+    return _QPortfolios(sort=final_sort, weights=weights, **kwargs)
 
 
 # -------------------- WIP - ANOMALIES ------------
@@ -374,222 +392,7 @@ class _QAnomalies(PortfolioBase):
           Review of Financial Studies 33 (5), 2019-2133.
     """
 
-    Q_REGISTRY = {
-        "momentum": {
-            "abr_1",
-            "abr_6",
-            "abr_12",
-            "cim_1",
-            "cim_6",
-            "cim_12",
-            "cm_1",
-            "cm_6",
-            "cm_12",
-            "def_1",
-            "def_6",
-            "def_12",
-            "ile_1",
-            "ilr_1",
-            "ilr_6",
-            "ilr_12",
-            "im_1",
-            "im_6",
-            "im_12",
-            "nei_1",
-            "p52w_6",
-            "p52w_12",
-            "r6_1",
-            "r6_6",
-            "r6_12",
-            "r11_1",
-            "r11_6",
-            "r11_12",
-            "re_1",
-            "re_6",
-            "resid6_6",
-            "resid6_12",
-            "resid11_1",
-            "resid11_6",
-            "resid11_12",
-            "rs_1",
-            "sim_1",
-            "sim_12",
-            "sm_1",
-            "sm_12",
-            "sue_1",
-            "sue_6",
-            "tes_1",
-        },
-        "value-versus-growth": {
-            "bm",
-            "bmj",
-            "bmq_12",
-            "cp",
-            "cpq_1",
-            "cpq_6",
-            "cpq_12",
-            "dp",
-            "dur",
-            "ebp",
-            "em",
-            "emq_1",
-            "emq_6",
-            "emq_12",
-            "ep",
-            "epq_1",
-            "epq_6",
-            "epq_12",
-            "ir",
-            "nop",
-            "ocp",
-            "ocpq_1",
-            "op",
-            "rev_1",
-            "rev_6",
-            "rev_12",
-            "sp",
-            "spq_1",
-            "spq_6",
-            "spq_12",
-            "vfp",
-            "vhp",
-        },
-        "investment": {
-            "aci",
-            "cei",
-            "dac",
-            "dbe",
-            "dcoa",
-            "dfin",
-            "dfnl",
-            "dii",
-            "dlno",
-            "dlti",
-            "dnca",
-            "dnco",
-            "dnoa",
-            "dpia",
-            "dwc",
-            "ia",
-            "iaq_1",
-            "iaq_6",
-            "iaq_12",
-            "ig",
-            "ig2",
-            "ivc",
-            "ivg",
-            "ndf",
-            "nxf",
-            "noa",
-            "nsi",
-            "oa",
-            "pda",
-            "poa",
-            "pta",
-            "ta",
-        },
-        "profitability": {
-            "ato",
-            "atoq_1",
-            "atoq_6",
-            "atoq_12",
-            "cla",
-            "claq_1",
-            "claq_6",
-            "claq_12",
-            "cop",
-            "cto",
-            "ctoq_1",
-            "ctoq_6",
-            "ctoq_12",
-            "droa_1",
-            "droa_6",
-            "droe_1",
-            "droe_6",
-            "droe_12",
-            "eg_1",
-            "eg_6",
-            "eg_12",
-            "fp_6",
-            "fq_1",
-            "fq_6",
-            "fq_12",
-            "gla",
-            "glaq_1",
-            "glaq_6",
-            "glaq_12",
-            "gpa",
-            "olaq_1",
-            "olaq_6",
-            "olaq_12",
-            "oleq_1",
-            "oleq_6",
-            "oleq_12",
-            "opa",
-            "ope",
-            "oq_1",
-            "pmq_1",
-            "rnaq_1",
-            "rnaq_6",
-            "rnaq_12",
-            "roa_1",
-            "roa_6",
-            "roe_1",
-            "roe_6",
-            "sgq_1",
-            "tbiq_6",
-            "tbiq_12",
-        },
-        "intangibles": {
-            "adm",
-            "alaq_1",
-            "almq_1",
-            "almq_6",
-            "almq_12",
-            "dls_1",
-            "eprd",
-            "etl",
-            "etr",
-            "hs",
-            "ioca",
-            "oca",
-            "ol",
-            "olq_1",
-            "olq_6",
-            "olq_12",
-            "r1a",
-            "r1n",
-            "r5a",
-            "r5n",
-            "r10a",
-            "r10n",
-            "r15a",
-            "r20a",
-            "rca",
-            "rdm",
-            "rdmq_1",
-            "rdmq_6",
-            "rdmq_12",
-            "rdsq_6",
-            "rdsq_12",
-            "rer",
-            "vcf_1",
-        },
-        "frictions": {
-            "beta_1",
-            "dtv_12",
-            "isff_1",
-            "isq_1",
-            "ivff_1",
-            "ivq_1",
-            "me",
-            "srev",
-            "sv_1",
-            "tv_1",
-            "tail_12",
-        },
-    }
-
+    
     _CATEGORY_SLUG = {
         "momentum": "mom",
         "value-versus-growth": "vvg",
@@ -610,42 +413,36 @@ class _QAnomalies(PortfolioBase):
 
     @property
     def _frequencies(self) -> list[str]:
-        return ["m", "y", "w", "d", "q", "w2w"]  # TODO: add d, w2w, q,
+        return ["m", "y", "w", "d", "q", "w2w"]
 
     @classmethod
     def _resolve_anomalies(cls, raw_inputs: list[str]) -> list[str]:
-        all_canonical = {
-            factor: cat
-            for cat, factors in cls.Q_REGISTRY.items()
-            for factor in factors
-        }
-        underscore_mapping = {
-            factor.replace("_", ""): factor for factor in all_canonical
-        }
-
+        underscore_mapping = {k.replace("_", ""): k for k in Q_REGISTRY}
         resolved = []
         for item in raw_inputs:
             item_clean = item.lower().strip()
-            if item_clean in cls.Q_REGISTRY:
-                resolved.extend(cls.Q_REGISTRY[item_clean])
+            if item_clean in Q_REGISTRY:
+                # Expands themes (e.g. "momentum") or returns the anomaly itself
+                resolved.extend(Q_THEME_FACTORS.get(item_clean, (item_clean,)))
             elif item_clean in underscore_mapping:
                 resolved.append(underscore_mapping[item_clean])
-            elif item_clean in all_canonical:
-                resolved.append(item_clean)
             else:
                 raise ValueError(f"Unknown anomaly or category: '{item}'")
         return list(dict.fromkeys(resolved))
 
+    @classmethod
+    def _get_category(cls, anomaly: str) -> str | None:
+        for cat, factors in Q_THEME_FACTORS.items():
+            if anomaly in factors:
+                return cat
+        return None
+
     def __init__(
         self, anomaly: str | list[str], sort: str | int = "decile", **kwargs
     ):
-
-        # only value-weighted ('vw') returns if weights was given
         weights = kwargs.pop("weights", "vw")
         if weights and weights.lower() != "vw":
-            raise ValueError(
-                f"{self.__class__.__name__} only supports value-weighted ('vw') returns. ",
-            )
+            raise ValueError(f"{self.__class__.__name__} only supports value-weighted ('vw').")
 
         freq = kwargs.get("frequency", "m").lower().strip()
         raw_inputs = [anomaly] if isinstance(anomaly, str) else anomaly
@@ -657,21 +454,18 @@ class _QAnomalies(PortfolioBase):
         elif sort_clean in ("3x5", "2way", "bivariate", "5x3"):
             self.sort_type = "3x5"
         else:
-            raise ValueError(
-                f"Invalid sort:'{sort}'. 'decile' (1-way) or '3x5' (bivariate)."
-            )
+            raise ValueError(f"Invalid sort:'{sort}'. 'decile' (1-way) or '3x5' (bivariate).")
+        
+        # drop 'me' if it's a bivariate sort, as 'me' is implicit in the Q data.
+        if self.sort_type == "3x5":
+            self.anomalies = [a for a in self.anomalies if a != "me"]
+            if not self.anomalies:
+                raise ValueError("For bivariate sorts, 'me' is implicit. Please specify an anomaly (e.g., 'bm').")
 
         kwargs["weights"] = "vw"
         kwargs["dividends"] = True
         kwargs["frequency"] = freq
         super().__init__(**kwargs)
-
-    @classmethod
-    def _get_category(cls, anomaly: str) -> str | None:
-        for cat, factors in cls.Q_REGISTRY.items():
-            if anomaly in factors:
-                return cat
-        return None
 
     def _get_category_url(self, category: str) -> str:
         base = "https://global-q.org/uploads/1/2/2/6/122679606"
@@ -682,15 +476,13 @@ class _QAnomalies(PortfolioBase):
         return f"{base}/{prefix}{cat_slug}_{freq}_{last_year}.zip"
 
     @property
-    def url(self) -> str:
-        # URL only gets first category
-        # FIXME: TODO:
-        first_cat = self._get_category(self.anomalies[0])
-        return self._get_category_url(first_cat)
+    def url(self) -> str | dict[str, str]:
+        cat_to_anoms = self._group_anomalies_by_category()
+        url_map = {cat: self._get_category_url(cat) for cat in cat_to_anoms}
+        return next(iter(url_map.values())) if len(url_map) == 1 else url_map
 
     @property
     def schema(self) -> pa.Schema:
-        """Schema for global-q anomalies."""
         fields: list[tuple[str, pa.DataType]] = [("date", pa.date32())]
         if self.frequency == "m":
             fields.append(("nstocks", pa.int32()))
@@ -707,58 +499,31 @@ class _QAnomalies(PortfolioBase):
     def _precision(self) -> int:
         return 5
 
-    # adapted from jupyter notebook, don't use yet!
     def _group_anomalies_by_category(self) -> dict[str, list[str]]:
-        """Group anomalies by category."""
         cat_to_anoms = {}
         for a in self.anomalies:
             cat = self._get_category(a)
             cat_to_anoms.setdefault(cat, []).append(a)
         return cat_to_anoms
 
-    def _get_cat_zips(
-        self, cat_to_anoms: dict[str, list[str]], initial_data: bytes
-    ) -> dict[str, bytes]:
-        """Download all zips for the requested anomalies."""
-        from getfactormodels.utils.http_client import _HttpClient
-
-        first_cat = self._get_category(self.anomalies[0])
-        zip_bytes_cache = {first_cat: initial_data}
-
-        with _HttpClient() as client:
-            for cat in cat_to_anoms:
-                if cat not in zip_bytes_cache:
-                    cat_url = self._get_category_url(cat)
-                    zip_bytes_cache[cat] = client.download(
-                        cat_url,
-                        tag="AnomalyData",
-                        model_name=f"Q-{cat.capitalize()}",
-                    )
-        return zip_bytes_cache
-
-    def _find_target_file(
-        self, namelist: list[str], anomaly: str, freq_str: str, prefix_str: str
-    ) -> str:
-        """Locate the anomaly CSV."""
+    def _find_target_file(self, namelist: list[str], anomaly: str, freq_str: str, prefix_str: str) -> str:
         target_file = next(
-            (
-                n
-                for n in namelist
-                if f"_{anomaly}_" in n.lower()
-                and freq_str in n.lower()
-                and (not prefix_str or n.lower().startswith(prefix_str))
-            ),
+            (n for n in namelist if f"_{anomaly}_" in n.lower() and freq_str in n.lower() and (not prefix_str or n.lower().startswith(prefix_str))),
             None,
         )
         if not target_file:
             raise ValueError(f"Could not find file for anomaly: '{anomaly}'.")
-
         return target_file
 
-    def _read(self, data: bytes) -> pa.Table:
+    def _read(self, data: bytes | dict[str, bytes]) -> pa.Table:
         try:
             cat_to_anoms = self._group_anomalies_by_category()
-            zip_bytes_cache = self._get_cat_zips(cat_to_anoms, data)
+            
+            if isinstance(data, dict):
+                zip_bytes_cache = data
+            else:
+                first_cat = next(iter(cat_to_anoms))
+                zip_bytes_cache = {first_cat: data}
 
             _freq_str = self._FREQ_STR[self.frequency]
             prefix_str = "me_" if self.sort_type == "3x5" else ""
@@ -769,54 +534,34 @@ class _QAnomalies(PortfolioBase):
                 with zipfile.ZipFile(io.BytesIO(zip_bytes_cache[cat])) as z:
                     namelist = z.namelist()
                     for a in anoms:
-                        target_file = self._find_target_file(
-                            namelist, a, _freq_str, prefix_str
-                        )
-                        pivoted = self._process_anomaly_file(
-                            z, target_file, a, _val_col
-                        )
+                        target_file = self._find_target_file(namelist, a, _freq_str, prefix_str)
+                        pivoted = self._process_anomaly_file(z, target_file, a, _val_col)
                         pivoted_tables.append(pivoted)
 
             if not pivoted_tables:
-                raise ValueError(
-                    "No anomaly tables were successfully processed."
-                )
+                raise ValueError("No anomaly tables were successfully processed.")
 
             final_table = pivoted_tables[0]
             for t in pivoted_tables[1:]:
-                final_table = final_table.join(
-                    t, keys=["date"], join_type="left outer"
-                )
-
+                final_table = final_table.join(t, keys=["date"], join_type="left outer")
             return final_table.combine_chunks()
 
         except (pa.ArrowIOError, pa.ArrowInvalid) as e:
             raise ValueError(f"Reading failed: {e}") from e
 
-    def _process_anomaly_file(
-        self, z: zipfile.ZipFile, target_file: str, anomaly: str, val_col: str
-    ) -> pa.Table:
-        """Processes a single CSV from the zip archive into a pivoted table."""
+    def _process_anomaly_file(self, z: zipfile.ZipFile, target_file: str, anomaly: str, val_col: str) -> pa.Table:
         with z.open(target_file) as f:
             table = pv.read_csv(f)
 
-        table = table.rename_columns([
-            _GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names
-        ])
+        table = table.rename_columns([_GLOBAL_Q_RENAME_MAP.get(c, c) for c in table.column_names])
 
         if self.sort_type != "decile":
-            cols = [
-                "rank_anomaly"
-                if col.lower().startswith("rank ") and col != "rank_me"
-                else col
-                for col in table.column_names
-            ]
+            cols = ["rank_anomaly" if col.lower().startswith("rank ") and col != "rank_me" else col for col in table.column_names]
             table = table.rename_columns(cols)
 
         table = _format_date_column(table, self.frequency)
         table = offset_period_eom(table, self.frequency)
         t = _pivot_global_q_table(table, val_col, anomaly_name=anomaly)
-
         return scale_to_decimal(t)
 
 
