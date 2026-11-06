@@ -15,7 +15,7 @@ import pyarrow.csv as pv
 import pyarrow.compute as pc
 from getfactormodels.models.base import FactorModel, RegionMixin
 from getfactormodels.utils.arrow_utils import join_on_date
-from getfactormodels.registries import JKP_FACTORS, JKP_REGIONS
+from getfactormodels.registry import JKP_FACTORS, JKP_REGIONS
 
 
 class JKPFactors(RegionMixin, FactorModel):

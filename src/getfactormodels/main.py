@@ -37,13 +37,12 @@ log = logging.getLogger("getfactormodels")
 def portfolio(
     source: str = "ff",
     factors: str | Sequence = None,
-    sort: str | list[str] | None = None,
-    #grid: str | None = None,
-    #count: int | None = None,
+    sort: str | list[str] | None = 'decile',
+    *,
     dividends: bool = True, 
     weights: str = "vw", # whats using this, q and ff?  #not in base class, so handle here?
-    #bivariate: bool = False,
     industry: int | None = None, # not in base class, relies on factory
+    bivariate: bool = False, #True to use default 2-way sorts, 2x3 for ff,  3x5 for q (unless a benchmark portfolio)
     **kwargs,
 ):
     src = source.lower()

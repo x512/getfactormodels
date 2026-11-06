@@ -17,12 +17,13 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel, PortfolioBase
-from getfactormodels.registries import Q_ANOMALIES, Q_REGISTRY, Q_THEME_FACTORS
+from getfactormodels.registry import Q_ANOMALIES, Q_REGISTRY, Q_THEME_FACTORS
 from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
 )
+from getfactormodels.exceptions import ModelNotFoundError
 
 _GLOBAL_Q_RENAME_MAP: Final = {
     "DATE": "date",
@@ -376,7 +377,10 @@ class GlobalQPortfolios(PortfolioBase):
             return
         for f in factor:
             if f not in Q_ANOMALIES:
-                raise ValueError(f"{f!r} is not a valid Global-Q anomaly.")
+                raise ModelNotFoundError(
+                    f"'{f}' is not a valid Global-Q anomaly. "
+                    "Check getfactormodels.registries.Q_ANOMALIES for valid IDs."
+                )
 
     @staticmethod
     def _category_of(factor: str) -> str:
@@ -496,7 +500,7 @@ class GlobalQPortfolios(PortfolioBase):
             result = result.join(t, keys=["date"], join_type="left outer")
         return result.combine_chunks()
 
-    @staticmethod
+        @staticmethod
     def _find_target_file(
         namelist: list[str], factor: str, freq_slug: str, prefix: str
     ) -> str:
@@ -508,7 +512,10 @@ class GlobalQPortfolios(PortfolioBase):
                 and (not prefix or lower.startswith(prefix))
             ):
                 return name
-        raise ValueError(f"Could not find file for factor: {factor!r}.")
+        raise ModelNotFoundError(
+            f"Could not find file for factor '{factor}' with frequency '{freq_slug}' "
+            f"in the downloaded archive."
+        )
 
     def _process_anomaly_file(
         self, zf: zipfile.ZipFile, target: str, factor: str, val_col: str
