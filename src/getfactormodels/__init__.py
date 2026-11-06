@@ -42,8 +42,8 @@ from .models import (
     QFactors,
     QMJFactors,
     VMEFactors,
-    _QAnomalies,
     JKPFactors,
+    GlobalQPortfolios,
 )
 
 logger = logging.getLogger("getfactormodels")
@@ -68,7 +68,6 @@ __all__ = [
     "LiquidityFactors",
     "MispricingFactors",
     "QFactors",
-    "_QAnomalies",
     "QMJFactors",
     "VMEFactors",
     "AQR6Factors",
@@ -85,4 +84,5 @@ __all__ = [
     "GetFactorModelsWarning",
     "GetFactorModelsDeprecationWarning",
     "JKPFactors",
+    "GlobalQPortfolios",
 ]

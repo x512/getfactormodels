@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Literal, Self, override
+from typing import Any, ClassVar, Literal, Self, override, Final
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
@@ -399,40 +399,52 @@ class FactorModel(Base):
         return ["m"]
 
 
+def _normalize_to_str(chars: str | Sequence[str]) -> tuple[str, ...]:
+    if isinstance(chars, str):
+        chars = [chars]
+    out = []
+    for c in chars:
+        out.extend(part.strip().lower() for part in c.split(",") if part.strip())
+    return tuple(out)
+
+
 class PortfolioBase(Base):
     """Base class for multi-bucket cross-sectional portfolio sorts."""
+    VALID_SORTS: Final = MappingProxyType({
+        'ff': frozenset({None, '2x3', '2x4x4', '5x5', '10x10', 'bivariate'}),
+        'q': frozenset({None, '2x3', '2x3x3', '3x5', 'decile', 'bivariate'}), 
+    })
     def __init__(
         self,
-        sort: str | list[str] | None = None,  # Sorting variables or anomaly IDs (e.g., 'size', 'inv')
-        count: int | None = None,            # Number of portfolios (e.g., 10 for deciles)
-        grid: str | None = None,             # Explicit grid spec (e.g., '3x5', '5x5')
+        source: Literal['ff', 'q'],
+        factor: str | list[str] | None = None,  # Sorting 
         *,
-        bivariate: bool = False,             # Global-Q style convenience flag: True for 3x5, False for decile
-        weights: Literal['vw', 'ew'] = 'vw', # Value-weighted ('vw') or equal-weighted ('ew')
+        #weights: Literal['vw', 'ew'] = 'vw', # Value-weighted ('vw') or equal-weighted ('ew')
+        sort: str | None = None,
         dividends: bool = True,              # Include dividends in total return calculation
         **kwargs,
     ) -> None:
         """Initialize the portfolio model instance.
 
         Args:
+            source: provider src
+            factor: factor/anomaly IDs ('size', 'inv')
             sort: Sorting variables or anomaly identifiers.
-            count: Number of portfolio buckets.
-            grid: Grid sort dimensions.
-            bivariate: Enables 2-way sort structure (e.g., Global-Q 3x5 size-bivariate sort).
             weights: Weighting scheme ('vw' or 'ew').
             dividends: Total return flag.
             **kwargs: Additional parameters passed to Base.
         """
-        self.sort = sort
-        self.weights = (weights or 'vw').lower()
-        self.count = count
-        self.grid = grid.lower().strip() if grid else None
-        self.bivariate = bivariate
+        if source not in self.VALID_SORTS:
+            raise ValueError(f"Invalid data source: '{source}'. "
+                             f"Must be one of {list(self.VALID_SORTS.keys())}.")
+
+        if sort not in self.VALID_SORTS[source]:
+            raise ValueError(f"Invalid sort '{sort}' for source '{source}'.")
+
+        self.source = source
         self.dividends = dividends
-
-        if self.weights not in ('vw', 'ew'):
-            raise ValueError(f"Weights must be either 'vw' or 'ew', not '{weights}'.")
-
+        self.sort = sort
+        self.factor = _normalize_to_str(factor)
         super().__init__(**kwargs)
 
     @property
@@ -443,13 +455,7 @@ class PortfolioBase(Base):
     @property
     def frequencies(self) -> list[str]:
         """Supported frequencies for cross-sectional portfolio sorts."""
-        return ["m", "y", "w", "d", "q"]
-
-
-### Q GLOBAL ANOMALIES INTO PORTFOLIO 
-### ANOMALIES WILL BE A JKP EXPL.
-  #  - Still need to remove current anomaly factory, anomaly in the cli, unify all portfolios 
-  # to one interface. Anomaly registry for q, for jkp...
+        return ["m"]
 
 
 class Composite(Base):

@@ -36,31 +36,40 @@ log = logging.getLogger("getfactormodels")
 # In main.py
 def portfolio(
     source: str = "ff",
-    industry: int | None = None,
+    factors: str | Sequence = None,
     sort: str | list[str] | None = None,
-    grid: str | None = None,
-    count: int | None = None,
-    weights: str = "vw",
-    bivariate: bool = False,
+    #grid: str | None = None,
+    #count: int | None = None,
+    dividends: bool = True, 
+    weights: str = "vw", # whats using this, q and ff?  #not in base class, so handle here?
+    #bivariate: bool = False,
+    industry: int | None = None, # not in base class, relies on factory
     **kwargs,
 ):
     src = source.lower()
 
+    if industry: 
+        src = 'ff'
+        if factors or sort:
+            raise ValueError("...") #error or warn that industry or sort/factors
+
     if src == "ff":
         from getfactormodels.models.fama_french import _get_ff_portfolios
         return _get_ff_portfolios(
-            industry=industry, sort=sort, grid=grid, count=count, weights=weights, **kwargs
+            industry=industry, sort=sort, weights=weights, **kwargs
         )
 
-    elif src == "q":
+    if src == "q":
         from getfactormodels.models.q_factors import _get_q_portfolios
         return _get_q_portfolios(
-            sort=sort, grid=grid, count=count, weights=weights, bivariate=bivariate, **kwargs
+            sort=sort, weights=weights, **kwargs
         )
 
     raise ValueError(f"Unknown portfolio source: '{src}'")
 
     # Pluralise? hmm
+
+
 def anomaly(
     name: str | Sequence[str],
     frequency: Literal["d", "m"] = "m",
