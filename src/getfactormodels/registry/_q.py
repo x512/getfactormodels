@@ -201,7 +201,7 @@ Q_ANOMALIES = {
     "tbiq_12": {"name": 'quarterly tax income-to-book income, 12-month holding period'},
     "tbiq_6": {"name": 'quarterly tax income-to-book income, 6-month holding period'},
     "tes_1": {"name": 'tax expense surprises, 1-month holding period'},
-    "tv_1": {"name": "total volatility, 1-month holding period References Hou, Kewei, Haitao Mo, Chen Xue, and Lu Zhang, 2021, An augmented q -factor model with expected growth , Review of Finance 25 (1), 1-41. Editor's Choice. This article uses the set of significant anomalies in a large-scale empirical horse race among latest factor models in the sample from January 1967 onward. Slides | YouTube | Podcast Hou, Kewei, Chen Xue, and Lu Zhang, 2020, Replicating anomalies , Review of Financial Studies 33 (5), 2019-2133. This article constructs all the anomalies posted on this Web page. Slides | YouTube | Podcast Home Factors Testing Portfolios Background"},
+    "tv_1": {"name": 'total volatility, 1-month holding period'},
     "vcf_1": {"name": 'cash flow volatility, 1-month holding period'},
     "vfp": {"name": 'analyst-based intrinsic value-to-market'},
     "vhp": {"name": 'Roe-based intrinsic value-to-market'},

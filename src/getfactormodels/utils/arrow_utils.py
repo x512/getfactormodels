@@ -4,9 +4,10 @@
 #
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 import logging
+import shutil
 import pyarrow as pa
 import pyarrow.compute as pc
-
+from collections.abc import Sequence
 """Utilities for working with pyarrow."""
 
 log = logging.getLogger(__name__)
@@ -132,7 +133,7 @@ def _validate_columns(table: pa.Table, names: str | list[str] | None) -> list[st
     return input_list
 
 
-def select_table_columns(table: pa.Table, factors: str | list[str]) -> pa.Table:
+def select_table_columns(table: pa.Table, factors: str | Sequence[str]) -> pa.Table:
     """Helper: constructs a table from a pa.Table by selecting cols by name.
 
     'date' is col 0, and if passed in 'factors', is depduplicated.
@@ -168,9 +169,22 @@ def _format_for_preview(val, col_name, precision=6):
 
     return str(val)
 
+def _determine_preview_cols(default_preview_cols: int = 2) -> int:
+    """Determine appropriate preview columns based on active terminal width."""
+    try:
+        # Use shutil for safer fallback if not in a TTY
+        terminal_width = shutil.get_terminal_size(fallback=(80, 24)).columns
+    except Exception:
+        return default_preview_cols
 
+    if terminal_width < 50:
+        return 1
+    elif terminal_width < 90:
+        return 2
+    else: 
+        return 3
 
-def print_table_preview(table, n_rows=6, n_cols=5) -> str:
+def print_table_preview(table, n_rows=6, n_cols=None) -> str:
     """Formats a str preview of a PyArrow table like a Pandas DataFrame.
 
     - If rows or columns exceed (n*2 + 2) then table is truncated.
@@ -184,6 +198,9 @@ def print_table_preview(table, n_rows=6, n_cols=5) -> str:
         n_cols: Number of columns to show at start and end. Excludes date.
     """
     # TODO: way too much going on. Needs refactor. Own file.
+    if n_cols is None: # None as default so this triggers
+        n_cols = _determine_preview_cols()
+
     total_rows = table.num_rows
     if total_rows == 0:
         log.warning("Empty Table")

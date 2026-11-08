@@ -14,11 +14,14 @@ JKP_REGIONS = tuple(_jkp.JKP_REGIONS)
 Q_ANOMALIES = MappingProxyType(_q.Q_ANOMALIES)
 Q_THEMES = MappingProxyType(_q.Q_THEMES)
 Q_THEME_FACTORS = MappingProxyType(_q.Q_THEME_FACTORS)
-# Q accepts both individual anomalies and themes (which expand to anomalies).
+
 Q_REGISTRY = MappingProxyType(Q_THEMES | Q_ANOMALIES)
 
 
 __all__ = [
     "JKP_FACTORS", "JKP_THEMES", "JKP_REGIONS", #"JKP_REGISTRY",
-    "Q_ANOMALIES", "Q_CATEGORIES", "Q_CATEGORY_FACTORS", "Q_REGISTRY",
+    "Q_ANOMALIES", 
+    "Q_THEMES",
+    "Q_THEME_FACTORS", 
+    "Q_REGISTRY",
 ]
