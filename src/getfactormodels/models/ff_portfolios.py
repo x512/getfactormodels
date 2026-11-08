@@ -321,3 +321,17 @@ class FamaFrenchSorts(PortfolioBase):
         return table
 
 
+# =================== WIP 
+    def breakpoints(self, factor: str | None = None, **kwargs) -> FamaFrenchBreakpoints:
+        """Fetch the breakpoints used to construct the portfolios."""
+        # Default to the first factor passed if none is specified
+        target_factor = factor or (self.factor[0] if self.factor else "me")
+        # Inherit default kwargs from the parent instance
+        bp_kwargs = {
+            "frequency": self.frequency,
+            "start_date": self.start_date,
+            "end_date": self.end_date,
+            **kwargs
+        }
+        
+        return FamaFrenchBreakpoints(factor=target_factor, **bp_kwargs)
