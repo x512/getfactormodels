@@ -57,12 +57,13 @@ class Base(ABC):
         self._start_date: str | None = None
         self._end_date: str | None = None
         self._frequency: str | None = None
-
+        
+        self.drop_nulls = drop_nulls
+        
         self.frequency = frequency
         self.start_date = start_date
         self.end_date = end_date
         self.as_percentage = as_percentage
-        self.drop_nulls = drop_nulls
         self.cache_ttl = cache_ttl
         self.no_cache = force
         self.output_file = output_file
@@ -95,7 +96,7 @@ class Base(ABC):
     @property
     def name(self) -> str:
         """Name of the model or dataset."""
-        from getfactormodels.utils.registry import get_model_name
+        from getfactormodels.registry.model_registry import get_model_name
         model_key = getattr(self, "model", None)
         
         if isinstance(model_key, str):
@@ -225,6 +226,53 @@ class Base(ABC):
         self._selected_factors = selection
         return self
 
+    #new -- testing
+    def dropna(
+        self, 
+        subset: str | Sequence[str] | None = None, 
+        how: Literal['any', 'all'] = 'any'
+    ) -> Self:
+        """Drop rows containing null values.
+        
+        Behaves like Pandas/Polars `dropna()`. Will trigger a `.load()` 
+        first if data hasn't loaded.
+
+        Args:
+            subset: Column name(s) to check for nulls. If `None`, checks all 
+                columns in the table.
+            how: 
+                - 'any' (default): Drop the row if ANY of the specified columns 
+                  are null. 
+                - 'all': Drop the row ONLY if ALL specified columns are null.
+        """
+        self.drop_nulls = True  # ensures future loads respect this flag
+        
+        if self._data is None:
+            self.load()
+            
+        if self._data is not None:
+            import pyarrow.compute as pc
+            
+            table = self._data
+            cols = [subset] if isinstance(subset, str) else (subset or table.column_names)
+            
+            null_masks = [pc.is_null(table[col]) for col in cols]
+            
+            if how == 'any':
+                combined_mask = null_masks[0]
+                for m in null_masks[1:]:
+                    combined_mask = pc.or_(combined_mask, m)
+            else:
+                combined_mask = null_masks[0]
+                for m in null_masks[1:]:
+                    combined_mask = pc.and_(combined_mask, m)
+                    
+            keep_mask = pc.invert(combined_mask)
+            self._data = table.filter(keep_mask)
+            
+        return self
+
+
     def clear_cache(self) -> int:
         """Evict cached files for this instance.
 
@@ -327,7 +375,7 @@ class Base(ABC):
         region = getattr(self, "region", None)
         region_label = f" ({region})" if region else ""
         header = f"{self.name}{region_label}\n"
-        return header + print_table_preview(self.data)
+        return header + print_table_preview(self.data, n_rows=5) #cols dynamic depending on term width
 
     def __getitem__(self, key: str | Sequence[str]) -> pa.Table:
         keys = [key] if isinstance(key, str) else list(key)
@@ -411,8 +459,8 @@ def _normalize_to_str(chars: str | Sequence[str]) -> tuple[str, ...]:
 class PortfolioBase(Base):
     """Base class for multi-bucket cross-sectional portfolio sorts."""
     VALID_SORTS: Final = MappingProxyType({
-        'ff': frozenset({None, '2x3', '2x4x4', '5x5', '10x10', 'bivariate'}),
-        'q': frozenset({None, '2x3', '2x3x3', '3x5', 'decile', 'bivariate'}), 
+        'ff': frozenset({None, '2x3', '2x4x4', '5x5', '10x10', 'bivariate', '3', '5', "10"}), #decile?
+        'q': frozenset({None, '2x3', '2x3x3', '3x5', 'decile', 'bivariate'}), #10?
     })
     def __init__(
         self,
