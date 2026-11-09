@@ -24,7 +24,7 @@ from .exceptions import (
     GetFactorModelsWarning,
     ModelNotFoundError,
 )
-from .main import anomaly, model, portfolio
+from .main import model, portfolio
 from .models import (
     AQR6Factors,
     BABFactors,
@@ -75,7 +75,6 @@ __all__ = [
     "HighIncomeCCAPM",
     "model",
     "portfolio",
-    "anomaly",
     "CHFactors",
     "clear_cache",
     "GetFactorModelsError",

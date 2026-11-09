@@ -20,7 +20,9 @@ import os
 import sys
 import textwrap
 from pathlib import Path
+
 import pyarrow.csv as pv
+
 from getfactormodels._metadata import (
     __copyright__,
     __description__,
@@ -30,7 +32,7 @@ from getfactormodels._metadata import (
     __version__,
 )
 from getfactormodels.utils.arrow_utils import print_table_preview
-from getfactormodels.utils.registry import _MODEL_REGISTRY
+from getfactormodels.registry.model_registry import _MODEL_REGISTRY
 from getfactormodels.utils.utils import _generate_filename
 
 log = logging.getLogger("getfactormodels")
@@ -46,49 +48,56 @@ def parse_args() -> argparse.Namespace:
         epilog=textwrap.dedent(f"""\
         Examples:
           getfactormodels --model ff3 --frequency m --start 2000-01-01 --end 2010
-          getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'         
+          getfactormodels -m 5 -f m --extract SMB RF -o '~/file.csv'
           getfactormodels -p industry 30 -o ~/ind30.csv
           getfactormodels -m ff5 -p 2x3 -x SMB HML -o ~/data.csv
-          getfactormodels -a abr_1 rer -s 2010-06 -f w --width 3
+          getfactormodels -m ff3 -j age,roe_6 -f m
+          getfactormodels -a mom -s 2010-06 -f m --width 3
 
         {__copyright__}.
         Distributed under {__license__}. See '--license'.
         """),
     )
-    parser.add_argument("-V", "--version", action="version", 
+    parser.add_argument("-V", "--version", action="version",
                         version=f"%(prog)s-{__version__}")
-    
-    parser.add_argument("--license", action="version", version=__license_text__, 
+
+    parser.add_argument("--license", action="version", version=__license_text__,
                         help="Print software license notice and exit.")
-    
-    parser.add_argument('-q', '--quiet', action='store_true', 
+
+    parser.add_argument('-q', '--quiet', action='store_true',
                         help='Suppress output to console.')
-    
-    parser.add_argument('-v', '--verbose', action='store_true', 
+
+    parser.add_argument('-v', '--verbose', action='store_true',
                         help="Verbose output, enable debug logging.")
-    
-    parser.add_argument('--list-models', action='store_true', 
+
+    parser.add_argument('--list-models', action='store_true',
                         help="Show all models and exit")
-    
-    parser.add_argument('--list-regions', action='store_true', 
+
+    parser.add_argument('--list-regions', action='store_true',
                         help="Show all supported geographic regions and exit")
 
     parser.add_argument('--list-anomalies', action='store_true',
-                        help="Show all available q-factor anomalies and exit.")
+                        help="Show all available JKP global factors and exit.")
 
-    parser.add_argument('--url', '--urls', action='store_true', 
+    parser.add_argument('--url', '--urls', action='store_true',
                         help="List target URLs and exit.")
-    
-    parser.add_argument("--delete-global-cache", "--clear-global-cache", action="store_true", 
+
+    parser.add_argument("--delete-global-cache", "--clear-global-cache", action="store_true",
                         help="Delete all cached dataset files from disk and exit.")
     parser.add_argument(
-        '--clear-cache', action='store_true', help="Clear local cache for the requested model(s) before loading."
+        '--clear-cache', action='store_true',
+        help="Clear local cache for the requested model(s) before loading."
     )
+
     # MODEL OPTIONS
-    parser.add_argument('-m', '--model', nargs="+", metavar="MODEL", 
-                        help="Model(s) requested ('icr', 'ff3'). Also " 
-                        "accepts 3 4 5 6 for Fama-French models.")
-    
+    parser.add_argument('-m', '--model', nargs="+", metavar="MODEL",
+                        help="Model(s) requested ('icr', 'ff3'). Also "
+                        "accepts 3 4 5 6 for Fama-French models. "
+                        "Use -j for JKP global factors.")
+
+    parser.add_argument('-j', '--jkp', dest='jkp_factors', nargs="+", metavar="FACTOR",
+                        help="JKP global factor(s), comma-separated (e.g. 'age,roe_6').")
+
     parser.add_argument('-f', '--frequency', type=str, default='m',
                         choices=['d', 'w', 'w2w', 'm', 'q', 'y', 'a'], metavar="FREQ",
                         help="Data frequency 'd' 'w' 'm' (default) 'q' 'y' 'w2w'.")
@@ -96,16 +105,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('-r', '--region', '--location', '-l', dest='region', metavar='REGION',
                         help="Region/country code for models that support it.")
 
-    parser.add_argument('-s', '--start', required=False, metavar="DATE", 
+    parser.add_argument('-s', '--start', required=False, metavar="DATE",
                         help='the start date.')
-    
-    parser.add_argument('-e', '--end', required=False, metavar="DATE", 
+
+    parser.add_argument('-e', '--end', required=False, metavar="DATE",
                         help='the end date.')
 
     parser.add_argument('-o', '--output', type=str, required=False, default=None, metavar="PATH",
                         help='A filename or path to save the data to.')
 
-    parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR', 
+    parser.add_argument('-d', '--drop', nargs='+', metavar='FACTOR',
                         help="Remove specific factors from a model.")
 
     parser.add_argument('-x', '--extract', nargs='+', metavar="FACTOR",
@@ -113,50 +122,49 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--as-percent", '--pct',
-        action="store_true", 
+        action="store_true",
         help="Return returns as percentages (e.g. 5.0 instead of 0.05)"
     )
 
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
-    port_group.add_argument('-p', '--portfolio', '--on', 
+    port_group.add_argument('-p', '--portfolio',
                             dest='sort', nargs='+', metavar='FACTOR',
                             help="Factors to sort on (size, bm, or ia roe for q-factors).")
-    
-    port_group.add_argument('-n', '--sort', '--count', '--grid', dest='sort_spec', metavar='SPEC',
+
+    port_group.add_argument('-n', '--sort', dest='sort_spec', metavar='SPEC',
                             help="Portfolio count, sort or grid. ('10', '2x3', '5x5', 'decile').")
-    
+
     port_group.add_argument('-I', '--industry', type=int, dest='ind_count',
                             help="Shortcut for Fama-French industry portfolios (-I 12).")
-    
+
     port_group.add_argument('-W', '--weights', choices=['vw', 'ew'], default='vw',
                             help="Weighting scheme (default: vw).")
-    
+
     port_group.add_argument('--src', '--source', default='ff', choices=['ff', 'q'],
                             help="Portfolio datasource, accepts 'q' or 'ff'.")
-    
+
     port_group.add_argument('--ex-div', '--exdiv', dest='dividends', action='store_false',
                             help="Exclude dividends (use ex-dividend returns retx_vw).")
     port_group.add_argument('-b', '--bivariate',
-                        action='store_true',
-                            help="Q Factors only (for now): Use bivariate (2-way) sorts instead of default deciles.")
-    
+                            action='store_true',
+                            help="Use bivariate (2-way) sorts instead of the default sort.")
+
     # ANOMALY OPTIONS
     anom_group = parser.add_argument_group('Anomaly Options')
     anom_group.add_argument('-a', '--anomaly', '--anom',
-                        dest='anomaly_names', nargs='+', metavar='ANOM',
-                        help="Anomaly or categories to retrieve (abr_1, momentum, rer).")
-
+                            dest='anomaly_names', nargs='+', metavar='ANOM',
+                            help="Q anomaly portfolio sort(s) (abr_1, momentum, rer).")
 
     # PREVIEW / DISPLAY CONTROLS
     parser.add_argument('--no-prev', '--no-preview', action='store_true',
-                            help="Suppress the terminal table preview output.")
-    
+                        help="Suppress the terminal table preview output.")
+
     parser.add_argument('-H', '--height', type=int, default=6, metavar='ROWS',
-                            help="Number of head/tail rows to show in preview (default: 6).")
-    
-    parser.add_argument('-w', '--width', type=int, default=5, metavar='COLS',
-                            help="Number of data columns to show. Not incl. truncated column or index. (default: 5).")
+                        help="Number of head/tail rows to show in preview (default: 6).")
+
+    parser.add_argument('-w', '--width', type=int, default=None, metavar='COLS',
+                        help="Number of data columns to show. Not incl. truncated column or index. (default: 5).")
 
     parser.set_defaults(industry=None)
     args = parser.parse_args()
@@ -167,12 +175,26 @@ def parse_args() -> argparse.Namespace:
     if args.anomaly_names:
         args.anomaly_names = [item.strip().lower() for s in args.anomaly_names for item in s.split(',')]
 
-    if args.sort is None and args.is_portfolio and not args.is_anomaly:
+    if args.jkp_factors:
+        args.jkp_factors = [
+            item.strip().lower()
+            for s in args.jkp_factors
+            for item in s.split(',')
+            if item.strip()
+        ]
+
+    # don't default sort when industry is set
+    if (
+        args.sort is None
+        and args.is_portfolio
+        and not args.is_anomaly
+        and not args.ind_count
+    ):
         args.sort = ['2x3x3']
 
     if args.sort:
         args.sort = [item.strip().lower() for s in args.sort for item in s.split(',')]
-        
+
         if args.sort[0] in ['industry', 'ind']:
             args.ind_count = int(args.sort[1]) if len(args.sort) > 1 else 12
             args.sort = None
@@ -211,19 +233,24 @@ def _quick_exits(args: argparse.Namespace) -> None:
         _cli_list_anomalies()
         sys.exit(0)
     if args.delete_global_cache:
-        count = clear_cache() # No args = wipe global
+        count = clear_cache()
         if not args.quiet:
             print(f"Global cache cleared ({count} items removed).", file=sys.stderr)
         sys.exit(0)
-    
+
 
 def _build_model(args: argparse.Namespace):
-    from getfactormodels.main import anomaly, model, portfolio
+    from getfactormodels.main import model, portfolio
     from getfactormodels.models.base import Collection
 
     components = []
 
     if args.model:
+        if any(str(m).lower() == "jkp" for m in args.model):
+            raise ValueError(
+                "Use -j/--jkp for JKP global factors; -m/--model is for "
+                "registered factor models."
+            )
         components.append(model(
             model=args.model,
             frequency=args.frequency,
@@ -234,14 +261,22 @@ def _build_model(args: argparse.Namespace):
         ))
 
     if args.is_portfolio:
+        # Translate sort flags into a single 'sort' value:
+        # -n SPEC: sort=spec 
+        # -b: sort='bivariate' 
+        # both: err. none: sort=None (factory handles it) 
+        if args.sort_spec and args.bivariate:
+            raise ValueError("Cannot combine -n/--sort with -b/--bivariate.")
+        sort_value = (
+            "bivariate" if args.bivariate
+            else (args.sort_spec.lower() if args.sort_spec else None)
+        )
         components.append(portfolio(
             source=args.src,
             industry=args.industry,
-            sort=args.sort,
-            grid=args.grid,
-            count=args.count,
+            factors=args.sort,
+            sort=sort_value,
             weights=args.weights,
-            bivariate=args.bivariate,
             frequency=args.frequency,
             start_date=args.start,
             end_date=args.end,
@@ -250,19 +285,29 @@ def _build_model(args: argparse.Namespace):
         ))
 
     if args.is_anomaly:
-        components.append(anomaly(
-            name=args.anomaly_names,
+        components.append(portfolio(
+            source="q",
+            factors=args.anomaly_names,
             frequency=args.frequency,
-            region=args.region,
             start_date=args.start,
             end_date=args.end,
             as_percentage=args.as_percent,
         ))
 
+    if args.jkp_factors:
+        from getfactormodels.models.jkp import JKPFactors
+        components.append(JKPFactors(
+            factor=args.jkp_factors,
+            frequency=args.frequency,
+            start_date=args.start,
+            end_date=args.end,
+            region=args.region or "usa",
+            as_percentage=args.as_percent,
+        ))
+
     if not components:
         raise ValueError("No data requested.")
-    
-    # Return Collection if more than one instance
+
     return components[0] if len(components) == 1 else Collection(instances=components)
 
 
@@ -317,36 +362,34 @@ def _cli():
                 from pprint import pprint
                 print("------------")
                 pprint(model_obj.url)
-                #sys.exit(0)
 
 
 if __name__ == '__main__':
     _cli()
 
 
-
 def _setup_logging(verbose: bool, quiet: bool) -> None:
     """Configure the root getfactormodels logger based on CLI flags."""
     logger = logging.getLogger("getfactormodels")
-    
-    # Clear the NullHandler added in __init__.py so we can see output
+
     logger.handlers.clear()
-    
+
     if quiet:
         logger.setLevel(logging.ERROR)
     elif verbose:
         logger.setLevel(logging.DEBUG)
     else:
-        logger.setLevel(logging.WARNING)  # Default for standard runs
+        logger.setLevel(logging.WARNING)
 
     handler = logging.StreamHandler(sys.stderr)
     formatter = logging.Formatter("%(levelname)s: %(message)s")
     handler.setFormatter(formatter)
-    
+
     logger.addHandler(handler)
 
+
 def _cli_list_anomalies():
-    from getfactormodels.registries import JKP_FACTORS, JKP_THEMES
+    from getfactormodels.registry import JKP_FACTORS, JKP_THEMES
 
     sys.stderr.write("ANOMALIES: JKP Global Factors.\n")
     sys.stderr.write(f"\nFACTORS ({len(JKP_FACTORS)}):\n")
@@ -354,11 +397,12 @@ def _cli_list_anomalies():
     sys.stderr.write(f"\nTHEMES ({len(JKP_THEMES)}):\n")
     sys.stderr.write(textwrap.fill(", ".join(sorted(JKP_THEMES)), 70, initial_indent="  ", subsequent_indent="  ") + "\n\n")
 
+
 def _cli_list_regions():
     """Helper to display regions and exit."""
     from getfactormodels.models.aqr_models import HMLDevilFactors
     from getfactormodels.models.fama_french import FamaFrenchFactors
-    
+
     print(f"\nFAMA-FRENCH MODELS:\n  {textwrap.fill(', '.join(FamaFrenchFactors.list_regions()), width=70)}")
     print(f"\nAQR MODELS:\n  {textwrap.fill(', '.join(HMLDevilFactors.list_regions()), width=70)}")
     print("\n  Note: accepts aliases 'us', 'jpn', 'uk', and 'ger'.")
@@ -373,7 +417,7 @@ def _cli_list_models():
     for key in _MODEL_REGISTRY:
         data = _MODEL_REGISTRY[key]
 
-        freqs = "d,m" 
+        freqs = "d,m"
         try:
             inst = model_factory(key)
             freqs = ",".join(inst.frequencies)
@@ -392,13 +436,11 @@ def _cli_list_models():
 
     sys.stderr.write("\n")
 
+
 # TODO:
-#   -F/--force 
-#   --decimals
-#   data source citation, reference paper citation
-#   --output to --output-dir, --format, --output, --fname or something
+#   -F/--force
+#   --ff-breakpoint BREAKPOINT (e.g. --ff-breakpoint ep) → FamaFrenchBreakpoints
+#   --list-anomalies should probably be renamed (it lists JKP factors, not Q anomalies).
+#       Consider --list-jkp for JKP, and --list-q-factors for Q's anomaly vocabulary.
 #   --list-portfolios
-#   --list-models should prob show only id/name/freq? or have --list-models-long and --list-models idk.
-    #parser.add_argument("-F", "--force", "--no-cache" action="store_true", help="Bypass local cache and force download.")
-    #parser.add_argument("--clear-cache", action="store_true", help="Clear cache for the specified model.")
-    #parser.add_argument('--as-percent', action='store_true', help="Scale factor values to percentages.")
+#   --decimals

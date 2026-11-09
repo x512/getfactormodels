@@ -26,13 +26,13 @@ from .carhart import CarhartFactors
 from .ch import CHFactors
 from .dhs import DHSFactors
 from .fama_french import FamaFrenchFactors, get_ff_portfolios
+from .ff_breakpoints import FamaFrenchBreakpoints
+from .ff_industries import FamaFrenchIndustryPortfolios
+from .ff_portfolios import FamaFrenchSorts
 from .hc_capm import HighIncomeCCAPM
 from .icr import ICRFactors
+from .jkp import JKPFactors
 from .jw_ccapm import ConditionalCAPM
 from .liquidity import LiquidityFactors
 from .mispricing import MispricingFactors
-from .q_factors import QFactors, GlobalQPortfolios, _get_q_anomalies 
-from .jkp import JKPFactors
-from .ff_breakpoints import FamaFrenchBreakpoints
-from .ff_portfolios import FamaFrenchSorts
-from .ff_industries import FamaFrenchIndustryPortfolios
+from .q_factors import GlobalQPortfolios, QFactors, _get_q_anomalies

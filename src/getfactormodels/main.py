@@ -16,7 +16,7 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 import logging
 import warnings
-from typing import Literal 
+from typing import Literal, Any 
 from collections.abc import Sequence
 from getfactormodels import models as factor_models
 from getfactormodels.exceptions import GetFactorModelsDeprecationWarning
@@ -24,83 +24,103 @@ from getfactormodels.models.base import (
     Collection,
     Composite,
     FactorModel,
-    PortfolioBase,
     RegionMixin,
+    Base,
 )
 from getfactormodels.utils.cli import _cli
-from getfactormodels.utils.registry import get_model_class, get_model_key
+from getfactormodels.registry.model_registry import get_model_class, get_model_key
 
 log = logging.getLogger("getfactormodels")
 
 
-# In main.py
 def portfolio(
-    source: str = "ff",
-    factors: str | Sequence = None,
-    sort: str | list[str] | None = 'decile',
+    factors: str | Sequence[str | Sequence[str]] | None = None,
+    sort: str | None = None,
     *,
-    dividends: bool = True, 
-    weights: str = "vw", # whats using this, q and ff?  #not in base class, so handle here?
-    industry: int | None = None, # not in base class, relies on factory
-    bivariate: bool = False, #True to use default 2-way sorts, 2x3 for ff,  3x5 for q (unless a benchmark portfolio)
-    **kwargs,
-):
-    src = source.lower()
-
-    if industry: 
-        src = 'ff'
-        if factors or sort:
-            raise ValueError("...") #error or warn that industry or sort/factors
-
-    if src == "ff":
-        from getfactormodels.models.fama_french import _get_ff_portfolios
-        return _get_ff_portfolios(
-            industry=industry, sort=sort, weights=weights, **kwargs
-        )
-
-    if src == "q":
-        from getfactormodels.models.q_factors import _get_q_portfolios
-        return _get_q_portfolios(
-            sort=sort, weights=weights, **kwargs
-        )
-
-    raise ValueError(f"Unknown portfolio source: '{src}'")
-
-    # Pluralise? hmm
-
-
-def anomaly(
-    name: str | Sequence[str],
-    frequency: Literal["d", "m"] = "m",
+    source: Literal["ff", "q"] = "ff",
+    industry: int | None = None,
+    weights: Literal["vw", "ew"] = "vw",
+    dividends: bool = True,
+    frequency: str = "m",
     start_date: str | None = None,
     end_date: str | None = None,
-    *,
-    region: str = "usa",
-    weight: Literal["vw_cap", "vw", "ew"] = "vw_cap",
-    as_percentage: bool = False,
-    **kwargs,
-):
-    """Download JKP Global Factor data.
+    **kwargs: Any,
+) -> Base:
+    """Construct a cross-sectional portfolio dataset.
 
     Args:
-        name: Factor or theme code(s) — e.g. 'bm', 'mom', 'quality'.
-        frequency: 'd' or 'm'.
-        region: JKP region code (default 'usa').
-        weight: 'vw_cap', 'vw', or 'ew'.
-    """
-    from getfactormodels.models.jkp import JKPFactors
+        factors: Factor(s) or factor group(s) to sort on. Ignored when
+            ``industry`` is set.
+        sort: Sort specification. ``'bivariate'`` selects the source's
+            default 2-way sort (FF: '5x5', Q: '3x5'). Source-specific
+            vocabulary:
+              FF — '2x3', '2x4x4', '5x5', '10x10', 'bivariate', '3', '5', '10';
+              Q  — '2x3', '2x3x3', '3x5', 'decile', 'bivariate'.
+            Defaults to the source's default sort.
+        source: Data source. 'ff' (Fama-French) or 'q' (q-factors).
+        industry: Industry count for FF industry portfolios. Mutually
+            exclusive with ``factors`` and ``sort``.
+        weights: 'vw' (value-weighted) or 'ew' (equal-weighted).
+        dividends: Include dividends in returns.
+        frequency: Data frequency.
+        start_date, end_date: Optional date range.
+        **kwargs: Forwarded to the source constructor.
 
-    return JKPFactors(
-        factor=name,
+    Raises:
+        ValueError: On mixed arguments (``industry`` with
+            ``factors``/``sort``) or invalid ``source``.
+    """
+    src = source.lower()
+    if src not in ("ff", "q"):
+        raise ValueError(f"Unknown portfolio source: {source!r}. Valid: 'ff', 'q'.")
+
+    if industry is not None:
+        if src != "ff":
+            raise ValueError(f"'industry' requires source='ff', got {source!r}.")
+        if factors is not None or sort is not None:
+            raise ValueError("Cannot combine 'industry' with 'factors'/'sort'.")
+        from getfactormodels.models.ff_industries import FamaFrenchIndustryPortfolios
+        return FamaFrenchIndustryPortfolios(
+            industries=industry,
+            weights=weights,
+            dividends=dividends,
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
+
+    if src == "ff":
+        from getfactormodels.models.ff_portfolios import FamaFrenchSorts
+        return FamaFrenchSorts(
+            factors=factors or "size",
+            sort=sort or "10",
+            weights=weights,
+            dividends=dividends,
+            frequency=frequency,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
+
+    if weights != "vw":
+        raise ValueError(
+            "Global-Q portfolios provide value-weighted returns only; "
+            f"got weights={weights!r}. Use source='ff' for equal-weighted."
+        )
+    # Q publishes 3x5 as its bivariate sort; the universal "bivariate"
+    # request maps to it here. Other sorts pass through unchanged.
+    q_sort = "3x5" if sort == "bivariate" else sort
+    from getfactormodels.models.q_factors import GlobalQPortfolios
+    return GlobalQPortfolios(
+        factor=factors or ["me", "ia", "roe"],
+        sort=q_sort,
+        dividends=dividends,
         frequency=frequency,
-        region=region,
-        weight=weight,
         start_date=start_date,
         end_date=end_date,
-        as_percentage=as_percentage,
         **kwargs,
     )
-
 
 
 def model(
@@ -110,7 +130,6 @@ def model(
     start_date: str | None = None,
     end_date: str | None = None,
     *,
-    # force: bool = False,  #not implemented
     clear_cache: bool = False,
     **kwargs,
 ) -> FactorModel | Collection:

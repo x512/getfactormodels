@@ -34,7 +34,7 @@ from getfactormodels.utils.utils import _save_to_file
 
 logger = logging.getLogger(__name__)
 
-class Base(ABC):    
+class Base(ABC):    # eventually split into base, and processor. 
     """Abstract Base Class used by all implementations."""
     def __init__(
         self,
