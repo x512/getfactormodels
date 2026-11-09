@@ -125,6 +125,9 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Return returns as percentages (e.g. 5.0 instead of 0.05)"
     )
+    parser.add_argument('-B', '--bp', '--ff-breakpoint', dest='ff_breakpoints', nargs="+", metavar="FACTOR",
+                        help="Fama-French breakpoint data, one of: 'me', 'beme'/'bm', 'op', 'inv', "
+                        "'mom'/'prior', 'dp', 'ep', 'cfp'. ")
 
     # PORTFOLIO OPTIONS
     port_group = parser.add_argument_group('Portfolio Options')
@@ -179,6 +182,14 @@ def parse_args() -> argparse.Namespace:
         args.jkp_factors = [
             item.strip().lower()
             for s in args.jkp_factors
+            for item in s.split(',')
+            if item.strip()
+        ]
+
+    if args.ff_breakpoints:
+        args.ff_breakpoints = [
+            item.strip().lower()
+            for s in args.ff_breakpoints
             for item in s.split(',')
             if item.strip()
         ]
@@ -304,6 +315,17 @@ def _build_model(args: argparse.Namespace):
             region=args.region or "usa",
             as_percentage=args.as_percent,
         ))
+
+    if args.ff_breakpoints:
+        from getfactormodels.models.ff_breakpoints import FamaFrenchBreakpoints
+        for bp in args.ff_breakpoints:
+            components.append(FamaFrenchBreakpoints(
+                factor=bp,
+                frequency=args.frequency,
+                start_date=args.start,
+                end_date=args.end,
+                as_percentage=args.as_percent,
+            ))
 
     if not components:
         raise ValueError("No data requested.")
