@@ -1,14 +1,16 @@
-"""Standalone Fama-French Industry Portfolios container & combiner."""
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
+"""Fama-French industry portfolios."""
 from __future__ import annotations
-
+import copy
 import io
+import re
 import zipfile
 from typing import Any, Final, Literal, Self
-import re
 import pyarrow as pa
-import copy
-
-
 from getfactormodels.exceptions import ModelNotFoundError
 from getfactormodels.models.base import Base
 from getfactormodels.utils.arrow_utils import (
@@ -16,6 +18,7 @@ from getfactormodels.utils.arrow_utils import (
     scale_to_decimal,
 )
 from getfactormodels.utils.date_utils import offset_period_eom
+
 """Fama-French industry portfolios
   returns(freq=, weights=)# portfolio returns (default, fully processed)
 
@@ -96,7 +99,6 @@ def _parse_ff_txt(text: str) -> dict[str, pa.Table]:
 ###################################################
 
 _WEIGHTS = {"vw": "Value Weighted", "ew": "Equal Weighted"}
-_FREQ = {"m": "Monthly", "y": "Annual", "d": "Daily"}
 _FF_BASE_URL: Final[str] = "https://mba.tuck.dartmouth.edu/pages/faculty/ken.french/ftp"
 INDUSTRY_COUNTS: Final[frozenset[int]] = frozenset({5, 10, 12, 17, 30, 38, 48, 49})
 _FREQ_LABEL: Final[dict[str, str]] = {"d": "Daily", "m": "Monthly", "y": "Annual"}
@@ -121,6 +123,7 @@ class FamaFrenchIndustryPortfolios(Base):
     def __init__(
         self,
         industries: Literal[5, 10, 12, 17, 30, 38, 48, 49] = 5,
+        weights: Literal["vw", "ew"] = "vw",
         *,
         dividends: bool = True,
         **kwargs: Any,
@@ -129,21 +132,28 @@ class FamaFrenchIndustryPortfolios(Base):
         ### TODO: PortfolioBase should be handling this. ###############################
         # Coerce string inputs (e.g., "5") into actual integers gracefully
         try:
-            target_industries = int(industries)
-        except (ValueError, TypeError):
+            industries_int = int(industries)
+        except (ValueError, TypeError) as e:
             raise ValueError(
-                f"Invalid industry input: {industries}. "
-                f"Must be an integer or numeric string matching {sorted(INDUSTRY_COUNTS)}."
-            )
-        #################################################
+                f"Invalid industry input: {industries!r}. "
+                f"Must be one of {sorted(INDUSTRY_COUNTS)}."
+            ) from e
 
-        if industries not in INDUSTRY_COUNTS:
+        if industries_int not in INDUSTRY_COUNTS:
             raise ValueError(
-                f"Invalid industry count: {industries}. "
+                f"Invalid industry count: {industries_int}. "
                 f"Must be one of {sorted(INDUSTRY_COUNTS)}."
             )
 
-        self.industries = industries
+        if isinstance(weights, str):
+            weights = weights.lower()
+        if weights not in _WEIGHTS:
+            raise ValueError(
+                f"Invalid weights scheme: {weights!r}. Must be 'vw' or 'ew'."
+            )
+
+        self.industries = industries_int
+        self.weights = weights
         self.dividends = dividends
         self._sections: dict[str, pa.Table] | None = None
 
@@ -193,23 +203,21 @@ class FamaFrenchIndustryPortfolios(Base):
     @property
     def sections(self) -> dict[str, dict[str, int]]:
         """Dict. of available tables: {name: {rows, cols, bytes}}."""
-        if self._sections is None:
-            self._get_sections()
-        
+        #delegate to _get_sections(), will .load()/raise if it needs.
         return {
             title: {
                 "rows": table.num_rows,
                 "cols": table.num_columns,
-                "size_bytes": table.nbytes
+                "size_bytes": table.nbytes,
             }
-            for title, table in self._sections.items()
+            for title, table in self._get_sections().items()
         }
 
     def returns(
         self,
         *,
         frequency: str | None = None,
-        weights: Literal["vw", "ew"] = "vw",
+        weights: Literal["vw", "ew"] | None = None,
         **kwargs,
     ) -> pa.Table:
         """Industry portfolio returns.
@@ -220,6 +228,8 @@ class FamaFrenchIndustryPortfolios(Base):
             weights: 'vw' (value-weighted) or 'ew' (equal-weighted).
             **kwargs: passed to Base.
         """
+        if weights is None:
+            weights = self.weights
         if weights not in ("vw", "ew"):
             raise ValueError(
                 f"Invalid weights scheme: {weights!r}. Must be 'vw' or 'ew'."
@@ -239,12 +249,20 @@ class FamaFrenchIndustryPortfolios(Base):
                 f"Available: {sorted(available)}."
             )
 
-        # default view: self.data has it, honours any .drop/.extract. 
-        if freq == self.frequency and weights == "vw":
+        # default view: self.data has it, honours any .drop/.extract.
+        # Clones hold a section view, but not returns. Skip fast path 
+        # for them so .returns gets the real returns section instead
+        # of returning self.data (e.g., firm_counts). 
+        #
+        if (
+            freq == self.frequency
+            and weights == self.weights
+            and not getattr(self, "_table_name", None)
+        ):
             return self.data
 
-        weight_term = "Value-Weighted" if weights == "vw" else "Equal-Weighted"
-        section = self._find_section(weight_term, "Returns", _FREQ_LABEL[freq])
+        weight_term = _WEIGHTS[weights]
+        section = self._find_section(weight_term, "Returns", _FREQ_LABEL[freq])        
         table = self._process_table(self._finalize(section, freq, scale=True))
         return filter_table_by_date(table, self._start_date, self._end_date)
 
@@ -255,7 +273,6 @@ class FamaFrenchIndustryPortfolios(Base):
         Clones a FamaFrenchIndustry instance...
 
         """
-        #
         # Return a shallow clone (Self) instead of a raw pa.Table so the instance
         # inherits library methods (.to_polars(), .to_file()) without re-triggering
         # __init__. PyArrow tables are immutable, so sharing _sections is safe.
@@ -268,8 +285,6 @@ class FamaFrenchIndustryPortfolios(Base):
         
         # fix name, so __str__ is correct
         new_inst._table_name = new_name
-        
-        # clear selected (dropped/extracted factors)
         new_inst._selected_factors = None 
         
         # Do not allow .load() to overwrite the data
@@ -318,7 +333,7 @@ class FamaFrenchIndustryPortfolios(Base):
         # Return the *raw* default view — Base.load passes it through
         # _process_table to populate self._data.
         section = self._find_section(
-            "Value-Weighted", "Returns", _FREQ_LABEL[self.frequency]
+            _WEIGHTS[self.weights], "Returns", _FREQ_LABEL[self.frequency]
         )
         return self._finalize(section, self.frequency, scale=True)
 
@@ -376,5 +391,6 @@ class FamaFrenchIndustryPortfolios(Base):
             f"{self.__class__.__name__}("
             f"industries={self.industries}, "
             f"frequency={self.frequency!r}, "
+            f"weights={self.weights!r}, "
             f"dividends={self.dividends})"
         )

@@ -22,6 +22,7 @@ from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_percent,
     select_table_columns,
+    drop_null_rows,
 )
 from getfactormodels.utils.cache import evict_model_cache
 from getfactormodels.utils.date_utils import (
@@ -226,52 +227,26 @@ class Base(ABC):
         self._selected_factors = selection
         return self
 
-    #new -- testing
     def dropna(
         self, 
         subset: str | Sequence[str] | None = None, 
         how: Literal['any', 'all'] = 'any'
     ) -> Self:
         """Drop rows containing null values.
-        
-        Behaves like Pandas/Polars `dropna()`. Will trigger a `.load()` 
-        first if data hasn't loaded.
+
+        Behaves like Pandas/Polars `dropna()`. Calls `.load()`
+        if needed.
 
         Args:
-            subset: Column name(s) to check for nulls. If `None`, checks all 
-                columns in the table.
-            how: 
-                - 'any' (default): Drop the row if ANY of the specified columns 
-                  are null. 
-                - 'all': Drop the row ONLY if ALL specified columns are null.
+            subset: Column(s) to check. `None` = all columns.
+            how: `any` (default) drops if any checked column is null;
+                `all` drops only if every checked column is null.
         """
-        self.drop_nulls = True  # ensures future loads respect this flag
-        
         if self._data is None:
             self.load()
-            
         if self._data is not None:
-            import pyarrow.compute as pc
-            
-            table = self._data
-            cols = [subset] if isinstance(subset, str) else (subset or table.column_names)
-            
-            null_masks = [pc.is_null(table[col]) for col in cols]
-            
-            if how == 'any':
-                combined_mask = null_masks[0]
-                for m in null_masks[1:]:
-                    combined_mask = pc.or_(combined_mask, m)
-            else:
-                combined_mask = null_masks[0]
-                for m in null_masks[1:]:
-                    combined_mask = pc.and_(combined_mask, m)
-                    
-            keep_mask = pc.invert(combined_mask)
-            self._data = table.filter(keep_mask)
-            
+            self._data = drop_null_rows(self._data, subset, how)
         return self
-
 
     def clear_cache(self) -> int:
         """Evict cached files for this instance.

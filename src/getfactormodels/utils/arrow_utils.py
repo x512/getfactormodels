@@ -8,6 +8,7 @@ import shutil
 import pyarrow as pa
 import pyarrow.compute as pc
 from collections.abc import Sequence
+from typing import Literal
 """Utilities for working with pyarrow."""
 
 log = logging.getLogger(__name__)
@@ -177,12 +178,14 @@ def _determine_preview_cols(default_preview_cols: int = 2) -> int:
     except Exception:
         return default_preview_cols
 
-    if terminal_width < 50:
+    if terminal_width < 55:
         return 1
-    elif terminal_width < 90:
+    elif terminal_width < 125:
         return 2
-    else: 
+    elif terminal_width < 160:
         return 3
+    else: 
+        return 4
 
 def print_table_preview(table, n_rows=6, n_cols=None) -> str:
     """Formats a str preview of a PyArrow table like a Pandas DataFrame.
@@ -312,3 +315,66 @@ def join_on_date(base_table: pa.Table, next_table: pa.Table, join_type: str) -> 
         keys="date",
         join_type=join_type,
     ).combine_chunks()
+
+
+def drop_null_rows(
+    table: pa.Table,
+    subset: str | Sequence[str] | None = None,
+    how: Literal["any", "all"] = "any",
+) -> pa.Table:
+    """Drop rows whose ``subset`` columns contain nulls.
+
+    Like pandas/polars `dropna`: if `subset` is None, all
+    columns are checked. `how='any'` (default) drops a row if any
+    checked column is null, `how='all'` drops only when every
+    checked column is null.
+
+    Warns when interior rows are dropped.
+
+    Args:
+        table (pa.table): table.
+        subset (str|list[str]): column names to check. None = all columns.
+        how: 'any' or 'all'.
+
+    Returns:
+        Filtered table (row order preserved).
+    """
+    if how not in ("any", "all"):
+        raise ValueError(f"how must be 'any' or 'all', got {how!r}.")
+
+    cols = [subset] if isinstance(subset, str) else (subset or table.column_names)
+    null_masks = [pc.is_null(table[c]) for c in cols]
+
+    op = pc.or_ if how == "any" else pc.and_
+    combined = null_masks[0]
+    for m in null_masks[1:]:
+        combined = op(combined, m)
+
+    keep = pc.invert(combined)
+
+    if log.isEnabledFor(logging.DEBUG):
+        n_null = table.num_rows - pc.sum(combined).as_py()
+        log.debug(
+            "drop_null_rows(how=%r): found %d null rows, in %d column(s).",
+            how, n_null, len(cols),
+        )
+
+    kept = table.filter(keep).combine_chunks()
+
+    # Warn if any drops fall between the first and last row kept. 
+    # (interior data dropped)
+    if kept.num_rows < table.num_rows and kept.num_rows > 0:
+        mask = keep.to_pylist()
+        n = len(mask)
+        first = mask.index(True)
+        last = n - 1 - mask[::-1].index(True)
+        edge = first + (n - 1 - last)
+        interior = (n - kept.num_rows) - edge
+        if interior > 0:
+            log.warning(
+                "[DATA] time series is no longer continuous: " 
+                    "`dropna` dropped %d interior rows.", interior,
+            )
+
+    return kept
+
