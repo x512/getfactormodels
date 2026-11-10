@@ -7,7 +7,11 @@
 ![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square&labelColor=%23313131)
 ![GitHub License](https://img.shields.io/github/license/x512/getfactormodels?style=flat-square&logoSize=auto&labelColor=%23313131&color=%234EAA25&cacheSeconds=3600&link=https%3A%2F%2Fgithub.com%2Fx512%2Fgetfactormodels%2Ftree%2Fmain%3Ftab%3Dreadme-ov-file%23license)
 
-A CLI and Python library to download multi-factor asset pricing models. 
+A CLI and Python library to download multi-factor asset pricing models.
+
+## Quick start
+### Install
+
 
 ## Models
 
@@ -30,146 +34,107 @@ _Thanks to: Kenneth French, Robert Stambaugh, Lin Sun, Zhiguo He, AQR Capital Ma
 
 
 ## Quick start
-### Install
 
+![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
 >[!IMPORTANT]
 >``getfactormodels`` is pre-alpha (until version 0.1.0), don't rely on it for anything.
 >
->![PyPI - Status](https://img.shields.io/pypi/status/getfactormodels?style=flat-square)
->
 >*But a huge thanks to anyone who has tried it!*
 
+### Install
+
+Install `getfactormodels` via PyPI.
 
 ```bash
 pip install getfactormodels
 ```
 ---
-### CLI Examples
+### Usage
 
-#### Factor Models
+Examples of CLI usage:
 
-* Download Fama-French 3-factor monthly data:
-```bash
-$ getfactormodels --model ff3 --freq m --start 2010 --end 2019-12-31	
-```
+Specify a model, and an optional frequency (default: `m`), and date range:
 
-> Use `--list-models` to view all available models, IDs, and supported frequencies.
+    getfactormodels --model ff3 --frequency m --start 2010-01-01 --end 2020
+- see: `--list-models`
 
 
-* Combine multiple models of the same frequency:
-```bash
-getfactormodels -m liq misp -f m -o liq_misp.csv
+Download the Fama-French 5 Factor model for emerging markets, save to file:
 
-```
-
-
-> `-o` / `--output` automatically detects format from extensions (`.csv`, `.parquet`, `.feather`).
+    getfactormodels -m ff5 -f m -s 2010-01 -e 2020 --region emerging --output 'ff5_emerging.csv'
+    
+- Use `--list-regions` to see all available geographic regions and aliases.
 
 
-* Query regional models (e.g., Betting Against Beta in Australia):
-```bash
-getfactormodels -m bab -f m -s 2000-01 --region aus
+Download a Global-Q anomaly testing portfolio (weekly, deciles for roe_6, ta)
 
-```
+    getfactormodels --anomaly roe_6 ta --sort decile -f w -o '~/file.md'
 
-
-> Use `--list-regions` to see all available geographic regions and aliases (`us`, `jpn`, `uk`, `ger`, etc.).
+- see: `--list-anomalies`
+- `-o` / `--output` automatically detects format from extensions (`.csv`, `.parquet`, `.feather`).
 
 
-* Drop or extract specific factors:
-```bash
-getfactormodels -m ff4 -x mom,rf
-getfactormodels -m ff3 -d SMB
+Access JKP Global Factor data for a region:
 
-```
+    getfactormodels -j age -r can --drop-nulls
 
 
+Attach a JKP Global Factor to a Betting Against Beta model for Australia (since both have regional data available): 
 
----
-
-### Portfolios & Industry Sorts
-
-```bash
-getfactormodels --portfolio op,bm -n 6 --src ff
-
-```
-
-  > Since portfolio factors available at global-q.com are different to the factors in the Fama/French portfolio, source usually isn't 
-  > needed.
+    getfactormodels -m bab -r aus -j age
 
 
+Combine the Liquidity, DHS Behavioural Factor models (of the same frequency), drop the NaNs and view the source data URLs: 
 
-```bash
-getfactormodels -p inv,size -n 2x3 -s 1990-01-01
-
-```
-
-> `-n` accepts a grid (`2x3`, `5x5`, `10x10`, `2x4x4`) or portfolio counts (`6`, `10`, `25`, `100`).
+    getfactormodels -m liq dhs -f m -e 1999-12-31 --drop-nulls --url
 
 
-```bash
-getfactormodels -p industry 5
-
-```
-
-> Supported industry sizes: `5`, `10`, `12`, `17`, `30`, `38`, `48`, `49`.
+Download the augmnented q5 model, and quintiles for a Global Q Anomaly testing portfolio: 
+    
+    getfactormodels -m q -f m -p abr_1 -n 5 -o `model.ipc`
 
 
-* Global-Q portfolio sorts:
-```bash
-getfactormodels -p me,eg -n 2x3
-getfactormodels -p me,ia,roe
+Download a 2x3 size/OP sort (`--sort`/`-n`) from Kenneth French's data library:
 
-```
+    getfactormodels -p size op --sort 2x3
 
-> `--portfolio q` can be used as a shorthand for q-factor portfolios.
+
+Download a 5x5 sort on Inv and Book-to-Market using the --bivariate flag (defaults to 5x5 for inv/op) 
+
+    getfactormodels -p 'inv, bm' -b
+
+
+Download Fama-French industry data:
+
+    getfactormodels -p industry 38 --drop-nulls 'GOVT'
+    #or 
+    getfactormodels -I 38 --drop-null 'GOVT'
+
+
+Drop columns: 
+
+    getfactormodels -m ff3 -d SMB,RF 
+
+
+Download Fama-French Breakpoint data:
+
+    # E/P
+    getfactormodels --bp ep 
+
+    #prior rets
+    getfactormodels --breakpoints prior 
 
 
 
----
-
-### Anomalies
-
-* A single anomaly with default decile sorting:
-```bash
-getfactormodels --anomaly sue_6 --end 2020-01-01
-
-```
-
-> Use `--list-anomalies` to see the full categorized list of available anomaly tickers.
-
-
-* Bivariate (2-way, 3x5) anomaly sorts:
-```bash
-getfactormodels -a beta_1 --bivariate
-
-```
-
-> By default, `-a` returns 1-way decile sorts. Pass `-b` / `--bivariate` to switch to 3x5 sorts.
-
-
-* Attach anomalies to a factor model:
-```bash
-getfactormodels -a abr_1,ta -m ff3 -s 2000 -o file.csv
-
-```
-
-* Combine models, industry portfolios, and bivariate anomalies:
-```bash
-getfactormodels -m ff3 -p industry 5 -a ol,rev_1 -b
-
-```
 
 ### Python Examples
 ```python
-from getfactormodels import model, portfolio, anomaly
+from getfactormodels import model, portfolio
 
 # Load Fama-French 3-factor monthly model
 ff3 = model("ff3", frequency="m", start_date="2010-01-01")
 ff3.load()
 
-# Load global-q anomaly data with 3x5 bivariate sort
-a = anomaly(name="abr_1", frequency="m", sort="3x5").load()
 
 # Export to CSV
 a.to_file("abr_1_data.parquet")
@@ -231,35 +196,9 @@ date            Mkt-RF           QMJ           SMB           HML           UMD  
 [17574 rows x 7 columns, 905.3 kb]
 ```
 </details>
-Another:
 
-    getfactormodels -m q -f q -o qfactors_qtrly.md
-
-<details>
-<summary>View output</summary>
-
-```plaintext
-Data saved to: qfactors_qtrly.md
-
-               Mkt-RF         R_ME         R_IA         R_EG        R_ROE       RF
-date
-1967-03-31   0.134805     0.114866    -0.053626    -0.015750     0.084400   0.0114
-1967-06-30   0.018500     0.087544    -0.026375    -0.018427     0.021278   0.0092
-1967-09-30   0.068962     0.055625     0.040412    -0.009986    -0.006436   0.0096
-1967-12-31   0.002605     0.052229    -0.052616     0.017556     0.048551   0.0107
-  [...]
-2024-03-31   0.088848    -0.048872    -0.012363     0.001792     0.034865   0.0132
-2024-06-30   0.022145    -0.051355    -0.025798     0.086070     0.084276   0.0135
-2024-09-30   0.046601     0.020398     0.017324    -0.058132     0.025571   0.0138
-2024-12-31   0.021465    -0.025093    -0.062185     0.024003    -0.038607   0.0116
-
-[232 rows x 7 columns, 12.0 kb]
-```
-</details>
-
-**Interoperability**
-
-`getfactormodels` uses PyArrow internally and supports the Dataframe Interchange Protocol, allowing for zero-copy data sharing with most modern Python data tools.
+### Python usage
+- `getfactormodels` uses PyArrow internally and supports the Dataframe Interchange Protocol, allowing for zero-copy data sharing with most modern Python data tools.
 
 Create a model instance:
 ```py
