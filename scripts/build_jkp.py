@@ -10,7 +10,7 @@ import urllib.request
 from urllib.error import HTTPError, URLError
 # TEMP:FIXME:good enough
 URL = "https://jkpfactors-data.s3.amazonaws.com/public/availability.json"
-OUT_PATH = Path("src/getfactormodels/registries/_jkp.py")
+OUT_PATH = Path("src/getfactormodels/registry/_jkp.py")
 
 print(f"  [JKP] Downloading {URL}...")
 

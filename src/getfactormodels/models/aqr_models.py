@@ -197,6 +197,28 @@ class BABFactors(_AQRModel):
             "RF": "RF_AQR",
         }
 
+"""
+class TSMOMFactors(_AQRModel):
+    “Time Series Momentum” (Moskowitz, Ooi and Pedersen, 2012)"
+    _file_slug = "Time-Series-Momentum-Factors"
+
+    @property
+    def _sheet_map(self) -> dict[str, str]:
+        return {
+            "BAB Factors": "BAB",
+            "MKT": "Mkt-RF",
+            "SMB": "SMB",
+            "UMD": "UMD",
+            "HML FF": "HML",
+            "RF": "RF_AQR",
+        }
+
+    @property
+    def frequencies(self) -> list[str]:
+        return ["m"]
+
+"""
+
 
 class AQR6Factors(Composite, RegionMixin):
     """AQR 6-Factor Model, Frazzini, Kabiller & Pedersen (2018)."""

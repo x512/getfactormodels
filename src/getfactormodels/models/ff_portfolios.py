@@ -1,15 +1,17 @@
+# getfactormodels: https://github.com/x512/getfactormodels
+# Copyright (C) 2025-2026 S. Martin <x512@pm.me>
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 from __future__ import annotations
-
 import io
 import zipfile
 from collections.abc import Sequence
 from typing import Any, Final, Literal
-
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
-
-from getfactormodels.models.base import PortfolioBase 
+from getfactormodels.models.base import PortfolioBase
 from getfactormodels.models.ff_breakpoints import FamaFrenchBreakpoints
 from getfactormodels.utils.arrow_utils import scale_to_decimal
 from getfactormodels.utils.date_utils import offset_period_eom
@@ -181,7 +183,7 @@ class FamaFrenchSorts(PortfolioBase):
 
     @property 
     def name(self) -> str:
-        """The formal human-readable string representation of this instance."""
+        """Name of this instance."""
         formatted_groups = [
             "/".join(group) for group in getattr(self, "_factor_groups", [])
         ]
@@ -267,7 +269,8 @@ class FamaFrenchSorts(PortfolioBase):
 
     def _filter_univariate_columns(self, table: pa.Table) -> pa.Table:
         """Univariate files contain a table of tertiles, quintiles and deciles,
-        this extracts the requested sort."""
+        this extracts the requested sort.
+        """
         cols_to_keep = ["date"]
         for c in table.column_names:
             if c == "date":
@@ -321,7 +324,6 @@ class FamaFrenchSorts(PortfolioBase):
         return table
 
 
-# =================== WIP 
     def breakpoints(self, factor: str | None = None, **kwargs) -> FamaFrenchBreakpoints:
         """Fetch the breakpoints used to construct the portfolios."""
         # Default to the first factor passed if none is specified

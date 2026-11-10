@@ -27,6 +27,10 @@ class FamaFrenchBreakpoints(Base):
     NOTE: annual data is aligned to EOY (12-31) not end of fiscal year.
     """
 
+    @property
+    def _precision(self) -> int:
+        return 4
+
     # id: (slug, name)
     BP_META: Final[dict[str, tuple[str, str]]] = {
         "me": ("ME", "Size"),

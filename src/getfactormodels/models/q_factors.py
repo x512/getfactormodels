@@ -16,6 +16,7 @@ from typing import Any, Final, Sequence
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pv
+from getfactormodels.exceptions import ModelNotFoundError
 from getfactormodels.models.base import FactorModel, PortfolioBase
 from getfactormodels.registry import Q_ANOMALIES, Q_REGISTRY, Q_THEME_FACTORS
 from getfactormodels.utils.arrow_utils import scale_to_decimal
@@ -23,7 +24,6 @@ from getfactormodels.utils.date_utils import (
     offset_period_eom,
     parse_quarterly_dates,
 )
-from getfactormodels.exceptions import ModelNotFoundError
 
 _GLOBAL_Q_RENAME_MAP: Final = {
     "DATE": "date",
@@ -42,12 +42,9 @@ _GLOBAL_Q_RENAME_MAP: Final = {
 }
 
 _GLOBAL_Q_FREQ_MAP: Final = MappingProxyType({
-    "m": "monthly",
-    "y": "annual",
-    "w": "weekly",
-    "d": "daily",
-    "q": "quarterly",
-    "w2w": "weekly_w2w",
+    "m": "monthly", "y": "annual",
+    "w": "weekly", "d": "daily",
+    "q": "quarterly", "w2w": "weekly_w2w",
 })
 
 _CATEGORY_SLUGS: Final = MappingProxyType({
@@ -500,7 +497,7 @@ class GlobalQPortfolios(PortfolioBase):
             result = result.join(t, keys=["date"], join_type="left outer")
         return result.combine_chunks()
 
-        @staticmethod
+    @staticmethod
     def _find_target_file(
         namelist: list[str], factor: str, freq_slug: str, prefix: str
     ) -> str:
@@ -550,9 +547,9 @@ class GlobalQPortfolios(PortfolioBase):
 def _get_q_portfolios(
     factor: str | list[str] | None = None,
     bivariate: bool = False,
-    sort: str | Sequence[str],
     *,
     dividends: bool = True,
+    sort: str | Sequence[str],
     **kwargs,
 ):
     """Unified dispatcher for Q benchmarks and anomalies."""

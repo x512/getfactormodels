@@ -5,17 +5,16 @@
 # Distributed WITHOUT ANY WARRANTY. See LICENSE for full terms.
 """This module provides access to JKP Global Factor data."""
 
-from collections.abc import Sequence
 import zipfile
+from collections.abc import Sequence
 from io import BytesIO
 from typing import Any, Literal
-
 import pyarrow as pa
-import pyarrow.csv as pv
 import pyarrow.compute as pc
+import pyarrow.csv as pv
 from getfactormodels.models.base import FactorModel, RegionMixin
-from getfactormodels.utils.arrow_utils import join_on_date
 from getfactormodels.registry import JKP_FACTORS, JKP_REGIONS
+from getfactormodels.utils.arrow_utils import join_on_date
 
 
 class JKPFactors(RegionMixin, FactorModel):

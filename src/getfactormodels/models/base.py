@@ -10,11 +10,12 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, ClassVar, Literal, Self, override, Final
+from typing import Any, ClassVar, Final, Literal, Self, override
 import pyarrow as pa
 from getfactormodels.utils.arrow_utils import (
     _merge_schemas,
     cast_and_sort_dates,
+    drop_null_rows,
     filter_table_by_date,
     join_on_date,
     print_table_preview,
@@ -22,7 +23,6 @@ from getfactormodels.utils.arrow_utils import (
     round_to_precision,
     scale_to_percent,
     select_table_columns,
-    drop_null_rows,
 )
 from getfactormodels.utils.cache import evict_model_cache
 from getfactormodels.utils.date_utils import (

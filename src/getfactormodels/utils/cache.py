@@ -37,7 +37,7 @@ class _Cache:
     def get(self, key: str) -> tuple[bytes | None, dict | None]:
         entry = self.cache.get(key)
         if entry and isinstance(entry, dict):
-            log.debug("CACHE HIT: %s...", key[:8])
+            log.debug("CACHE HIT: %s...", key[:8])   # TTL REMAINING?
             return entry.get("data"), entry.get("metadata")
         log.debug("CACHE MISS: %s...", key[:8])
         return None, None
