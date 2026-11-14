@@ -565,7 +565,7 @@ class Collection(Composite):
 
         if model_keys:
             import getfactormodels.models as factor_models
-            from getfactormodels.utils.registry import (
+            from getfactormodels.registry.model_registry import (
                 get_model_class,
                 get_model_key,
             )
