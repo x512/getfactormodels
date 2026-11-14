@@ -1,6 +1,6 @@
 [project]
 name = "getfactormodels"
-version = "0.0.36"
+version = "0.0.37"
 description = "Download datasets for various multifactor asset pricing models."
 
 license = "AGPL-3.0-or-later"
